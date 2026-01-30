@@ -7,11 +7,16 @@ ${LICENSE};md5=89aea4e17d99a7cacdbeed46a0096b10"
 
 DEPENDS += "libcutils"
 
+
+
+SRCPROJECT  = "git://${OSS_REPO}/clo/le/platform/vendor/qcom-opensource/le-framework.git"
+SRCBRANCH  = "lv-frameworks.lnx.1.0.r55-rel"
+SRCREV  = "1805874baadb4d9e7876d0960864a0942b8d8e2e"
+
 SRC_URI = "\
-    ${PATH_TO_REPO}/frameworks/.git;protocol=${PROTO};destsuffix=frameworks;usehead=1 \
+    ${SRCPROJECT};branch=${SRCBRANCH};protocol=${OSS_PROTO};destsuffix=frameworks; \
 "
 
-SRCREV = "${AUTOREV}"
 
 S = "${WORKDIR}/frameworks/camera_metadata"
 

@@ -11,9 +11,14 @@ PROVIDES = "virtual/bootloader"
 PR = "r1"
 PV = "3.0"
 
-SRC_URI = "${PATH_TO_REPO}/bootable/bootloader/edk2/.git;protocol=${PROTO};destsuffix=bootable/bootloader/edk2;usehead=1"
 
-SRCREV = "${AUTOREV}"
+
+SRCPROJECT  = "git://${OSS_REPO}/clo/le/abl/tianocore/edk2.git"
+SRCBRANCH  = "uefi.lnx.4.0.r78-rel"
+SRCREV  = "9ec47fd9a85414c6720ebcfe7b1edfbcad4edf51"
+
+SRC_URI = "${SRCPROJECT};branch=${SRCBRANCH};protocol=${OSS_PROTO};destsuffix=bootable/bootloader/edk2;"
+
 
 S = "${WORKDIR}/bootable/bootloader/edk2"
 

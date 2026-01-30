@@ -1,0 +1,77 @@
+From 537c8daa09df10bd3044168f9cb05b7c1f83b1e2 Mon Sep 17 00:00:00 2001
+From: Aniket Randive <arandive@qti.qualcomm.com>
+Date: Mon, 8 Sep 2025 17:25:01 +0530
+Subject: [PATCH 2/6] i2c: qcom-geni: Skip TX DMA TRE for I2C read operations
+
+During an I2C scan, the driver was incorrectly generating a TX DMA TRE
+even for read operations. This led to unexpected data being driven on
+the bus, causing data mismatches.
+
+Update the logic to skip TX TRE preparation for I2C read transfers to
+ensure proper bus behavior during scan operations.
+
+Change-Id: I4763e12390634ce2c353876df7e8b9005c75267c
+Signed-off-by: Maramaina Naresh <mnaresh@qti.qualcomm.com>
+Signed-off-by: Aniket Randive <arandive@qti.qualcomm.com>
+---
+ drivers/i2c/busses/i2c-qcom-geni.c | 16 ++++++++++++++--
+ 1 file changed, 14 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/i2c/busses/i2c-qcom-geni.c b/drivers/i2c/busses/i2c-qcom-geni.c
+index dc12561f08b7..b17d8d091aff 100644
+--- a/drivers/i2c/busses/i2c-qcom-geni.c
++++ b/drivers/i2c/busses/i2c-qcom-geni.c
+@@ -1317,8 +1317,8 @@ static int geni_i2c_gpi(struct geni_i2c_dev *gi2c, struct i2c_msg *msg,
+ {
+ 	struct gpi_i2c_config *peripheral_cfg;
+ 	unsigned int flags;
+-	void *dma_buf;
+-	dma_addr_t addr;
++	void *dma_buf = NULL;
++	dma_addr_t addr = 0;
+ 	enum dma_data_direction map_dirn;
+ 	enum dma_transfer_direction dma_dirn;
+ 	struct dma_async_tx_descriptor *desc;
+@@ -1328,6 +1328,13 @@ static int geni_i2c_gpi(struct geni_i2c_dev *gi2c, struct i2c_msg *msg,
+ 	u16 len = gi2c->is_ccu_qup ? (msg->len - CCU_DATA_OFFSET) : msg->len;
+ 
+ 	peripheral_cfg = config->peripheral_config;
++
++	/* Skip DMA TRE creation on TX channel for I2C read operations */
++	if (op == I2C_WRITE && (msg->flags & I2C_M_RD)) {
++		peripheral_cfg->multi_msg = true;
++		goto skip_dma;
++	}
++
+ 	if (gi2c->is_ccu_qup) {
+ 		if (op == I2C_WRITE) {
+ 			dma_buf = kmemdup((msg->buf + CCU_DATA_OFFSET), len, GFP_KERNEL);
+@@ -1359,6 +1366,7 @@ static int geni_i2c_gpi(struct geni_i2c_dev *gi2c, struct i2c_msg *msg,
+ 		return -ENOMEM;
+ 	}
+ 
++skip_dma:
+ 	if (op == I2C_WRITE && gi2c->is_ccu_qup) {
+ 		/* set the TX sub pkt_len */
+ 		if (gi2c->ccu.msg[idx]->pkt_len > 0) {
+@@ -1435,6 +1443,7 @@ static int geni_i2c_gpi(struct geni_i2c_dev *gi2c, struct i2c_msg *msg,
+ 	if (dma_submit_error(cookie)) {
+ 		dev_err(gi2c->se.dev, "%s: dmaengine_submit failed (%d)\n",
+ 			__func__, cookie);
++		ret = -EIO;
+ 		goto err_config;
+ 	}
+ 
+@@ -1444,6 +1453,9 @@ static int geni_i2c_gpi(struct geni_i2c_dev *gi2c, struct i2c_msg *msg,
+ 	return 0;
+ 
+ err_config:
++	if (op == I2C_WRITE && (msg->flags & I2C_M_RD))
++		return ret;
++
+ 	dma_unmap_single(gi2c->se.dev->parent, addr, len, map_dirn);
+ 	if (gi2c->is_ccu_qup) {
+ 		kfree(dma_buf);
+-- 
+2.34.1
+

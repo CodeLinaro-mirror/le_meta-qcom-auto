@@ -1,0 +1,217 @@
+From be15d6065c15f53735f616612854af080ed9967f Mon Sep 17 00:00:00 2001
+From: Maramaina Naresh <mnaresh@qti.qualcomm.com>
+Date: Tue, 8 Jul 2025 12:59:23 +0530
+Subject: [PATCH] PENDING: dmaengine: qcom: gpi: Handle GPII reconfig across
+ S2R
+
+On systems that enter suspend-to-RAM (S2R), the SoC undergoes full
+power collapse, placing DDR in self-refresh mode. While hardware
+context is lost, software context is retained.
+
+Adds support for deconfiguring and reconfiguring GPII channels via
+control commands issued by consumer drivers.
+
+When the consumer issues the QCOM_GPI_CHANNEL_DECONFIGURE command
+through dmaengine_pause(), the driver invokes gpi_pause(), which
+stops, resets, and deallocates the GPII channels and associated
+event rings.
+
+Conversely, when the QCOM_GPI_CHANNEL_CONFIGURE command is issued
+via dmaengine_resume(), gpi_resume() is called to reset ring
+pointers, restore interrupt configurations, and restart channel
+operation.
+
+A new helper function, gpi_channels_configure(), is introduced to
+encapsulate the reconfiguration logic and is invoked as part of
+the resume path.
+
+Change-Id: Ib850620bc330d180e77b3896e92b4d0c749aed27
+Signed-off-by: Praveen Talari <ptalari@qti.qualcomm.com>
+Signed-off-by: Maramaina Naresh <mnaresh@qti.qualcomm.com>
+---
+ drivers/dma/qcom/gpi.c           | 121 +++++++++++++++++++++++++++++++
+ include/linux/dma/qcom-gpi-dma.h |  10 +++
+ 2 files changed, 131 insertions(+)
+
+diff --git a/drivers/dma/qcom/gpi.c b/drivers/dma/qcom/gpi.c
+index 9acb9fd2854f..5b5b7c911fd2 100644
+--- a/drivers/dma/qcom/gpi.c
++++ b/drivers/dma/qcom/gpi.c
+@@ -1679,11 +1679,108 @@ static int gpi_terminate_all(struct dma_chan *chan)
+ 	return ret;
+ }
+ 
++static int gpi_channels_configure(struct dma_chan *chan)
++{
++	struct gchan *gchan = to_gchan(chan);
++	struct gpii *gpii = gchan->gpii;
++	struct gpi_ring *ring_ch = NULL;
++	struct gpi_ring *ring_ev = NULL;
++	int i, ret;
++
++	/* Reset the ring channel for TX,RX to the base address */
++	for (i = 0; i < MAX_CHANNELS_PER_GPII; i++) {
++		gchan = &gpii->gchan[i];
++		ring_ch = &gchan->ch_ring;
++		ring_ch->wp = ring_ch->base;
++		ring_ch->rp = ring_ch->base;
++	}
++
++	/* Reset Event ring to the base address */
++	ring_ev = &gpii->ev_ring;
++	ring_ev->wp = ring_ev->base;
++	ring_ev->rp = ring_ev->base;
++
++	ret = gpi_config_interrupts(gpii, DEFAULT_IRQ_SETTINGS, 0);
++	if (ret) {
++		dev_dbg(gpii->gpi_dev->dev, "error config. interrupts, ret:%d\n", ret);
++		return ret;
++	}
++
++	/* allocate event rings */
++	ret = gpi_alloc_ev_chan(gpii);
++	if (ret) {
++		dev_dbg(gpii->gpi_dev->dev, "error alloc_ev_chan:%d\n", ret);
++		goto error_alloc_ev_ring;
++	}
++
++	/* Allocate all channels */
++	for (i = 0; i < MAX_CHANNELS_PER_GPII; i++) {
++		ret = gpi_alloc_chan(&gpii->gchan[i], true);
++		if (ret) {
++			dev_dbg(gpii->gpi_dev->dev, "Error allocating chan:%d\n", ret);
++			goto error_alloc_chan;
++		}
++	}
++
++	/* start channels  */
++	for (i = MAX_CHANNELS_PER_GPII - 1; i >= 0; i--) {
++		/* Issue channel START command (1st for RX, followed by TX) */
++		ret = gpi_start_chan(&gpii->gchan[i]);
++		if (ret) {
++			dev_dbg(gpii->gpi_dev->dev, "Error start chan:%d\n", ret);
++			goto error_start_chan;
++		}
++	}
++
++	return ret;
++
++error_start_chan:
++	for (i = i + 1; i < MAX_CHANNELS_PER_GPII; i++) {
++		gpi_stop_chan(&gpii->gchan[i]);
++		gpi_send_cmd(gpii, &gpii->gchan[i], GPI_CH_CMD_RESET);
++	}
++	i = MAX_CHANNELS_PER_GPII;
++
++error_alloc_chan:
++	for (i = i - 1; i >= 0; i--)
++		gpi_reset_chan(&gpii->gchan[i], GPI_CH_CMD_DE_ALLOC);
++
++error_alloc_ev_ring:
++	gpi_disable_interrupts(gpii);
++	return ret;
++}
++
++static int gpi_channels_deconfigure(struct dma_chan *chan)
++{
++	struct gchan *gchan = to_gchan(chan);
++	struct gpii *gpii = gchan->gpii;
++	int i, ret;
++
++	for (i = 0; i < MAX_CHANNELS_PER_GPII; i++) {
++		ret = gpi_send_cmd(gpii, &gpii->gchan[i], GPI_CH_CMD_RESET);
++		if (ret)
++			return ret;
++	}
++
++	for (i = 0; i < MAX_CHANNELS_PER_GPII; i++) {
++		ret = gpi_reset_chan(&gpii->gchan[i], GPI_CH_CMD_DE_ALLOC);
++		if (ret)
++			return ret;
++	}
++
++	ret = gpi_send_cmd(gpii, NULL, GPI_EV_CMD_DEALLOC);
++	if (ret)
++		return ret;
++
++	return ret;
++}
++
+ /* pause dma transfer for all channels */
+ static int gpi_pause(struct dma_chan *chan)
+ {
+ 	struct gchan *gchan = to_gchan(chan);
+ 	struct gpii *gpii = gchan->gpii;
++	struct gpi_chan_ctrl *gpi_ctrl = chan->private;
+ 	int i, ret;
+ 
+ 	mutex_lock(&gpii->ctrl_lock);
+@@ -1707,6 +1804,15 @@ static int gpi_pause(struct dma_chan *chan)
+ 		}
+ 	}
+ 
++	if (gpi_ctrl && gpi_ctrl->cmd == QCOM_GPI_CHANNEL_DECONFIGURE) {
++		ret = gpi_channels_deconfigure(chan);
++		if (ret) {
++			dev_err(gpii->gpi_dev->dev, "Error deconfiguring chan, ret:%d\n", ret);
++			mutex_unlock(&gpii->ctrl_lock);
++			return ret;
++		}
++	}
++
+ 	disable_irq(gpii->irq);
+ 
+ 	/* Wait for threads to complete out */
+@@ -1725,6 +1831,7 @@ static int gpi_resume(struct dma_chan *chan)
+ {
+ 	struct gchan *gchan = to_gchan(chan);
+ 	struct gpii *gpii = gchan->gpii;
++	struct gpi_chan_ctrl *gpi_ctrl = chan->private;
+ 	int i, ret;
+ 
+ 	mutex_lock(&gpii->ctrl_lock);
+@@ -1736,6 +1843,20 @@ static int gpi_resume(struct dma_chan *chan)
+ 
+ 	enable_irq(gpii->irq);
+ 
++	if (gpi_ctrl && gpi_ctrl->cmd == QCOM_GPI_CHANNEL_CONFIGURE) {
++		ret = gpi_channels_configure(chan);
++		if (ret) {
++			dev_err(gpii->gpi_dev->dev, "Error re-configuring chan, ret:%d\n", ret);
++			mutex_unlock(&gpii->ctrl_lock);
++			return ret;
++		}
++	}
++
++	if (gpii->pm_state == ACTIVE_STATE) {
++		mutex_unlock(&gpii->ctrl_lock);
++		return 0;
++	}
++
+ 	/* send start command to start the channels */
+ 	for (i = 0; i < MAX_CHANNELS_PER_GPII; i++) {
+ 		ret = gpi_send_cmd(gpii, &gpii->gchan[i], GPI_CH_CMD_START);
+diff --git a/include/linux/dma/qcom-gpi-dma.h b/include/linux/dma/qcom-gpi-dma.h
+index 6912331ccad7..f5b1ceea6966 100644
+--- a/include/linux/dma/qcom-gpi-dma.h
++++ b/include/linux/dma/qcom-gpi-dma.h
+@@ -21,6 +21,16 @@ enum spi_transfer_cmd {
+ 
+ #define QCOM_GPI_IMMEDIATE_DMA_LEN	8
+ 
++enum gpi_chan_ctrl_cmd {
++	QCOM_GPI_DEFAULT,
++	QCOM_GPI_CHANNEL_DECONFIGURE,
++	QCOM_GPI_CHANNEL_CONFIGURE,
++};
++
++struct gpi_chan_ctrl {
++	enum gpi_chan_ctrl_cmd cmd;
++};
++
+ /**
+  * struct gpi_spi_config - spi config for peripheral
+  *
+-- 
+2.34.1
+

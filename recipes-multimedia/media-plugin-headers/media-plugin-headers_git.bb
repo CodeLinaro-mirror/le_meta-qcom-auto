@@ -8,8 +8,13 @@ SECTION = "multimedia"
 LICENSE = "BSD-3-Clause"
 LIC_FILES_CHKSUM = "file://${WORKDIR}/frameworks/NOTICE;md5=a3fcbe20ea5ac731ed3aa15fe59ba20a"
 
-SRC_URI = "${PATH_TO_REPO}/frameworks/.git;protocol=${PROTO};destsuffix=frameworks;usehead=1"
-SRCREV = "${AUTOREV}"
+
+
+SRCPROJECT  = "git://${OSS_REPO}/clo/le/platform/vendor/qcom-opensource/le-framework.git"
+SRCBRANCH  = "lv-frameworks.lnx.1.0.r55-rel"
+SRCREV  = "1805874baadb4d9e7876d0960864a0942b8d8e2e"
+
+SRC_URI = "${SRCPROJECT};branch=${SRCBRANCH};protocol=${OSS_PROTO};destsuffix=frameworks;"
 S = "${WORKDIR}/frameworks"
 
 do_configure[noexec] = "1"

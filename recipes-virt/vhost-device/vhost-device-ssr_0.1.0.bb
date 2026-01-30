@@ -9,8 +9,13 @@ LIC_FILES_CHKSUM = "\
 SYSTEMD_SERVICE:${PN} = "vhost-device-ssr.service"
 DEPENDS += "libssr-client"
 
-SRC_URI = "${PATH_TO_REPO}/external/vhost-device/.git;protocol=${PROTO};destsuffix=external/vhost-device;usehead=1"
-SRCREV = "${AUTOREV}"
+
+
+SRCPROJECT  = "git://${OSS_REPO}/clo/le/platform/external/rust-vmm/vhost-device.git"
+SRCBRANCH  = "auto-vmm.lnx.1.0.r22-rel"
+SRCREV  = "f0860493c6848ecb21534416ccb1201ca68eabc0"
+
+SRC_URI = "${SRCPROJECT};branch=${SRCBRANCH};protocol=${OSS_PROTO};destsuffix=external/vhost-device;"
 S = "${WORKDIR}/external/vhost-device"
 
 inherit cargo systemd

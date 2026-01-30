@@ -1,0 +1,1490 @@
+From 0a25d5a52320c234186bf9299d7f5a7a9b63c48b Mon Sep 17 00:00:00 2001
+From: Aniket Randive <arandive@qti.qualcomm.com>
+Date: Tue, 9 Sep 2025 11:51:49 +0530
+Subject: [PATCH] ccu: Add support for passing error notification event to
+ client
+
+Sometimes the client does not queue any packet on the sync channel,
+but if a sync trigger occurs on that channel, the hardware reports
+an error event with type I2C_CCU_SYNC_TRE_NOT_FOUND. The client
+needs this error event to identify which frame was missed.
+
+This commit adds support to pass such error events to the client.
+The driver now sends a poll notification to the client, which
+should then read the event using the read API. The event typically
+includes the QUP number, GPII number, and error code (0x37).
+
+Change-Id: I46f51fd49f82c82593610d5acf216463fb776217
+Signed-off-by: Aniket Randive <arandive@qti.qualcomm.com>
+---
+ drivers/dma/qcom/gpi.c                | 181 +++++++++-----------
+ drivers/i2c/busses/i2c-qcom-geni.c    | 232 +++++++++++---------------
+ drivers/soc/qcom/qcom_ccu_qup.c       | 149 ++++++++++++-----
+ include/linux/soc/qcom/qcom_ccu_qup.h |   6 +-
+ include/uapi/linux/ccu_qup/ccu_qup.h  |   2 +
+ 5 files changed, 294 insertions(+), 276 deletions(-)
+
+diff --git a/drivers/dma/qcom/gpi.c b/drivers/dma/qcom/gpi.c
+index 5ed8ee4f7c4e..2450e9cca86d 100644
+--- a/drivers/dma/qcom/gpi.c
++++ b/drivers/dma/qcom/gpi.c
+@@ -699,6 +699,7 @@ struct gpii {
+ 	u32 cntxt_type_irq_msk;
+ 	bool ieob_set;
+ 	bool premature_cancel;
++	u8 qup_id;
+ };
+ 
+ #define MAX_TRE 5
+@@ -803,16 +804,18 @@ int ccu_gpi_prioritize_chan(struct dma_chan *chan)
+ 	int ret = 0;
+ 
+ 	/* Check Previous Transfer completed or not */
+-	dev_dbg(gpii->gpi_dev->dev, "wp:0x%0llx rp:0x%0llx\n", ring->wp, ring->rp);
+ 	if (ring->wp == ring->rp) {
+ 		/* send command to Prioritize the channel */
+ 		ret = gpi_send_cmd(gpii, gchan, GPI_CH_CMD_PRIORITIZE_REG_CHAN);
+ 		if (ret) {
+-			dev_err(gpii->gpi_dev->dev, "Error to prioritize reg Chan:%d\n", ret);
++			GPI_ERR_LOG(LOG_LVL_ERROR, gpii->gpi_dev->dev, "Error to prioritize reg Chan:%d\n", ret);
+ 			return -EIO;
+ 		}
++		GPI_DBG_LOG(LOG_LVL_INFO, gpii->gpi_dev->dev,
++			    "%s: Prioritized the chan:%d of GPII:%d\n",
++			    __func__, gchan->chid, gpii->gpii_id);								 
+ 	} else {
+-		dev_err(gpii->gpi_dev->dev, "Pending TRE's are present\n");
++		GPI_ERR_LOG(LOG_LVL_ERROR, gpii->gpi_dev->dev, "Pending TRE's are present\n");
+ 		return -EAGAIN;
+ 	}
+ 
+@@ -844,6 +847,8 @@ void ccu_gpi_configure_mode(struct dma_chan *chan, int mode, int type)
+ 					   gpii->gpi_dev->cfg.irq_off),
+ 					   GPII_n_CNTXT_TYPE_COMP_IRQ_MSK_BMSK, enable);
+ 	}
++	GPI_DBG_LOG(LOG_LVL_INFO, gpii->gpi_dev->dev,
++		    "%s: mode:%d, type:%d\n", __func__, mode, type);
+ }
+ EXPORT_SYMBOL(ccu_gpi_configure_mode);
+ 
+@@ -862,6 +867,7 @@ void ccu_gpi_set_premature_cancel_flag(struct dma_chan *chan)
+ 	struct gpii *gpii = gchan->gpii;
+ 
+ 	gpii->premature_cancel = true;
++	GPI_DBG_LOG(LOG_LVL_INFO, gpii->gpi_dev->dev, "%s: Premature cancel flag set\n", __func__);						   
+ }
+ EXPORT_SYMBOL(ccu_gpi_set_premature_cancel_flag);
+ 
+@@ -1148,7 +1154,7 @@ static void gpi_process_glob_err_irq(struct gpii *gpii)
+ 
+ 	offset = GPII_n_ERROR_LOG_OFFS(gpii_id, gpii->gpi_dev->cfg.irq_off);
+ 	status = gpi_read_reg(gpii, gpii->regs + offset);
+-	dev_err(gpii->gpi_dev->dev, "GLOBAL Error LOG Reg:0x%x\n", status);
++	GPI_ERR_LOG(LOG_LVL_ERROR, gpii->gpi_dev->dev, "GLOBAL Error LOG Reg:0x%x\n", status);
+ 	gpi_write_reg(gpii, gpii->regs + offset, 0);
+ }
+ 
+@@ -1184,6 +1190,8 @@ static void process_gpi_irq(struct gpii *gpii)
+ 	do {
+ 		/* global gpii error */
+ 		if (type & GPII_n_CNTXT_TYPE_IRQ_MSK_GLOB) {
++			GPI_DBG_LOG(LOG_LVL_INFO, gpii->gpi_dev->dev,
++				    "processing Global interrupt for GPII:%d\n", gpii_id);
+ 			gpi_process_glob_err_irq(gpii);
+ 			type &= ~(GPII_n_CNTXT_TYPE_IRQ_MSK_GLOB);
+ 		}
+@@ -1191,6 +1199,8 @@ static void process_gpi_irq(struct gpii *gpii)
+ 		/* transfer complete interrupt */
+ 		if ((type & GPII_n_CNTXT_TYPE_IRQ_MSK_IEOB) ||
+ 			(type & GPII_n_CNTXT_TYPE_COMP_IRQ_MSK_IEOB)) {
++			GPI_DBG_LOG(LOG_LVL_INFO, gpii->gpi_dev->dev,
++				    "processing IEOB interrupt for GPII:%d\n", gpii_id);
+ 			gpi_process_ieob(gpii);
+ 			type &= ~GPII_n_CNTXT_TYPE_IRQ_MSK_IEOB;
+ 		}
+@@ -1201,7 +1211,7 @@ static void process_gpi_irq(struct gpii *gpii)
+ 			u32 ev_ch_irq;
+ 
+ 			GPI_DBG_LOG(LOG_LVL_INFO, gpii->gpi_dev->dev,
+-				    "processing EV CTRL interrupt\n");
++				    "processing EV CTRL interrupt for GPII:%d\n", gpii_id);
+ 			offset = GPII_n_CNTXT_SRC_EV_CH_IRQ_OFFS
+ 				(gpii_id, gpii->gpi_dev->cfg.irq_off);
+ 			ev_ch_irq = gpi_read_reg(gpii, gpii->regs + offset);
+@@ -1223,8 +1233,8 @@ static void process_gpi_irq(struct gpii *gpii)
+ 
+ 			gpii->ev_state = ev_state;
+ 			GPI_DBG_LOG(LOG_LVL_INFO, gpii->gpi_dev->dev,
+-				    "setting EV state to %s\n",
+-				    TO_GPI_EV_STATE_STR(gpii->ev_state));
++				    "setting EV state to %s of GPII:%d\n",
++				    TO_GPI_EV_STATE_STR(gpii->ev_state), gpii_id);
+ 			complete_all(&gpii->cmd_completion);
+ 			type &= ~(GPII_n_CNTXT_TYPE_IRQ_MSK_EV_CTRL);
+ 		}
+@@ -1232,14 +1242,14 @@ static void process_gpi_irq(struct gpii *gpii)
+ 		/* channel control irq */
+ 		if (type & GPII_n_CNTXT_TYPE_IRQ_MSK_CH_CTRL) {
+ 			GPI_DBG_LOG(LOG_LVL_INFO, gpii->gpi_dev->dev,
+-				    "process CH CTRL interrupts\n");
++				    "process CH CTRL interrupts of GPII:%d\n", gpii_id);
+ 			gpi_process_ch_ctrl_irq(gpii);
+ 			type &= ~(GPII_n_CNTXT_TYPE_IRQ_MSK_CH_CTRL);
+ 		}
+ 
+ 		if (type) {
+ 			GPI_ERR_LOG(LOG_LVL_ERROR, gpii->gpi_dev->dev,
+-				    "Unhandled interrupt status:0x%x\n", type);
++				    "Unhandled interrupt status:0x%x of GPII:%d\n", type, gpii_id);
+ 			gpi_process_gen_err_irq(gpii);
+ 			goto exit_irq;
+ 		}
+@@ -1263,7 +1273,7 @@ static irqreturn_t gpi_handle_irq(int irq, void *data)
+ }
+ 
+ /* Handle IRQ for GPII */
+-static void ccu_gpi_handle_isr(struct platform_device *pdev, int idx)
++static void ccu_gpi_handle_isr(struct platform_device *pdev, int gpii_idx, int qup_idx)
+ {
+ 	struct gpi_dev *gpi;
+ 	struct gpii *gpii;
+@@ -1274,8 +1284,8 @@ static void ccu_gpi_handle_isr(struct platform_device *pdev, int idx)
+ 	}
+ 
+ 	gpi = platform_get_drvdata(pdev);
+-	gpii = &gpi->gpiis[idx];
+-
++	gpii = &gpi->gpiis[gpii_idx];
++	gpii->qup_id = qup_idx;
+ 	process_gpi_irq(gpii);
+ }
+ 
+@@ -1289,47 +1299,12 @@ static void gpi_process_ccu_error_event(struct gchan *gchan,
+ 	struct virt_dma_desc *vd;
+ 	unsigned long flags;
+ 
+-	if (gchan->pm_state != ACTIVE_STATE) {
+-		dev_err(gpii->gpi_dev->dev, "skipping processing event because ch @ %s state\n",
+-			TO_GPI_PM_STR(gchan->pm_state));
+-		return;
+-	}
+-
+-	spin_lock_irqsave(&gchan->vc.lock, flags);
+-	vd = vchan_next_desc(&gchan->vc);
+-	if (!vd) {
+-		struct gpi_ere *gpi_ere;
+-
+-		spin_unlock_irqrestore(&gchan->vc.lock, flags);
+-		dev_err(gpii->gpi_dev->dev, "Event without a pending descriptor!\n");
+-		gpi_ere = (struct gpi_ere *)error_event;
+-		dev_err(gpii->gpi_dev->dev,
+-			"Event: %08x %08x %08x %08x\n",
+-			gpi_ere->dword[0], gpi_ere->dword[1],
+-			gpi_ere->dword[2], gpi_ere->dword[3]);
+-		return;
+-	}
+-	gpi_desc = to_gpi_desc(vd);
+-	spin_unlock_irqrestore(&gchan->vc.lock, flags);
+-
+-	/* make sure rp updates are immediately visible to all cores */
+-	smp_wmb();
+-
+ 	if (error_event->code == MSM_GPI_TCE_UNEXP_ERR &&
+ 			error_event->type == CCU_ERROR_NOTIFICATION_EV_TYPE) {
+-		dev_err(gpii->gpi_dev->dev, "I2C CCU SYNC TRE Not Found\n");
+-		result.result = DMA_TRANS_ABORTED;
+-		result.gpii_id = gpii->gpii_id;
++		GPI_ERR_LOG(LOG_LVL_ERROR, gpii->gpi_dev->dev,
++			    "CCU QUP:%d GPII:%d I2C CCU SYNC TRE Not Found:%d\n", gpii->qup_id, gpii->gpii_id, error_event->type);
++		ccu_update_error_notification_event(gpii->qup_id, gpii->gpii_id, error_event->type);
+ 	}
+-
+-	dma_cookie_complete(&vd->tx);
+-	dmaengine_desc_get_callback_invoke(&vd->tx, &result);
+-
+-	spin_lock_irqsave(&gchan->vc.lock, flags);
+-	list_del(&vd->node);
+-	spin_unlock_irqrestore(&gchan->vc.lock, flags);
+-	kfree(gpi_desc);
+-	gpi_desc = NULL;
+ }
+ 
+ /* process DMA Immediate completion data events */
+@@ -1363,16 +1338,17 @@ static void gpi_process_imed_data_event(struct gchan *gchan,
+ 
+ 		spin_unlock_irqrestore(&gchan->vc.lock, flags);
+ 		GPI_DBG_LOG(LOG_LVL_INFO, gpii->gpi_dev->dev,
+-			    "event without a pending descriptor!\n");
++			    "event without a pending descriptor! for GPII:%d\n",
++			    gpii->gpii_id);
+ 		gpi_ere = (struct gpi_ere *)imed_event;
+-		GPI_DBG_LOG(LOG_LVL_VERBOSE, gpii->gpi_dev->dev,
+-			    "Event: %08x %08x %08x %08x\n",
+-			    gpi_ere->dword[0], gpi_ere->dword[1],
++		GPI_DBG_LOG(LOG_LVL_INFO, gpii->gpi_dev->dev,
++			    "GPII:%d Event: %08x %08x %08x %08x\n",
++			    gpii->gpii_id, gpi_ere->dword[0], gpi_ere->dword[1],
+ 			    gpi_ere->dword[2], gpi_ere->dword[3]);
+ 		gpi_tre = tre;
+ 		GPI_DBG_LOG(LOG_LVL_INFO, gpii->gpi_dev->dev,
+-			    "Pending TRE: %08x %08x %08x %08x\n",
+-			    gpi_tre->dword[0], gpi_tre->dword[1],
++			    "GPII:%d Pending TRE: %08x %08x %08x %08x\n",
++			    gpii->gpii_id, gpi_tre->dword[0], gpi_tre->dword[1],
+ 			    gpi_tre->dword[2], gpi_tre->dword[3]);
+ 		return;
+ 	}
+@@ -1488,13 +1464,13 @@ static void gpi_process_xfer_compl_event(struct gchan *gchan,
+ 		result.result = DMA_TRANS_ABORTED;
+ 	} else {
+ 		GPI_DBG_LOG(LOG_LVL_VERBOSE, gpii->gpi_dev->dev,
+-			    "Transaction Success\n");
++			    "Transaction Success for GPII:%d\n", gpii->gpii_id);
+ 		result.result = DMA_TRANS_NOERROR;
+ 	}
+ 	result.residue = gpi_desc->len - compl_event->length;
+ 	result.gpii_id = gpii->gpii_id;
+ 	GPI_DBG_LOG(LOG_LVL_VERBOSE, gpii->gpi_dev->dev,
+-		    "Residue %d\n", result.residue);
++		    "GPII:%d Residue %d\n", gpii->gpii_id, result.residue);
+ 
+ 	dma_cookie_complete(&vd->tx);
+ 	if (gchan->protocol == QCOM_GPI_I2C) {
+@@ -1535,11 +1511,11 @@ static void gpi_process_events(struct gpii *gpii)
+ 			chid = gpi_event->xfer_compl_event.chid;
+ 			type = gpi_event->xfer_compl_event.type;
+ 
+-			GPI_DBG_LOG(LOG_LVL_VERBOSE, gpii->gpi_dev->dev,
+-				    "Event: CHID:%u, type:%x %08x %08x %08x %08x\n",
+-				    chid, type, gpi_event->gpi_ere.dword[0],
+-				    gpi_event->gpi_ere.dword[1],
+-				    gpi_event->gpi_ere.dword[2],
++			GPI_DBG_LOG(LOG_LVL_INFO, gpii->gpi_dev->dev,
++				    "GPII:%d Event: CHID:%u, type:%x %08x %08x %08x %08x\n",
++				    gpii->gpii_id, chid, type, gpi_event->gpi_ere.dword[0],
++				    gpi_event->gpi_ere.dword[1], gpi_event->gpi_ere.dword[2],
++									
+ 				    gpi_event->gpi_ere.dword[3]);
+ 
+ 			switch (type) {
+@@ -1549,8 +1525,8 @@ static void gpi_process_events(struct gpii *gpii)
+ 							     &gpi_event->xfer_compl_event);
+ 				break;
+ 			case STALE_EV_TYPE:
+-				GPI_DBG_LOG(LOG_LVL_VERBOSE, gpii->gpi_dev->dev,
+-					    "stale event, not processing\n");
++				GPI_DBG_LOG(LOG_LVL_INFO, gpii->gpi_dev->dev,
++					    "GPII:%d stale event, not processing\n", gpii->gpii_id);
+ 				break;
+ 			case IMMEDIATE_DATA_EV_TYPE:
+ 				gchan = &gpii->gchan[chid];
+@@ -1559,19 +1535,20 @@ static void gpi_process_events(struct gpii *gpii)
+ 				break;
+ 			case QUP_NOTIF_EV_TYPE:
+ 				gchan = &gpii->gchan[chid];
+-				GPI_DBG_LOG(LOG_LVL_VERBOSE, gpii->gpi_dev->dev,
+-					    "QUP_NOTIF_EV_TYPE\n");
++				GPI_DBG_LOG(LOG_LVL_INFO, gpii->gpi_dev->dev,
++					    "GPII:%d QUP_NOTIF_EV_TYPE\n", gpii->gpii_id);
+ 				break;
+ 			case CCU_ERROR_NOTIFICATION_EV_TYPE:
+-				GPI_DBG_LOG(LOG_LVL_VERBOSE, gpii->gpi_dev->dev,
+-					    "CCU error notifcation event\n");
++				GPI_DBG_LOG(LOG_LVL_INFO, gpii->gpi_dev->dev,
++					    "GPII:%d CCU error notifcation event\n", gpii->gpii_id);
+ 				gchan = &gpii->gchan[chid];
+ 				gpi_process_ccu_error_event(gchan,
+ 							    &gpi_event->ccu_error_notif_event);
+ 				break;
+ 			default:
+-				GPI_DBG_LOG(LOG_LVL_VERBOSE, gpii->gpi_dev->dev,
+-					    "not supported event type:0x%x\n", type);
++				GPI_DBG_LOG(LOG_LVL_INFO, gpii->gpi_dev->dev,
++					    "GPII:%d not supported event type:0x%x\n",
++					    gpii->gpii_id, type);
+ 			}
+ 			gpi_ring_recycle_ev_element(ev_ring);
+ 		}
+@@ -1880,9 +1857,9 @@ static int gpi_alloc_ring(struct gpi_ring *ring, u32 elements,
+ 		bit++;
+ 	len = 1 << bit;
+ 	ring->alloc_size = (len + (len - 1));
+-	GPI_DBG_LOG(LOG_LVL_VERBOSE, gpii->gpi_dev->dev,
+-		    "#el:%u el_size:%u len:%u actual_len:%llu alloc_size:%zu\n",
+-		    elements, el_size, (elements * el_size), len,
++	GPI_DBG_LOG(LOG_LVL_INFO, gpii->gpi_dev->dev,
++		    "GPII:%d #el:%u el_size:%u len:%u actual_len:%llu alloc_size:%zu\n",
++		    gpii->gpii_id, elements, el_size, (elements * el_size), len,
+ 		    ring->alloc_size);
+ 
+ 	ring->pre_aligned = dma_alloc_coherent(gpii->gpi_dev->dev,
+@@ -1909,9 +1886,9 @@ static int gpi_alloc_ring(struct gpi_ring *ring, u32 elements,
+ 	/* update to other cores */
+ 	smp_wmb();
+ 
+-	GPI_DBG_LOG(LOG_LVL_VERBOSE, gpii->gpi_dev->dev,
+-		    "phy_pre:%pad phy_alig:%pa len:%u el_size:%u elements:%u\n",
+-		    &ring->dma_handle, &ring->phys_addr, ring->len,
++	GPI_DBG_LOG(LOG_LVL_INFO, gpii->gpi_dev->dev,
++		    "GPII:%d phy_pre:%pad phy_alig:%pa len:%u el_size:%u elements:%u\n",
++		    gpii->gpii_id, &ring->dma_handle, &ring->phys_addr, ring->len,
+ 		    ring->el_size, ring->elements);
+ 
+ 	return 0;
+@@ -1950,14 +1927,15 @@ static void gpi_nop_tre(struct gpii *gpii, struct gchan *gchan)
+ 	local_wp = to_physical(ring, ring->wp);
+ 	cntxt_rp = ring->rp;
+ 
+-	dev_dbg(gpii->gpi_dev->dev, "chid:%d, rp:0x%llx, wp:0x%llx\n",
+-		gchan->chid, local_rp, local_wp);
++	GPI_DBG_LOG(LOG_LVL_INFO, gpii->gpi_dev->dev, "GPII:%d chid:%d, rp:0x%llx, wp:0x%llx\n",
++		    gpii->gpii_id, gchan->chid, local_rp, local_wp);
+ 
+ 	while (local_rp != local_wp) {
+ 		tre = (struct gpi_tre *)cntxt_rp;
+-		dev_dbg(gpii->gpi_dev->dev, "%s: TRE: %08x:%08x:%08x:%08x\n", __func__,
+-			tre->dword[0], tre->dword[1], tre->dword[2],
+-			tre->dword[3]);
++		GPI_DBG_LOG(LOG_LVL_INFO, gpii->gpi_dev->dev,
++			    "%s: GPII:%d TRE: %08x:%08x:%08x:%08x\n", __func__,
++			     gpii->gpii_id, tre->dword[0], tre->dword[1], tre->dword[2],
++			     tre->dword[3]);
+ 
+ 		if (tre->dword[3] & TRE_FLAGS_CCU_LAST)
+ 			last_frame = tre;
+@@ -1978,9 +1956,10 @@ static void gpi_nop_tre(struct gpii *gpii, struct gchan *gchan)
+ 		if (last_frame)
+ 			last_frame->dword[3] |= u32_encode_bits(1, TRE_FLAGS_NOP_LAST);
+ 
+-		dev_dbg(gpii->gpi_dev->dev, "chid:%d, rp:0x%llx, wp:0x%llx, TRE: %08x:%08x:%08x:%08x\n",
+-			gchan->chid, local_rp, local_wp, tre->dword[0], tre->dword[1],
+-			tre->dword[2], tre->dword[3]);
++		GPI_DBG_LOG(LOG_LVL_INFO, gpii->gpi_dev->dev,
++			    "GPII:%d chid:%d, rp:0x%llx, wp:0x%llx, TRE: %08x:%08x:%08x:%08x\n",
++			    gpii->gpii_id, gchan->chid, local_rp, local_wp, tre->dword[0],
++			    tre->dword[1], tre->dword[2], tre->dword[3]);
+ 	}
+ }
+ 
+@@ -1999,7 +1978,7 @@ static int gpi_terminate_all(struct dma_chan *chan)
+ 	if (gpii->premature_cancel) {
+ 		ret = gpi_send_cmd(gpii, gchan, GPI_CH_CMD_SYNC_TRIGGER_DIS);
+ 		if (ret) {
+-			dev_err(gpii->gpi_dev->dev, "Error with cmd:%s ret:%d\n",
++			GPI_ERR_LOG(LOG_LVL_ERROR, gpii->gpi_dev->dev, "Error with cmd:%s ret:%d\n",
+ 				TO_GPI_CMD_STR(GPI_CH_CMD_SYNC_TRIGGER_DIS), ret);
+ 			goto terminate_exit;
+ 		}
+@@ -2077,7 +2056,7 @@ static int gpi_terminate_all(struct dma_chan *chan)
+ 	if (gpii->premature_cancel) {
+ 		ret = gpi_send_cmd(gpii, gchan, GPI_CH_CMD_SYNC_TRIGGER_EN);
+ 		if (ret) {
+-			dev_err(gpii->gpi_dev->dev, "Error with cmd:%s ret:%d\n",
++			GPI_ERR_LOG(LOG_LVL_ERROR, gpii->gpi_dev->dev, "Error with cmd:%s ret:%d\n",
+ 				TO_GPI_CMD_STR(GPI_CH_CMD_SYNC_TRIGGER_EN), ret);
+ 			goto terminate_exit;
+ 		}
+@@ -2112,14 +2091,14 @@ static int gpi_channels_configure(struct dma_chan *chan)
+ 
+ 	ret = gpi_config_interrupts(gpii, DEFAULT_IRQ_SETTINGS, 0);
+ 	if (ret) {
+-		dev_dbg(gpii->gpi_dev->dev, "error config. interrupts, ret:%d\n", ret);
++		GPI_DBG_LOG(LOG_LVL_INFO, gpii->gpi_dev->dev, "error config. interrupts, ret:%d\n", ret);
+ 		return ret;
+ 	}
+ 
+ 	/* allocate event rings */
+ 	ret = gpi_alloc_ev_chan(gpii);
+ 	if (ret) {
+-		dev_dbg(gpii->gpi_dev->dev, "error alloc_ev_chan:%d\n", ret);
++		GPI_DBG_LOG(LOG_LVL_INFO, gpii->gpi_dev->dev, "error alloc_ev_chan:%d\n", ret);
+ 		goto error_alloc_ev_ring;
+ 	}
+ 
+@@ -2127,7 +2106,7 @@ static int gpi_channels_configure(struct dma_chan *chan)
+ 	for (i = 0; i < MAX_CHANNELS_PER_GPII; i++) {
+ 		ret = gpi_alloc_chan(&gpii->gchan[i], true);
+ 		if (ret) {
+-			dev_dbg(gpii->gpi_dev->dev, "Error allocating chan:%d\n", ret);
++			GPI_DBG_LOG(LOG_LVL_INFO, gpii->gpi_dev->dev, "Error allocating chan:%d\n", ret);
+ 			goto error_alloc_chan;
+ 		}
+ 	}
+@@ -2137,7 +2116,7 @@ static int gpi_channels_configure(struct dma_chan *chan)
+ 		/* Issue channel START command (1st for RX, followed by TX) */
+ 		ret = gpi_start_chan(&gpii->gchan[i]);
+ 		if (ret) {
+-			dev_dbg(gpii->gpi_dev->dev, "Error start chan:%d\n", ret);
++			GPI_DBG_LOG(LOG_LVL_INFO, gpii->gpi_dev->dev, "Error start chan:%d\n", ret);
+ 			goto error_start_chan;
+ 		}
+ 	}
+@@ -2200,8 +2179,8 @@ static int gpi_pause(struct dma_chan *chan)
+ 	 * client needs to call pause only once
+ 	 */
+ 	if (gpii->pm_state == PAUSE_STATE) {
+-		GPI_DBG_LOG(LOG_LVL_VERBOSE, gpii->gpi_dev->dev,
+-			    "channel is already paused\n");
++		GPI_DBG_LOG(LOG_LVL_INFO, gpii->gpi_dev->dev,
++			    "channel is already paused for GPII:%d\n", gpii->gpii_id);
+ 		mutex_unlock(&gpii->ctrl_lock);
+ 		return 0;
+ 	}
+@@ -2218,7 +2197,8 @@ static int gpi_pause(struct dma_chan *chan)
+ 	if (gpi_ctrl && gpi_ctrl->cmd == QCOM_GPI_CHANNEL_DECONFIGURE) {
+ 		ret = gpi_channels_deconfigure(chan);
+ 		if (ret) {
+-			dev_err(gpii->gpi_dev->dev, "Error deconfiguring chan, ret:%d\n", ret);
++			GPI_ERR_LOG(LOG_LVL_ERROR, gpii->gpi_dev->dev,
++				    "Error deconfiguring chan, ret:%d\n", ret);				   
+ 			mutex_unlock(&gpii->ctrl_lock);
+ 			return ret;
+ 		}
+@@ -2248,8 +2228,8 @@ static int gpi_resume(struct dma_chan *chan)
+ 
+ 	mutex_lock(&gpii->ctrl_lock);
+ 	if (gpii->pm_state == ACTIVE_STATE) {
+-		GPI_DBG_LOG(LOG_LVL_VERBOSE, gpii->gpi_dev->dev,
+-			    "channel is already active\n");
++		GPI_DBG_LOG(LOG_LVL_INFO, gpii->gpi_dev->dev,
++			    "channel is already active for GPII:%d\n", gpii->gpii_id);
+ 		mutex_unlock(&gpii->ctrl_lock);
+ 		return 0;
+ 	}
+@@ -2260,7 +2240,8 @@ static int gpi_resume(struct dma_chan *chan)
+ 	if (gpi_ctrl && gpi_ctrl->cmd == QCOM_GPI_CHANNEL_CONFIGURE) {
+ 		ret = gpi_channels_configure(chan);
+ 		if (ret) {
+-			dev_err(gpii->gpi_dev->dev, "Error re-configuring chan, ret:%d\n", ret);
++			GPI_ERR_LOG(LOG_LVL_ERROR, gpii->gpi_dev->dev,
++				    "Error re-configuring chan, ret:%d\n", ret);							  
+ 			mutex_unlock(&gpii->ctrl_lock);
+ 			return ret;
+ 		}
+@@ -2276,7 +2257,7 @@ static int gpi_resume(struct dma_chan *chan)
+ 		ret = gpi_send_cmd(gpii, &gpii->gchan[i], GPI_CH_CMD_START);
+ 		if (ret) {
+ 			GPI_ERR_LOG(LOG_LVL_ERROR, gpii->gpi_dev->dev,
+-				    "Error starting chan, ret:%d\n", ret);
++				    "Error starting chan:%d, ret:%d\n", i, ret);
+ 			mutex_unlock(&gpii->ctrl_lock);
+ 			return ret;
+ 		}
+@@ -3015,7 +2996,7 @@ static int gpi_probe(struct platform_device *pdev)
+ 	if (data->is_ccu_qup) {
+ 		gpi_dev->cfg = *data;
+ 		register_gpi_irq(ccu_gpi_handle_isr);
+-		dev_dbg(gpi_dev->dev, "Loading CCU QUP FW\n");
++		GPI_DBG_LOG(LOG_LVL_INFO, gpi_dev->dev, "Loading CCU QUP FW\n");
+ 		ccu_qup_load_firmware();
+ 	}
+ 
+@@ -3025,7 +3006,7 @@ static int gpi_probe(struct platform_device *pdev)
+ 	ret = of_property_read_u32(gpi_dev->dev->of_node, "static-gpii-mask",
+ 				   &gpi_dev->static_gpii_mask);
+ 	if (!ret)
+-		dev_err(gpi_dev->dev, "Static GPII use case\n");
++		GPI_ERR_LOG(LOG_LVL_ERROR, gpi_dev->dev, "Static GPII use case\n");
+ 
+ 	ret = dma_set_mask(gpi_dev->dev, DMA_BIT_MASK(64));
+ 	if (ret) {
+diff --git a/drivers/i2c/busses/i2c-qcom-geni.c b/drivers/i2c/busses/i2c-qcom-geni.c
+index 710a34edefe3..9e0ab0330e72 100644
+--- a/drivers/i2c/busses/i2c-qcom-geni.c
++++ b/drivers/i2c/busses/i2c-qcom-geni.c
+@@ -410,7 +410,7 @@ static int geni_i2c_power_on_off(struct i2c_adapter *adap, bool suspend)
+ 				gi2c->tx_c[i]->private = &gi2c->tx_gchan_ctrl;
+ 				ret = dmaengine_pause(gi2c->tx_c[i]);
+ 				if (ret) {
+-					dev_err(gi2c->se.dev, "dmaengine_pause failed: ret:%d\n",
++					I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "dmaengine_pause failed: ret:%d\n",
+ 						ret);
+ 					return -EAGAIN;
+ 				}
+@@ -421,7 +421,7 @@ static int geni_i2c_power_on_off(struct i2c_adapter *adap, bool suspend)
+ 			/* Decrement the device usage counter and call pm runtime idle */
+ 			ret = pm_runtime_put_sync(gi2c->se.dev);
+ 			if (ret < 0) {
+-				dev_err(gi2c->se.dev, "error turning off device :%d\n", ret);
++				I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "error turning off device :%d\n", ret);
+ 				return ret;
+ 			}
+ 		}
+@@ -439,7 +439,7 @@ static int geni_i2c_power_on_off(struct i2c_adapter *adap, bool suspend)
+ 				gi2c->tx_c[i]->private = &gi2c->tx_gchan_ctrl;
+ 				ret = dmaengine_resume(gi2c->tx_c[i]);
+ 				if (ret) {
+-					dev_err(gi2c->se.dev, "dmaengine_resume failed: ret:%d\n",
++					I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "dmaengine_resume failed: ret:%d\n",
+ 						ret);
+ 					return -EAGAIN;
+ 				}
+@@ -475,14 +475,14 @@ static int geni_i2c_gpi_send_bus_cmd(struct geni_i2c_dev *gi2c, u8 cmd)
+ 
+ 	ret = dmaengine_slave_config(dma_chan, &config);
+ 	if (ret) {
+-		dev_err(gi2c->se.dev, "dma config error: %d for op:%d\n", ret, cmd);
++		I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "dma config error: %d for op:%d\n", ret, cmd);
+ 		return ret;
+ 	}
+ 
+ 	desc = dmaengine_prep_slave_single(dma_chan, NULL, 0, DMA_MEM_TO_DEV,
+ 					   DMA_PREP_INTERRUPT | DMA_CTRL_ACK);
+ 	if (!desc) {
+-		dev_err(gi2c->se.dev, "%s: prep_slave_sg failed\n", __func__);
++		I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "%s: prep_slave_sg failed\n", __func__);
+ 		return -EIO;
+ 	}
+ 
+@@ -490,7 +490,7 @@ static int geni_i2c_gpi_send_bus_cmd(struct geni_i2c_dev *gi2c, u8 cmd)
+ 	desc->callback_param = &peripheral;
+ 	cookie = dmaengine_submit(desc);
+ 	if (dma_submit_error(cookie)) {
+-		dev_err(gi2c->se.dev, "%s: dmaengine_submit failed (%d)\n",
++		I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "%s: dmaengine_submit failed (%d)\n",
+ 			__func__, cookie);
+ 		dmaengine_desc_free(desc);
+ 		return -EIO;
+@@ -501,7 +501,7 @@ static int geni_i2c_gpi_send_bus_cmd(struct geni_i2c_dev *gi2c, u8 cmd)
+ 	reinit_completion(&gi2c->done);
+ 	time_left = wait_for_completion_timeout(&gi2c->done, XFER_TIMEOUT);
+ 	if (!time_left) {
+-		dev_err(gi2c->se.dev, "%s: I2C timeout for cmd:%d\n", __func__, cmd);
++		I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "%s: I2C timeout for cmd:%d\n", __func__, cmd);
+ 		gi2c->err = -ETIMEDOUT;
+ 		dmaengine_terminate_sync(dma_chan);
+ 	}
+@@ -586,25 +586,25 @@ int geni_i2c_check_recover_ios_line(struct i2c_adapter *adap)
+ 	if (gi2c->xfer_mode == GENI_GPI_DMA) {
+ 		ret = geni_i2c_gpi_send_bus_cmd(gi2c, I2C_BUS_CLEAR);
+ 		if (ret) {
+-			dev_err(gi2c->se.dev, "BUS CLEAR cmd failed for GPI mode\n");
++			I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "BUS CLEAR cmd failed for GPI mode\n");
+ 			return ret;
+ 		}
+ 
+ 		ret = geni_i2c_gpi_send_bus_cmd(gi2c, I2C_STOP_ON_BUS);
+ 		if (ret) {
+-			dev_err(gi2c->se.dev, "STOP_ON_BUS cmd failed for GPI mode\n");
++			I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "STOP_ON_BUS cmd failed for GPI mode\n");
+ 			return ret;
+ 		}
+ 	} else {
+ 		ret = geni_i2c_send_cmd_fifo_mode(gi2c, I2C_BUS_CLEAR);
+ 		if (ret) {
+-			dev_err(gi2c->se.dev, "BUS Clear cmd failed for FIFO mode\n");
++			I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "BUS Clear cmd failed for FIFO mode\n");
+ 			return ret;
+ 		}
+ 
+ 		ret = geni_i2c_send_cmd_fifo_mode(gi2c, I2C_STOP_ON_BUS);
+ 		if (ret) {
+-			dev_err(gi2c->se.dev, "STOP_ON_BUS cmd failed for FIFO mode\n");
++			I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "STOP_ON_BUS cmd failed for FIFO mode\n");
+ 			return ret;
+ 		}
+ 	}
+@@ -641,7 +641,7 @@ static int geni_i2c_configure_ccu_mode(struct i2c_adapter *adap, u8 gpii_no,
+ 	}
+ 
+ 	if (gpii_no > CCU_MAX_GPII_NUM) {
+-		dev_err(gi2c->se.dev, "%s: Invalid request of GPII:%d\n", __func__, gpii_no);
++		I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "%s: Invalid request of GPII:%d\n", __func__, gpii_no);
+ 		return -EINVAL;
+ 	}
+ 	idx = (gpii_no % CCU_MAX_GPII);
+@@ -667,7 +667,7 @@ static int geni_i2c_configure_ccu_mode(struct i2c_adapter *adap, u8 gpii_no,
+ 	if (!gi2c->rx_c[idx] ||  !gi2c->tx_c[idx]) {
+ 		ret = setup_gpi_dma(gi2c, idx);
+ 		if (ret) {
+-			dev_err(gi2c->se.dev, "%s: Setup gpi dma failed:%d\n", __func__, __LINE__);
++			I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "%s: Setup gpi dma failed:%d\n", __func__, __LINE__);
+ 			return ret;
+ 		}
+ 	}
+@@ -710,7 +710,7 @@ static int geni_i2c_gpii_reset(struct i2c_adapter *adap, int gpii_no,
+ 
+ 	if (premature_cancel) {
+ 		if (idx == REGULAR_GPII) {
+-			dev_err(gi2c->se.dev, "%s: premature cancel is invalid for a regular channel:%d\n",
++			I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "%s: premature cancel is invalid for a regular channel:%d\n",
+ 				__func__, gpii_no);
+ 			return -EINVAL;
+ 		}
+@@ -721,7 +721,7 @@ static int geni_i2c_gpii_reset(struct i2c_adapter *adap, int gpii_no,
+ 	if (gi2c->tx_c[idx]) {
+ 		ret = dmaengine_terminate_sync(gi2c->tx_c[idx]);
+ 		if (ret) {
+-			dev_err(gi2c->se.dev, "%s: gpi terminate failed for tx_c[%d] ret:%d\n",
++			I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "%s: gpi terminate failed for tx_c[%d] ret:%d\n",
+ 				__func__, idx, ret);
+ 			return ret;
+ 		}
+@@ -773,7 +773,7 @@ static void geni_i2c_configure_pre_delay(struct i2c_adapter *adap, unsigned long
+ 	if (((delay > 65535) && (gi2c->clk_freq_out == KHZ(1000))) ||
+ 		((delay > 163838) && (gi2c->clk_freq_out == KHZ(400))) ||
+ 		((delay > 655350) && (gi2c->clk_freq_out == KHZ(100)))) {
+-			dev_err(gi2c->se.dev, "%s: Invalid delay:%d received for %d frequency\n",
++			I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "%s: Invalid delay:%d received for %d frequency\n",
+ 				__func__, delay, gi2c->clk_freq_out);
+ 			return;
+ 	}
+@@ -1069,19 +1069,20 @@ static int geni_i2c_gpi_nop_tre(struct geni_i2c_dev *gi2c, struct dma_slave_conf
+ 
+ 	ret = dmaengine_slave_config(gi2c->tx_c[idx], config);
+ 	if (ret) {
+-		dev_err(gi2c->se.dev, "dma config error: %d\n", ret);
++		I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "dma config error: %d\n", ret);
+ 		goto err_submit;
+ 	}
+ 	peripheral_cfg->ccu_cfg.ccu_last = 0;
+ 	peripheral_cfg->ccu_cfg.nop_frame = false;
+-	frame = &gi2c->ccu.gpi[idx].frame[gi2c->ccu.gpi[idx].recvd_cnt];
++	frame = &gi2c->ccu->gpii[idx].frame[gi2c->ccu->gpii[idx].recvd_cnt];
+ 	frame->msgs = 1;
++	async_xfer = gi2c->ccu->gpii[idx].async;
+ 
+ 	flags = DMA_PREP_INTERRUPT | DMA_CTRL_ACK;
+ 
+-	desc = dmaengine_prep_slave_single(gi2c->tx_c[idx], NULL, 0, DMA_MEM_TO_DEV, flags);
++	desc = dmaengine_prep_slave_single(gi2c->tx_c[idx], 0, 0, DMA_MEM_TO_DEV, flags);
+ 	if (!desc) {
+-		dev_err(gi2c->se.dev, "prep_slave_sg failed\n");
++		I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "prep_slave_sg failed\n");
+ 		ret = -EIO;
+ 		goto err_submit;
+ 	}
+@@ -1091,7 +1092,7 @@ static int geni_i2c_gpi_nop_tre(struct geni_i2c_dev *gi2c, struct dma_slave_conf
+ 
+ 	cookie = dmaengine_submit(desc);
+ 	if (dma_submit_error(cookie)) {
+-		dev_err(gi2c->se.dev, "%s: dmaengine_submit failed (%d)\n",
++		I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "%s: dmaengine_submit failed (%d)\n",
+ 			__func__, cookie);
+ 		dmaengine_desc_free(desc);
+ 		ret = -EIO;
+@@ -1108,22 +1109,20 @@ static int geni_i2c_gpi_nop_tre(struct geni_i2c_dev *gi2c, struct dma_slave_conf
+ 		gi2c->err = -ETIMEDOUT;
+ 
+ skip_completion:
+-	if (gi2c->ccu.gpi[idx].recvd_cnt >= MAX_NUM_FRAMES -1)
+-		gi2c->ccu.gpi[idx].recvd_cnt = 0;
+-	else
+-		gi2c->ccu.gpi[idx].recvd_cnt++;
++	if (async_xfer)
++		gi2c->ccu->gpii[idx].recvd_cnt =
++			(gi2c->ccu->gpii[idx].recvd_cnt + 1) % CCU_MAX_NUM_FRAMES;
+ 
+ 	if (gi2c->err) {
+ 		ret = gi2c->err;
+ 		goto err;
+ 	}
+ 
+-	kfree(gi2c->ccu.msg[0]);
+-	gi2c->ccu.msg[0] = NULL;
++	I2C_DBG_LOG(LOG_LVL_VERBOSE, gi2c->se.dev, "NOP TRE done\n");
+ 	return 0;
+ 
+ err:
+-	dev_err(gi2c->se.dev, "%s: GPI transfer failed: %d\n", __func__, ret);
++	I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "%s: GPI transfer failed: %d\n", __func__, ret);
+ 	dmaengine_terminate_sync(gi2c->tx_c[idx]);
+ 
+ err_submit:
+@@ -1172,67 +1171,12 @@ static int geni_i2c_tx_one_msg(struct geni_i2c_dev *gi2c, struct i2c_msg *msg,
+ 	return gi2c->err;
+ }
+ 
+-/*
+- * geni_i2c_gpi_release_ccu_frame - Release a CCU frame
+- *
+- * @gi2c: Handle of the I2C device.
+- * @frame: Pointer to the CCU frame to be released.
+- */
+-static void geni_i2c_gpi_release_ccu_frame(struct geni_i2c_dev *gi2c, struct ccu_frame_info *frame)
+-{
+-	enum dma_data_direction map_dirn;
+-	int i, msgs;
+-
+-	msgs = frame->msgs;
+-
+-	for (i = 0; i < msgs; i++) {
+-		if (frame->msg[i].flag) {
+-			map_dirn = DMA_FROM_DEVICE;
+-			if (frame->msg[i].rx_buf) {
+-				dma_unmap_single(gi2c->se.dev->parent, frame->msg[i].addr,
+-						 frame->msg[i].len, map_dirn);
+-				kfree(frame->msg[i].rx_buf);
+-				frame->msg[i].rx_buf = NULL;
+-			}
+-		} else {
+-			map_dirn = DMA_TO_DEVICE;
+-			if (frame->msg[i].tx_buf) {
+-				dma_unmap_single(gi2c->se.dev->parent, frame->msg[i].addr,
+-						 frame->msg[i].len, map_dirn);
+-				kfree(frame->msg[i].tx_buf);
+-				frame->msg[i].tx_buf = NULL;
+-			}
+-		}
+-		frame->msg[i].addr = 0;
+-	}
+-	memset(frame, 0, sizeof(*frame));
+-}
+-
+-/*
+- * geni_i2c_release_buf - This function is used to free the dma buffer
+- *
+- * @gi2c: Handle of the I2C device.
+- * @idx: indicate the gpii no
+- */
+-static void  geni_i2c_release_buf(struct geni_i2c_dev *gi2c, int idx)
+-{
+-	int frame_idx;
+-
+-	frame_idx = gi2c->ccu.gpi[idx].released_cnt;
+-
+-	geni_i2c_gpi_release_ccu_frame(gi2c, &gi2c->ccu.gpi[idx].frame[frame_idx]);
+-
+-	if (frame_idx >= MAX_NUM_FRAMES -1)
+-		gi2c->ccu.gpi[idx].released_cnt = 0;
+-	else
+-		gi2c->ccu.gpi[idx].released_cnt++;
+-}
+-
+ static void i2c_gpi_cb_result(void *cb, const struct dmaengine_result *result)
+ {
+ 	struct gpi_i2c_config *i2c = cb;
+ 	struct geni_i2c_dev *gi2c = i2c->gi2c;
+-	int gpii_idx, frame_idx;
++	struct ccu_frame_info *frame;
++	u8 gpii_idx, frame_idx;
+ 
+ 	if (i2c->status & (BIT(NACK) << 5)) {
+ 		geni_i2c_err(gi2c, NACK);
+@@ -1241,8 +1185,7 @@ static void i2c_gpi_cb_result(void *cb, const struct dmaengine_result *result)
+ 	} else if (i2c->status & (BIT(ARB_LOST) << 5)) {
+ 		geni_i2c_err(gi2c, ARB_LOST);
+ 	} else if (result->result != DMA_TRANS_NOERROR) {
+-		I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev,
+-			    "DMA txn failed:%d\n", result->result);
++		I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "DMA txn failed:%d\n", result->result);
+ 		gi2c->err = -EIO;
+ 	} else if (result->residue) {
+ 		I2C_DBG_LOG(LOG_LVL_VERBOSE, gi2c->se.dev,
+@@ -1254,25 +1197,45 @@ static void i2c_gpi_cb_result(void *cb, const struct dmaengine_result *result)
+ 		return;
+ 	}
+ 
+-	gpii_idx = result->gpii_id % CCU_MAX_GPII;
+ 	if (gi2c->is_ccu_qup)
+-		frame_idx = gi2c->ccu.gpi[gpii_idx].released_cnt;
+-
+-	if (gi2c->is_ccu_qup && gi2c->ccu.gpi[gpii_idx].frame[frame_idx].async) {
+-		gi2c->ccu.result.gpii_no = result->gpii_id;
+-		gi2c->ccu.result.adap_nr = gi2c->adap.nr;
+-		gi2c->ccu.result.frame_cookie =
+-			gi2c->ccu.gpi[gpii_idx].frame[frame_idx].frame_cookie;
+-		gi2c->ccu.result.err_no = gi2c->err;
++		gpii_idx = result->gpii_id % CCU_MAX_GPII;
+ 
+-		i2c_trace_log(gi2c->se.dev, "CB Result is for i2c-%d GPII:%d Err:%d cookie:0x%x\n",
+-					  gi2c->adap.nr, result->gpii_id, gi2c->err, gi2c->ccu.result.frame_cookie);
+-		ccu_update_xfer_result(&gi2c->ccu.result);
+-		/* Free the dma buffer associated to this frame */
+-		geni_i2c_release_buf(gi2c, gpii_idx);
++	if (gi2c->is_ccu_qup && gi2c->ccu->gpii[gpii_idx].async) {
++		frame_idx = gi2c->ccu->gpii[gpii_idx].irq_processed_frame_cnt;
++		frame = &gi2c->ccu->gpii[gpii_idx].frame[frame_idx];
++		if (--frame->msgs) {
++			I2C_DBG_LOG(LOG_LVL_VERBOSE, gi2c->se.dev,
++				    "gpii:%d frame:%d pending msgs:%d\n",
++				    gpii_idx, frame_idx, frame->msgs);
++			return;
++		}
++		gi2c->ccu->gpii[gpii_idx].irq_processed_frame_cnt =
++			(gi2c->ccu->gpii[gpii_idx].irq_processed_frame_cnt + 1) %
++			CCU_MAX_NUM_FRAMES;
++		gi2c->ccu->result.gpii_no = result->gpii_id;
++		gi2c->ccu->result.adap_nr = gi2c->adap.nr;
++		gi2c->ccu->result.frame_cookie = frame->frame_cookie;
++		gi2c->ccu->result.err_no = gi2c->err;
++		gi2c->ccu->result.released_cnt = &gi2c->ccu->gpii[gpii_idx].released_cnt;
++		gi2c->ccu->result.frame_usage_bitmap =
++			&gi2c->ccu->gpii[gpii_idx].frame_usage_bitmap;
++		gi2c->ccu->result.nr_async_read_msgs = frame->nr_async_read_msgs;
++		if (gi2c->ccu->result.nr_async_read_msgs)
++			gi2c->ccu->result.async_read_msgs_ptr = frame->async_read_msg_info_arr;
++		else
++			gi2c->ccu->result.async_read_msgs_ptr = NULL;
++		I2C_DBG_LOG(LOG_LVL_VERBOSE, gi2c->se.dev,
++			    "CB Result is for i2c-%d GPII:%d Err:%d cookie:0x%x nr_async_read_msgs:%d bitmap:0x%x released_cnt:%d irq_processed_frame_cnt:%d\n",
++			    gi2c->adap.nr, result->gpii_id, gi2c->err,
++			    gi2c->ccu->result.frame_cookie,
++			    gi2c->ccu->result.nr_async_read_msgs,
++			    READ_ONCE(gi2c->ccu->gpii[gpii_idx].frame_usage_bitmap),
++			    atomic_read(&gi2c->ccu->gpii[gpii_idx].released_cnt),
++			    gi2c->ccu->gpii[gpii_idx].irq_processed_frame_cnt);
++		ccu_update_xfer_result(&gi2c->ccu->result);
++	} else {
++		complete(&gi2c->done);
+ 	}
+-
+-	complete(&gi2c->done);
+ }
+ 
+ static void geni_i2c_gpi_unmap(struct geni_i2c_dev *gi2c, struct i2c_msg *msg,
+@@ -1332,22 +1295,31 @@ static int geni_i2c_gpi(struct geni_i2c_dev *gi2c, struct i2c_msg *msg,
+ 	}
+ 
+ 	if (gi2c->is_ccu_qup) {
+-		if (op == I2C_WRITE) {
+-			dma_buf = kmemdup((msg->buf + CCU_DATA_OFFSET), len, GFP_KERNEL);
++		gpii_no = (gi2c->ccu->msg_cfg.gpii_no % CCU_MAX_GPII);
++		async_xfer = gi2c->ccu->gpii[gpii_no].async;
++
++		if (async_xfer) {
++			frame_no = gi2c->ccu->gpii[gpii_no].recvd_cnt;
++			frame = &gi2c->ccu->gpii[gpii_no].frame[frame_no];
++			if (op == I2C_WRITE)
++				memcpy(frame->msg[idx].buf, msg->buf + CCU_DATA_OFFSET, len);
+ 		} else {
+-			memset(msg->buf, 0, msg->len);
+-			dma_buf = msg->buf;
++			if (op == I2C_WRITE) {
++				dma_buf = msg->buf + CCU_DATA_OFFSET;
++			} else {
++				memset(msg->buf, 0, msg->len);
++				dma_buf = msg->buf;
++			}
++			if (!dma_buf)
++				return -ENOMEM;
+ 		}
+-		if (!dma_buf)
+-			return -ENOMEM;
+-		i2c_trace_log(gi2c->se.dev, "%s: CCU QUP - msg.len:%d - [%d]\n",
+-			      __func__, msg->len, len);
+ 	} else {
+ 		dma_buf = i2c_get_dma_safe_msg_buf(msg, 1);
+ 		if (!dma_buf)
+ 			return -ENOMEM;
+-		i2c_trace_log(gi2c->se.dev, "%s: QUP - msg.len:%d\n", __func__, msg->len);
+ 	}
++	I2C_DBG_LOG(LOG_LVL_INFO, gi2c->se.dev, "%s: msg.len:%d len:%d\n",
++		    __func__, msg->len, len);
+ 
+ 	if (op == I2C_WRITE)
+ 		map_dirn = DMA_TO_DEVICE;
+@@ -1440,7 +1412,7 @@ static int geni_i2c_gpi(struct geni_i2c_dev *gi2c, struct i2c_msg *msg,
+ 
+ 	cookie = dmaengine_submit(desc);
+ 	if (dma_submit_error(cookie)) {
+-		dev_err(gi2c->se.dev, "%s: dmaengine_submit failed (%d)\n",
++		I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "%s: dmaengine_submit failed (%d)\n",
+ 			__func__, cookie);
+ 		ret = -EIO;
+ 		goto err_config;
+@@ -1474,10 +1446,9 @@ static int geni_i2c_gpi(struct geni_i2c_dev *gi2c, struct i2c_msg *msg,
+ static int geni_i2c_extract_msg_cfg(struct geni_i2c_dev *gi2c, struct i2c_msg *msg, int msg_idx)
+ {
+ 	u64 data;
+-	int gpii_idx;
++	u8 gpii_idx, frame_idx;
+ 	bool async_xfer;
+ 	unsigned long *frame_usage_bitmap;
+-	int frame_idx;
+ 
+ 	if (msg->len <= CCU_DATA_OFFSET) {
+ 		I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev,
+@@ -1609,8 +1580,6 @@ static int geni_i2c_gpi_xfer(struct geni_i2c_dev *gi2c, struct i2c_msg msgs[], i
+ 		gi2c->cur = &msgs[i];
+ 		gi2c->msgs = num;
+ 		gi2c->err = 0;
+-		I2C_DBG_LOG(LOG_LVL_INFO, gi2c->se.dev, "msg[%d].len:%d\n", i,
+-			    gi2c->cur->len);
+ 
+ 		peripheral->first_msg = (i == 0) ? 1 : 0;
+ 		peripheral->last_msg = (i == num - 1) ? 1 : 0;
+@@ -1642,7 +1611,8 @@ static int geni_i2c_gpi_xfer(struct geni_i2c_dev *gi2c, struct i2c_msg msgs[], i
+ 					return num;
+ 			}
+ 		}
+-		i2c_trace_log(gi2c->se.dev, "msg[%d].len:%d GPII:%d\n", i, gi2c->cur->len, idx);
++		I2C_DBG_LOG(LOG_LVL_INFO, gi2c->se.dev, "msg[%d].len:%d GPII:%d flag:%d\n",
++			    i, gi2c->cur->len, idx, msgs[i].flags);
+ 
+ 		peripheral->stretch = 0;
+ 		if (i < num - 1)
+@@ -1676,12 +1646,12 @@ static int geni_i2c_gpi_xfer(struct geni_i2c_dev *gi2c, struct i2c_msg msgs[], i
+ 					    "Prioritize regular ch for msg[%d]\n", i);
+ 				ret = ccu_gpi_prioritize_chan(gi2c->tx_c[idx]);
+ 				if (ret) {
+-					dev_err(gi2c->se.dev, "Failed to prioritize the msg[%d] ret:%d\n",
++					I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "Failed to prioritize the msg[%d] ret:%d\n",
+ 						i, ret);
+ 					goto err;
+ 				}
+ 			} else {
+-				dev_err(gi2c->se.dev, "Priority bit set for non regular ch. GPII:%d\n",
++				I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "Priority bit set for non regular ch. GPII:%d\n",
+ 					idx);
+ 			}
+ 		}
+@@ -1957,7 +1927,7 @@ static int geni_i2c_init(struct geni_i2c_dev *gi2c)
+ 
+ 	ret = pm_runtime_get_sync(gi2c->se.dev);
+ 	if (ret < 0) {
+-		dev_err(gi2c->se.dev, "error turning on device :%d\n", ret);
++		I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "error turning on device :%d\n", ret);
+ 		return ret;
+ 	}
+ 
+@@ -1987,12 +1957,12 @@ static int geni_i2c_init(struct geni_i2c_dev *gi2c)
+ 		for (i = 0; i < idx; i++) {
+ 			ret = setup_gpi_dma(gi2c, i);
+ 			if (ret) {
+-				dev_err(gi2c->se.dev, "Failed to setup GPI DMA mode\n");
++				I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "Failed to setup GPI DMA mode\n");
+ 				release_gpi_dma(gi2c);
+ 				goto err;
+ 			}
+ 		}
+-		i2c_trace_log(gi2c->se.dev, "Using GPI DMA mode for I2C\n");
++		I2C_DBG_LOG(LOG_LVL_VERBOSE, gi2c->se.dev, "Using GPI DMA mode for I2C\n");
+ 	} else {
+ 		gi2c->xfer_mode = GENI_SE_FIFO;
+ 		tx_depth = geni_se_get_tx_fifo_depth(&gi2c->se);
+@@ -2002,7 +1972,7 @@ static int geni_i2c_init(struct geni_i2c_dev *gi2c)
+ 			tx_depth = desc->tx_fifo_depth;
+ 
+ 		if (!tx_depth) {
+-			dev_err(gi2c->se.dev, "Invalid TX FIFO depth\n");
++			I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "Invalid TX FIFO depth\n");
+ 			ret = -EINVAL;
+ 			goto err;
+ 		}
+@@ -2017,7 +1987,7 @@ static int geni_i2c_init(struct geni_i2c_dev *gi2c)
+ 
+ err:
+ 	if (pm_runtime_put_sync(gi2c->se.dev) < 0) {
+-		dev_err(gi2c->se.dev, "error turning off device :%d\n", ret);
++		I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "error turning off device :%d\n", ret);
+ 		if (gi2c->xfer_mode == GENI_GPI_DMA)
+ 			release_gpi_dma(gi2c);
+ 	}
+@@ -2182,7 +2152,7 @@ static int geni_i2c_probe(struct platform_device *pdev)
+ 	gi2c->xfer_mode = GENI_SE_INVALID;
+ 	ret =  geni_i2c_init(gi2c);
+ 	if (ret < 0) {
+-		dev_err(gi2c->se.dev, "geni_i2c_prepare is failed :%d\n", ret);
++		I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "geni_i2c_prepare is failed :%d\n", ret);
+ 		goto err;
+ 	}
+ 
+@@ -2233,7 +2203,7 @@ static int __maybe_unused geni_i2c_runtime_suspend(struct device *dev)
+ 	if (gi2c->dev_data->geni_se_switch_state) {
+ 		ret = gi2c->dev_data->geni_se_switch_state(dev, false);
+ 		if (ret) {
+-			dev_err(dev, "failed to switch resources, ret:%d\n", ret);
++			I2C_ERR_LOG(LOG_LVL_ERROR, dev, "failed to switch resources, ret:%d\n", ret);
+ 			return ret;
+ 		}
+ 	}
+@@ -2250,7 +2220,7 @@ static int __maybe_unused geni_i2c_runtime_resume(struct device *dev)
+ 	if (gi2c->dev_data->geni_se_switch_state) {
+ 		ret = gi2c->dev_data->geni_se_switch_state(dev, true);
+ 		if (ret) {
+-			dev_err(dev, "failed to switch resources, ret:%d\n", ret);
++			I2C_ERR_LOG(LOG_LVL_ERROR, dev, "failed to switch resources, ret:%d\n", ret);
+ 			return ret;
+ 		}
+ 	}
+@@ -2274,7 +2244,7 @@ static int __maybe_unused geni_i2c_suspend_noirq(struct device *dev)
+ 
+ 	ret = pm_runtime_force_suspend(dev);
+ 	if (ret) {
+-		dev_err(dev, "%s: force suspend failed\n", __func__);
++		I2C_ERR_LOG(LOG_LVL_ERROR, dev, "%s: force suspend failed\n", __func__);
+ 		i2c_mark_adapter_resumed(&gi2c->adap);
+ 	}
+ 	return ret;
+@@ -2293,12 +2263,12 @@ static int __maybe_unused geni_i2c_resume_noirq(struct device *dev)
+ 		return ret;
+ 
+ 	if (pm_suspend_target_state == PM_SUSPEND_MEM) {
+-		dev_dbg(dev, "%s: In S2R\n", __func__);
++		I2C_DBG_LOG(LOG_LVL_INFO, dev, "%s: In S2R\n", __func__);
+ 		gi2c->xfer_mode = GENI_SE_INVALID;
+ 
+ 		ret = geni_i2c_init(gi2c);
+ 		if (ret) {
+-			dev_err(gi2c->se.dev, "geni_i2c_prepare is failed :%d\n", ret);
++			I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "geni_i2c_prepare is failed :%d\n", ret);
+ 			return ret;
+ 		}
+ 	}
+diff --git a/drivers/soc/qcom/qcom_ccu_qup.c b/drivers/soc/qcom/qcom_ccu_qup.c
+index e8df91797655..7415f396223c 100644
+--- a/drivers/soc/qcom/qcom_ccu_qup.c
++++ b/drivers/soc/qcom/qcom_ccu_qup.c
+@@ -130,6 +130,7 @@ static int ccu_copy_result_to_user_buf(struct ccu_qup *ccu, struct ccu_xfer_resu
+ 	/* Copy metadata */
+ 	if (put_user(result->gpii_no, &user_buf->gpii_no) ||
+ 	    put_user(result->adap_nr, &user_buf->adap_nr) ||
++	    put_user(result->adap_nr, &user_buf->qup_no) ||
+ 	    put_user(result->frame_cookie, &user_buf->frame_cookie) ||
+ 	    put_user(result->err_no, &user_buf->err_no) ||
+ 	    put_user(result->nr_async_read_msgs, &user_buf->nr_async_read_msgs))
+@@ -147,10 +148,12 @@ static int ccu_copy_result_to_user_buf(struct ccu_qup *ccu, struct ccu_xfer_resu
+ 			return -EFAULT;
+ 	}
+ 
+-	frame_no = atomic_read(result->released_cnt);
++	if (!result->released_cnt)
++		goto skip_frame_clear;
+ 
++	frame_no = atomic_read(result->released_cnt);
+ 	if (test_and_clear_bit(frame_no, result->frame_usage_bitmap)) {
+-		CCU_DBG_LOG(LOG_LVL_VERBOSE, ccu->dev,
++		CCU_ERR_LOG(LOG_LVL_VERBOSE, ccu->dev,
+ 			    "released frame_no:%d gpii_no:%d, bitmap:0x%x released_cnt:%d\n",
+ 			    frame_no, result->gpii_no, READ_ONCE(*result->frame_usage_bitmap),
+ 			    atomic_read(result->released_cnt));
+@@ -159,16 +162,16 @@ static int ccu_copy_result_to_user_buf(struct ccu_qup *ccu, struct ccu_xfer_resu
+ 		else
+ 			atomic_inc(result->released_cnt);
+ 	} else {
+-		CCU_DBG_LOG(LOG_LVL_VERBOSE, ccu->dev,
++		CCU_ERR_LOG(LOG_LVL_VERBOSE, ccu->dev,
+ 			    "Unexpected operation: clear was already performed frame_no:%d gpii_no:%d frame_usage_bitmap:0x%x released_cnt:%d\n",
+ 			    frame_no, result->gpii_no, READ_ONCE(*result->frame_usage_bitmap),
+ 			    atomic_read(result->released_cnt));
+ 	}
+-
+-	CCU_DBG_LOG(LOG_LVL_VERBOSE, ccu->dev,
+-		    "Copy Success gpii:%d adap_nr:%d cookie:%x err_no:%d async_read_msgs:%d\n",
+-		    result->gpii_no, result->adap_nr, result->frame_cookie, result->err_no,
+-		    result->nr_async_read_msgs);
++skip_frame_clear:
++	CCU_ERR_LOG(LOG_LVL_VERBOSE, ccu->dev,
++		    "Copy Success QUP:%d gpii:%d adap_nr:%d cookie:%x err_no:%d async_read_msgs:%d\n",
++		    result->qup_no, result->gpii_no, result->adap_nr, result->frame_cookie,
++		    result->err_no, result->nr_async_read_msgs);
+ 	return sizeof(struct ccu_qup_client_data);
+ }
+ 
+@@ -255,7 +258,7 @@ static __poll_t ccu_poll(struct file *filp, poll_table *wait)
+ 	ccu = filp->private_data;
+ 	poll_wait(filp, &ccu->readq, wait);
+ 	if (atomic_read(&ccu->rx_avail)) {
+-		dev_dbg(ccu->dev, "Response avilable to read\n");
++		CCU_DBG_LOG(LOG_LVL_VERBOSE, ccu->dev, "Response available to read\n");
+ 		return (POLLIN | POLLRDNORM);
+ 	}
+ 
+@@ -299,6 +302,51 @@ void ccu_update_xfer_result(struct ccu_xfer_result *result)
+ }
+ EXPORT_SYMBOL(ccu_update_xfer_result);
+ 
++void ccu_update_error_notification_event(int qup_no, int gpii_no, int err)
++{
++	struct ccu_qup *ccu = ccud;
++	struct ccu_xfer_result *result;
++	struct ccu_response_data *entry;
++	unsigned long flags;
++
++	CCU_DBG_LOG(LOG_LVL_VERBOSE, ccu->dev, "%s: start\n", __func__);
++	result = kzalloc(sizeof(*result), GFP_ATOMIC);
++	if (!result) {
++		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, "Memory allocation failed for result\n");
++		return;
++	}
++
++	result->gpii_no = gpii_no;
++	result->qup_no = qup_no;
++	result->err_no = err;
++
++	entry = kmalloc(sizeof(*entry), GFP_ATOMIC);
++	if (!entry) {
++		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, "Memory allocation failed for entry\n");
++		kfree(result);
++		return;
++	}
++
++	entry->res_buf = kmalloc(sizeof(*result), GFP_ATOMIC);
++	if (!entry->res_buf) {
++		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, "Memory allocation failed for buf\n");
++		kfree(entry);
++		kfree(result);
++		return;
++	}
++
++	spin_lock_irqsave(&ccu->lock, flags);
++	memcpy(entry->res_buf, result, sizeof(*result));
++	kfree(result);
++	INIT_LIST_HEAD(&entry->list);
++	/* Add received completion notification result in the list */
++	list_add(&entry->list, &ccu->response_list);
++	atomic_inc(&ccu->rx_avail);
++	spin_unlock_irqrestore(&ccu->lock, flags);
++	wake_up_interruptible(&ccu->readq);
++}
++EXPORT_SYMBOL(ccu_update_error_notification_event);
++
+ static int ccu_release(struct inode *inode, struct file *filp)
+ {
+ 	struct ccu_qup *ccu;
+@@ -308,6 +356,7 @@ static int ccu_release(struct inode *inode, struct file *filp)
+ 
+ 	ccu = filp->private_data;
+ 
++	CCU_DBG_LOG(LOG_LVL_VERBOSE, ccu->dev, "Release done\n");													  
+ 	return 0;
+ }
+ 
+@@ -319,12 +368,13 @@ static int ccu_open(struct inode *inode, struct file *filp)
+ 	cdev = inode->i_cdev;
+ 	ccu = container_of(cdev, struct ccu_qup, cdev);
+ 	if (!ccu) {
+-		dev_err(ccu->dev, "Err to get the CCU\n");
++		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, "Err to get the CCU\n");
+ 		return -ENODEV;
+ 	}
+ 
+ 	filp->private_data = ccu;
+ 
++	CCU_DBG_LOG(LOG_LVL_VERBOSE, ccu->dev, "Open done\n");												   
+ 	return 0;
+ }
+ 
+@@ -337,7 +387,8 @@ int ccu_power_on_off(struct i2c_adapter *adap, bool suspend)
+ 
+ 	ret = ccu_on_off(adap, suspend);
+ 	if (ret) {
+-		pr_err("failed to turn on/off the clocks:%d\n", suspend);
++		CCU_ERR_LOG(LOG_LVL_ERROR, ccud->dev,
++			    "failed to turn on/off the clocks:%d\n", suspend);
+ 		return -EAGAIN;
+ 	}
+ 
+@@ -447,13 +498,15 @@ int ccu_sync_id_to_sync_ch_mapping(struct ccu_qup *ccu, struct sync_info sync[])
+ 		if ((sync[i].qup_no > CCU_MAX_QUP) ||
+ 				(sync[i].se_no > CCU_MAX_SE) ||
+ 				(sync[i].sync_id > CCU_SYNC_TIMERS)) {
+-			dev_err(ccu->dev,
+-				"%s: Invalid request: QUP:%d SE:%d ID:%d\n",
+-				__func__, sync[i].qup_no, sync[i].se_no,
+-				sync[i].sync_id);
++			CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev,
++				    "%s: Invalid request: QUP:%d SE:%d ID:%d\n", __func__,
++				    sync[i].qup_no, sync[i].se_no, sync[i].sync_id);
+ 			return -EINVAL;
+ 		}
+ 
++		CCU_DBG_LOG(LOG_LVL_VERBOSE, ccud->dev, "%s: QUP:%d SE:%d ID:%d, ch:%d\n",
++			    __func__, sync[i].qup_no, sync[i].se_no,
++			    sync[i].sync_id, sync[i].sync_ch);								 
+ 		qup_idx = sync[i].qup_no ? 1: 0;
+ 		if ((sync[i].sync_id % 4) == 0)
+ 			offset = 0;
+@@ -474,7 +527,8 @@ int ccu_sync_id_to_sync_ch_mapping(struct ccu_qup *ccu, struct sync_info sync[])
+ 			val = (1 << (sync[i].se_no + offset));
+ 			ccu_update_ch_id_mapping(ccu, qup_idx, i, val, true);
+ 		} else {
+-			dev_err(ccu->dev, "%s Invalid sync ch:%d\n", __func__, sync[i].sync_ch);
++			CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev,
++				    "%s Invalid sync ch:%d\n", __func__, sync[i].sync_ch);
+ 			return -EINVAL;
+ 		}
+ 	}
+@@ -500,12 +554,14 @@ int ccu_configure_mode(struct i2c_adapter *adap, struct ccu_qup_config *cfg)
+ 	ret = ccu_cfg_mode(adap, cfg->gpii_no,
+ 					  cfg->ch_type, cfg->ccu_mode);
+ 	if (ret) {
+-		dev_err(ccud->dev, "Configuration of CCU Mode is failed for gpii-%d of i2c-%d\n",
+-				cfg->gpii_no, adap->nr);
++		CCU_ERR_LOG(LOG_LVL_ERROR, ccud->dev,
++			    "Configuration of CCU Mode is failed for gpii-%d of i2c-%d\n",
++			    cfg->gpii_no, adap->nr);
+ 		return ret;
+ 	}
+-	dev_dbg(ccud->dev, "Configuration of CCU Mode is done for gpii-%d\n of i2c-%d\n",
+-			cfg->gpii_no, adap->nr);
++	CCU_DBG_LOG(LOG_LVL_INFO, ccud->dev,
++		    "Configuration of CCU Mode is done for gpii-%d\n of i2c-%d\n",
++		    cfg->gpii_no, adap->nr);
+ 	return 0;
+ }
+ 
+@@ -519,20 +575,20 @@ int ccu_qup_load_firmware(void)
+ 	int ret = 0;
+ 
+ 	if (ccud->fw_loaded) {
+-		dev_err(ccud->dev, "Fw is already loaded it\n");
++		CCU_ERR_LOG(LOG_LVL_ERROR, ccud->dev, "Fw is already loaded it\n");
+ 		return 0;
+ 	}
+ 
+ 	/* Make SCM call, to load the TZ FW */
+ 	ret = qcom_scm_load_ccu_qup_fw(SCM_LOAD_QUP_TYPE);
+ 	if (ret) {
+-		dev_err(ccud->dev, "Unable to load the FW\n");
++		CCU_ERR_LOG(LOG_LVL_ERROR, ccud->dev, "Unable to load the FW\n");
+ 		ccud->fw_loaded = false;
+ 		return ret;
+ 	}
+ 	ccud->fw_loaded = true;
+ 
+-	dev_dbg(ccud->dev, "CCU QUP FW Load done successfully\n");
++	CCU_DBG_LOG(LOG_LVL_VERBOSE, ccud->dev, "CCU QUP FW Load done successfully\n");
+ 	return ret;
+ }
+ EXPORT_SYMBOL(ccu_qup_load_firmware);
+@@ -554,6 +610,8 @@ int ccu_gpii_reset(struct i2c_adapter *adap, int gpii_no, bool partial,
+ 	if (!adap || (gpii_no > CCU_MAX_GPII))
+ 		return -EINVAL;
+ 
++	CCU_DBG_LOG(LOG_LVL_INFO, ccud->dev, "%s: gpii:%d, paritial:%d, premature:%d\n",
++		    __func__, gpii_no, partial, premature_cancel);							
+ 	if (partial) {
+ 		ret = ccu_reset(adap, gpii_no, premature_cancel);
+ 		if (ret)
+@@ -625,13 +683,13 @@ static ssize_t ccu_config_write(struct file *filp, const char __user *buf,
+ 
+ 	ccu = filp->private_data;
+ 	if (len != sizeof(struct ccu_qup_config)) {
+-		dev_err(ccu->dev, "Invalid data size\n");
++		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, "Invalid data size\n");
+ 		return -EINVAL;
+ 	}
+ 
+ 	ccu->cfg = kmalloc (sizeof(struct ccu_qup_config), GFP_KERNEL);
+ 	if (!ccu->cfg) {
+-		dev_err(ccu->dev, "failed to allocate memory\n");
++		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, "failed to allocate memory\n");
+ 		return -ENOMEM;
+ 	}
+ 
+@@ -646,12 +704,13 @@ static ssize_t ccu_config_write(struct file *filp, const char __user *buf,
+ 
+ 	ret = ccu_get_se_adapter(cfg.fd, ccu);
+ 	if (ret) {
+-		dev_err(ccu->dev, "failed to get SE Adapter\n");
++		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, "failed to get SE Adapter\n");
+ 		kfree(ccu->cfg);
+ 		ccu->cfg = NULL;
+ 		return -EINVAL;
+ 	}
+ 
++	CCU_DBG_LOG(LOG_LVL_INFO, ccud->dev, "%s: CMD:%d\n", __func__, ccu->cfg->cmd);					   
+ 	switch (ccu->cfg->cmd) {
+ 	case I2C_GPII_RESET:
+ 		ret = ccu_gpii_reset(ccu->adap, ccu->cfg->gpii_no, ccu->cfg->rst_flag,
+@@ -679,7 +738,7 @@ static ssize_t ccu_config_write(struct file *filp, const char __user *buf,
+ 		ret = ccu_power_on_off(ccu->adap, true);
+ 		break;
+ 	default:
+-		dev_err(ccu->dev, "Invalid cmd:%d\n", ccu->cfg->cmd);
++		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, "Invalid cmd:%d\n", ccu->cfg->cmd);
+ 		break;
+ 	}
+ 	kfree(ccu->cfg);
+@@ -718,7 +777,7 @@ static irqreturn_t ccu_irq_handler(int irq, void *dev_id)
+ 	for_each_set_bit(bit, &gpii_mask, GPII_IRQ_COUNT) {
+ 		CCU_DBG_LOG(LOG_LVL_VERBOSE, ccu->dev,
+ 			    "IRQ for CCU QUP%d - GPII%d IRQ_STATUS:%d\n", idx, bit, irq_stat);
+-		gpi_handle_irq(ccu->gpi_pdev[idx], bit);
++		gpi_handle_irq(ccu->gpi_pdev[idx], bit, idx);
+ 	}
+ 
+ 	spin_unlock_irqrestore(&ccu->irq_lock[idx], flag);
+@@ -785,14 +844,14 @@ static void get_set_child_dev_node(struct work_struct *work)
+ 	for (i = 0; i < MAX_GPI_DEV; i++) {
+ 		gpi_node = of_get_child_by_name(node, gpi[i]);
+ 		if (!gpi_node) {
+-			dev_err(ccu->dev, "failed to find gpi_dma[%d] node\n", i);
++			CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, "failed to find gpi_dma[%d] node\n", i);
+ 			kfree(child_status);
+ 			return;
+ 		}
+ 		/* Find the platform_device associated with a node */
+ 		ccu->gpi_pdev[i] = of_find_device_by_node(gpi_node);
+ 		if (!ccu->gpi_pdev[i]) {
+-			dev_err(ccu->dev, "failed to find platform device for gpi_dma[%d]\n", i);
++			CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, "failed to find platform device for gpi_dma[%d]\n", i);
+ 			of_node_put(gpi_node);
+ 			kfree(child_status);
+ 			return;
+@@ -841,6 +900,7 @@ static int ccu_get_configure_irq(struct platform_device *pdev, struct ccu_qup *c
+ 	writel_relaxed(enable, (ccu->qup_irq_base[0] + CCU_QUP_IRQ_MASK));
+ 	writel_relaxed(enable, (ccu->qup_irq_base[1] + CCU_QUP_IRQ_MASK));
+ 
++	CCU_DBG_LOG(LOG_LVL_VERBOSE, ccu->dev, "IRQ Configuration done\n");																
+ 	return 0;
+ }
+ 
+@@ -857,30 +917,31 @@ static int ccu_qup_create_chrdev_node(struct ccu_qup *ccu)
+ 
+ 	ret = alloc_chrdev_region(&ccu->ccu_dev, 0, 1, "ccu_dev");
+ 	if (ret < 0) {
+-		dev_err(ccu->dev, "failed to allocate chrdev region:%d\n", ret);
++		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, "failed to allocate chrdev region:%d\n", ret);
+ 		return ret;
+ 	}
+ 
+ 	cdev_init(&ccu->cdev, &ccu_fops);
+ 	ret = cdev_add(&ccu->cdev, ccu->ccu_dev, 1);
+ 	if (ret < 0) {
+-		dev_err(ccu->dev, "failed to add cdev%d\n", ret);
++		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, "failed to add cdev%d\n", ret);
+ 		goto err_chrdev_region;
+ 	}
+ 
+ 	ccu->ccu_class = class_create("ccu_class");
+ 	if (IS_ERR(ccu->ccu_class)) {
+ 		ret = PTR_ERR(ccu->ccu_class);
+-		dev_err(ccu->dev, "failed to create struct class\n");
++		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, "failed to create struct class\n");
+ 		goto err_cdev_del;
+ 	}
+ 
+ 	ccu->class_dev = device_create(ccu->ccu_class, NULL, ccu->ccu_dev, NULL, "ccu_device");
+ 	if (IS_ERR(ccu->class_dev)) {
+ 		ret = PTR_ERR(ccu->class_dev);
+-		dev_err(ccu->dev, "failed to create device\n");
++		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, "failed to create device\n");
+ 		goto err_class_create;
+ 	}
++	CCU_DBG_LOG(LOG_LVL_VERBOSE, ccu->dev, "Char dev created\n");														  
+ 	return 0;
+ err_class_create:
+ 	class_destroy(ccu->ccu_class);
+@@ -905,49 +966,49 @@ static int ccu_qup_probe(struct platform_device *pdev)
+ 	ccu->dev = &pdev->dev;
+ 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "ccu_qupv3_0_common");
+ 	if (!res) {
+-		dev_err(&pdev->dev, "missing 'reg' for CCU0 common base\n");
++		CCU_ERR_LOG(LOG_LVL_ERROR, &pdev->dev, "missing 'reg' for CCU0 common base\n");
+ 		return -EINVAL;
+ 	}
+ 
+ 	ccu->qup0_common_reg = devm_ioremap(&pdev->dev, res->start, resource_size(res));
+ 	if (!ccu->qup0_common_reg) {
+-		dev_err(&pdev->dev, "ioremap failed for qup0_common_reg\n");
++		CCU_ERR_LOG(LOG_LVL_ERROR, &pdev->dev, "ioremap failed for qup0_common_reg\n");
+ 		return -ENODEV;
+ 	}
+ 
+ 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "ccu_qupv3_1_common");
+ 	if (!res) {
+-		dev_err(&pdev->dev, "missing 'reg' for CCU1 common base\n");
++		CCU_ERR_LOG(LOG_LVL_ERROR, &pdev->dev, "missing 'reg' for CCU1 common base\n");
+ 		return -EINVAL;
+ 	}
+ 
+ 	ccu->qup1_common_reg = devm_ioremap(&pdev->dev, res->start, resource_size(res));
+ 	if (!ccu->qup1_common_reg) {
+-		dev_err(&pdev->dev, "ioremap failed for qup1_common_reg\n");
++		CCU_ERR_LOG(LOG_LVL_ERROR, &pdev->dev, "ioremap failed for qup1_common_reg\n");
+ 		return -ENODEV;
+ 	}
+ 
+ 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "ccu_qupv3_0_IRQ");
+ 	if (!res) {
+-		dev_err(&pdev->dev, "missing 'reg' for CCU0 IRQ\n");
++		CCU_ERR_LOG(LOG_LVL_ERROR, &pdev->dev, "missing 'reg' for CCU0 IRQ\n");
+ 		return -EINVAL;
+ 	}
+ 
+ 	ccu->qup_irq_base[0] = devm_ioremap(&pdev->dev, res->start, resource_size(res));
+ 	if (!ccu->qup_irq_base[0]) {
+-		dev_err(&pdev->dev, "ioremap failed for qup_irq_base[0]\n");
++		CCU_ERR_LOG(LOG_LVL_ERROR, &pdev->dev, "ioremap failed for qup_irq_base[0]\n");
+ 		return -ENODEV;
+ 	}
+ 
+ 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "ccu_qupv3_1_IRQ");
+ 	if (!res) {
+-		dev_err(&pdev->dev, "missing 'reg' for CCU1 IRQ\n");
++		CCU_ERR_LOG(LOG_LVL_ERROR, &pdev->dev, "missing 'reg' for CCU1 IRQ\n");
+ 		return -EINVAL;
+ 	}
+ 
+ 	ccu->qup_irq_base[1] = devm_ioremap(&pdev->dev, res->start, resource_size(res));
+ 	if (!ccu->qup_irq_base[1]) {
+-		dev_err(&pdev->dev, "ioremap failed for qup_irq_base[1]\n");
++		CCU_ERR_LOG(LOG_LVL_ERROR, &pdev->dev, "ioremap failed for qup_irq_base[1]\n");
+ 		return -ENODEV;
+ 	}
+ 
+@@ -967,7 +1028,7 @@ static int ccu_qup_probe(struct platform_device *pdev)
+ 
+ 	ret = ccu_get_configure_irq(pdev, ccu);
+ 	if (ret) {
+-		dev_err(&pdev->dev, "IRQ configuration failed for CCU\n");
++		CCU_ERR_LOG(LOG_LVL_ERROR, &pdev->dev, "IRQ configuration failed for CCU\n");
+ 		return ret;
+ 	}
+ 
+@@ -1009,7 +1070,7 @@ static int ccu_qup_remove(struct platform_device *pdev)
+ 	cdev_del(&ccu->cdev);
+ 	unregister_chrdev_region(ccu->ccu_dev, 1);
+ 
+-	dev_dbg(ccu->dev, "CCU QUP Remove done\n");
++	CCU_DBG_LOG(LOG_LVL_VERBOSE, ccu->dev, "CCU QUP Remove done\n");
+ 	return 0;
+ }
+ 
+diff --git a/include/linux/soc/qcom/qcom_ccu_qup.h b/include/linux/soc/qcom/qcom_ccu_qup.h
+index 2c112bf23097..f4962d15be0a 100644
+--- a/include/linux/soc/qcom/qcom_ccu_qup.h
++++ b/include/linux/soc/qcom/qcom_ccu_qup.h
+@@ -71,6 +71,7 @@ struct child_probe_status {
+  *                              mode of transfer.
+  * @gpii_no: GPII Number for which error is received.
+  * @adap_nr: represents the SE adapter.
++ * @qup_no: indicates the QUP number.
+  * @frame_cookie: Frame cookie to know which frame has error.
+  * @err_no: represents standard error code in case of transfer failure.
+  * @nr_async_read_msgs: number of valid async read messages
+@@ -81,6 +82,7 @@ struct child_probe_status {
+ struct ccu_xfer_result {
+ 	u8 gpii_no;
+ 	u8 adap_nr;
++	u8 qup_no;
+ 	u32 frame_cookie;
+ 	int err_no;
+ 	__u8 nr_async_read_msgs;
+@@ -199,7 +201,9 @@ void register_i2c_function(power_on_off_t geni_i2c_power_on_off,
+ 		gpii_reset_t geni_i2c_gpii_reset,
+ 		config_delay_t geni_i2c_configure_pre_delay);
+ 
+-typedef void (*ccu_gpi_handle_isr_t) (struct platform_device *dev, int idx);
++typedef void (*ccu_gpi_handle_isr_t) (struct platform_device *dev, int gpii_idx, int qup_idx);
+ 
+ void register_gpi_irq(ccu_gpi_handle_isr_t);
++
++void ccu_update_error_notification_event(int qup_no, int gpii_no, int err);
+ #endif /* _QCOM_CCU_QUP_H_ */
+diff --git a/include/uapi/linux/ccu_qup/ccu_qup.h b/include/uapi/linux/ccu_qup/ccu_qup.h
+index 985416e0c01a..1953f8d80d82 100644
+--- a/include/uapi/linux/ccu_qup/ccu_qup.h
++++ b/include/uapi/linux/ccu_qup/ccu_qup.h
+@@ -68,6 +68,7 @@ struct ccu_i2c_async_read_msg_info {
+  *                              will pass to client in asyncronous mode of transfer.
+  * @gpii_no: GPII Number for which error is received.
+  * @adap_nr: This number represents the /dev/i2c-%d number.
++ * @qup_no: indicate the QUP number in case of error notification event
+  * @frame_cookie: Frame cookie to know which frame has error.
+  * @err_no: This represents standard error code in case of transfer failure.
+  * @nr_async_read_msgs: Indicates the number of valid async read messages.
+@@ -77,6 +78,7 @@ struct ccu_i2c_async_read_msg_info {
+ struct ccu_qup_client_data {
+ 	__u8 gpii_no;
+ 	__u8 adap_nr;
++	__u8 qup_no;
+ 	__u32 frame_cookie;
+ 	int err_no;
+ 	__u8 nr_async_read_msgs;
+-- 
+2.34.1
+

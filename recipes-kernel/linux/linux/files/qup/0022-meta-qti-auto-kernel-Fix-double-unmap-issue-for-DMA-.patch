@@ -1,0 +1,100 @@
+From 7e351b84b00feae41fc44aef77301bfb60405a3a Mon Sep 17 00:00:00 2001
+From: Aniket Randive <quic_arandive@quicinc.com>
+Date: Tue, 8 Apr 2025 10:35:50 +0530
+Subject: [PATCH 10/12] i2c: Fix double unmap issue for DMA buf
+
+Ensure the DMA buffer is not unmapped for the first
+message if it has already been freed. Pass the message
+buffer directly to the DMA read buffer instead of skipping
+to CCU_QUP_DATA_OFFSET.
+
+Change-Id: I73d790248d9c51a6d90dfccf674dcb71a042c746
+Signed-off-by: Aniket Randive <quic_arandive@quicinc.com>
+---
+ drivers/i2c/busses/i2c-qcom-geni.c | 36 ++++++++++++++++--------------
+ 1 file changed, 19 insertions(+), 17 deletions(-)
+
+diff --git a/drivers/i2c/busses/i2c-qcom-geni.c b/drivers/i2c/busses/i2c-qcom-geni.c
+index 21317b93691f..7520536fae43 100644
+--- a/drivers/i2c/busses/i2c-qcom-geni.c
++++ b/drivers/i2c/busses/i2c-qcom-geni.c
+@@ -1172,16 +1172,13 @@ static void geni_i2c_gpi_unmap(struct geni_i2c_dev *gi2c, struct i2c_msg *msg,
+ 			       void *tx_buf, dma_addr_t tx_addr,
+ 			       void *rx_buf, dma_addr_t rx_addr)
+ {
+-	u16 len;
+-
+-	len = gi2c->is_ccu_qup ? (msg->len - CCU_DATA_OFFSET) : msg->len;
+ 	if (tx_buf) {
+-		dma_unmap_single(gi2c->se.dev->parent, tx_addr, len, DMA_TO_DEVICE);
++		dma_unmap_single(gi2c->se.dev->parent, tx_addr, msg->len, DMA_TO_DEVICE);
+ 		i2c_put_dma_safe_msg_buf(tx_buf, msg, !gi2c->err);
+ 	}
+ 
+ 	if (rx_buf) {
+-		dma_unmap_single(gi2c->se.dev->parent, rx_addr, len, DMA_FROM_DEVICE);
++		dma_unmap_single(gi2c->se.dev->parent, rx_addr, msg->len, DMA_FROM_DEVICE);
+ 		if (!gi2c->is_ccu_qup)
+ 			i2c_put_dma_safe_msg_buf(rx_buf, msg, !gi2c->err);
+ 	}
+@@ -1206,11 +1203,12 @@ static int geni_i2c_gpi(struct geni_i2c_dev *gi2c, struct i2c_msg *msg,
+ 
+ 	peripheral_cfg = config->peripheral_config;
+ 	if (gi2c->is_ccu_qup) {
+-		if (op == I2C_WRITE)
++		if (op == I2C_WRITE) {
+ 			dma_buf = kmemdup((msg->buf + CCU_DATA_OFFSET), len, GFP_KERNEL);
+-		else
+-			dma_buf = (msg->buf + CCU_DATA_OFFSET);
+-
++		} else {
++			memset(msg->buf, 0, msg->len);
++			dma_buf = msg->buf;
++		}
+ 		if (!dma_buf)
+ 			return -ENOMEM;
+ 		i2c_trace_log(gi2c->se.dev, "%s: CCU QUP - msg.len:%d - [%d]\n",
+@@ -1230,6 +1228,8 @@ static int geni_i2c_gpi(struct geni_i2c_dev *gi2c, struct i2c_msg *msg,
+ 	addr = dma_map_single(gi2c->se.dev->parent, dma_buf, len, map_dirn);
+ 	if (dma_mapping_error(gi2c->se.dev->parent, addr)) {
+ 		i2c_put_dma_safe_msg_buf(dma_buf, msg, false);
++		kfree(dma_buf);
++		dma_buf = NULL;
+ 		return -ENOMEM;
+ 	}
+ 
+@@ -1550,10 +1550,8 @@ static int geni_i2c_gpi_xfer(struct geni_i2c_dev *gi2c, struct i2c_msg msgs[], i
+ err:
+ 	dev_err(gi2c->se.dev, "GPI transfer failed: %d\n", ret);
+ 	if (gi2c->is_ccu_qup) {
+-		for (k = i; k >= 0; k--) {
+-			kfree(gi2c->ccu.msg[k]);
+-			gi2c->ccu.msg[k] = NULL;
+-		}
++		kfree(gi2c->ccu.msg[i]);
++		gi2c->ccu.msg[i] = NULL;
+ 	}
+ 	dmaengine_terminate_sync(gi2c->rx_c[idx]);
+ 	dmaengine_terminate_sync(gi2c->tx_c[idx]);
+@@ -1725,10 +1723,14 @@ static int setup_gpi_dma(struct geni_i2c_dev *gi2c)
+ 
+ err:
+ 	for (idx = i; idx > 0; idx--) {
+-		dma_release_channel(gi2c->tx_c[idx - 1]);
+-		gi2c->tx_c[idx -1 ] = NULL;
+-		dma_release_channel(gi2c->rx_c[idx - 1]);
+-		gi2c->rx_c[idx -1 ] = NULL;
++		if (gi2c->tx_c[idx-1]) {
++			dma_release_channel(gi2c->tx_c[idx - 1]);
++			gi2c->tx_c[idx -1 ] = NULL;
++		}
++		if (gi2c->rx_c[idx-1]) {
++			dma_release_channel(gi2c->rx_c[idx - 1]);
++			gi2c->rx_c[idx -1 ] = NULL;
++		}
+ 	}
+ 	return ret;
+ }
+-- 
+2.34.1
+

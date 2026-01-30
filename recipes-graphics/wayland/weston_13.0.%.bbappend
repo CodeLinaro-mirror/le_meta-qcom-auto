@@ -17,13 +17,19 @@ FILESEXTRAPATHS:append := " :${THISDIR}/weston/"
 CODE_DIR = "${@bb.utils.contains_any('PREFERRED_PROVIDER_virtual/kernel', 'linux-qcom-custom linux-qcom-custom-rt',"vendor/qcom/opensource/display/weston", "graphics/weston", d)}"
 CODE_DIR:sa8775 = "graphics/weston"
 CODE_DIR:sa7255 = "graphics/weston"
-SRC_URI = "${PATH_TO_REPO}/${CODE_DIR}/.git;protocol=${PROTO};destsuffix=${CODE_DIR};usehead=1 \
+
+SRCPROJECT  = "git://${OSS_REPO}/clo/le/wayland/weston.git"
+SRCBRANCH  = "display-userspace.lnx.3.2.r1-rel"
+SRCREV  = "2e430730b73ac375888b98f04679810da4bdb664"
+
+SRC_URI = "${SRCPROJECT};branch=${SRCBRANCH};protocol=ssh;destsuffix=graphics/weston; \
            file://weston.png \
            file://weston.desktop \
            file://xwayland.weston-start \
            file://systemd-notify.weston-start \
 "
-SRCREV = "${AUTOREV}"
+
+
 S = "${WORKDIR}/${CODE_DIR}"
 
 UPSTREAM_CHECK_URI:remove = "https://wayland.freedesktop.org/releases.html"

@@ -1,0 +1,179 @@
+From 4c8af3496224ce8940aa7fef666d50df9c7e6313 Mon Sep 17 00:00:00 2001
+From: Maramaina Naresh <mnaresh@qti.qualcomm.com>
+Date: Mon, 15 Sep 2025 20:14:08 +0530
+Subject: [PATCH] ccu: Initialize CCU QUP core during firmware load and
+ eliminate redundant runtime PM ops in power_on_off path to fix S2R issues
+
+Initialize the CCU QUP core during firmware load to ensure proper
+setup after CCU core power collapse events, such as S2R or deepsleep
+quickboot.
+
+Add ioremap support for ccu_top to configure the CCU_TOP_CORE_CFG
+register and initialize CCU_QUP_CORE_CFG for QUP core setup.
+Move CCU_QUP_IRQ_MASK enablement after CCU QUP core initialization
+to ensure correct interrupt configuration. Set fw_loaded to false
+to handle firmware reload correctly after power collapse.
+
+During I2C transfers, runtime PM operations are already handled as
+part of the transfer flow. Repeating them in the power_on_off path
+causes device underflow and leads to inconsistent runtime PM usage
+counter states.
+
+Remove the duplicate PM operations from geni_i2c_power_on_off() and
+add a usage count check to detect active usage. Return -EAGAIN when
+the usage count is non-zero to defer the operation, ensuring proper
+
+Change-Id: Ie2e47d3c035abead7acc865e7dc56659fc80097b
+Signed-off-by: Maramaina Naresh <mnaresh@qti.qualcomm.com>
+---
+ drivers/i2c/busses/i2c-qcom-geni.c    | 23 +++++++-----------
+ drivers/soc/qcom/qcom_ccu_qup.c       | 34 ++++++++++++++++++++++-----
+ include/linux/soc/qcom/qcom_ccu_qup.h |  2 ++
+ 3 files changed, 39 insertions(+), 20 deletions(-)
+
+diff --git a/drivers/i2c/busses/i2c-qcom-geni.c b/drivers/i2c/busses/i2c-qcom-geni.c
+index 9e0ab0330e72..7343a8ee4c5d 100644
+--- a/drivers/i2c/busses/i2c-qcom-geni.c
++++ b/drivers/i2c/busses/i2c-qcom-geni.c
+@@ -403,7 +403,16 @@ static int geni_i2c_power_on_off(struct i2c_adapter *adap, bool suspend)
+ 			return -EINVAL;
+ 		}
+ 	}
++
++	I2C_DBG_LOG(LOG_LVL_INFO, gi2c->se.dev, "%s: suspend:%d\n", __func__, suspend);
+ 	if (suspend) {
++		if (atomic_read(&gi2c->se.dev->power.usage_count) > 0) {
++			I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev,
++				    "Please retry, Device in Use. Usage_count: %d\n",
++				    atomic_read(&gi2c->se.dev->power.usage_count));
++			return -EAGAIN;
++		}
++
+ 		for (i = 0; i < CCU_MAX_GPII; i++) {
+ 			if (gi2c->tx_c[i]) {
+ 				gi2c->tx_gchan_ctrl.cmd = QCOM_GPI_CHANNEL_DECONFIGURE;
+@@ -417,21 +426,7 @@ static int geni_i2c_power_on_off(struct i2c_adapter *adap, bool suspend)
+ 			}
+ 		}
+ 
+-		if (pm_runtime_active(gi2c->se.dev)) {
+-			/* Decrement the device usage counter and call pm runtime idle */
+-			ret = pm_runtime_put_sync(gi2c->se.dev);
+-			if (ret < 0) {
+-				I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "error turning off device :%d\n", ret);
+-				return ret;
+-			}
+-		}
+ 	} else {
+-		/* Increment the device usage counter and resume */
+-		ret = pm_runtime_resume_and_get(gi2c->se.dev);
+-		if (ret < 0) {
+-			I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "error turning on device :%d\n", ret);
+-			return ret;
+-		}
+ 
+ 		for (i = 0; i < CCU_MAX_GPII; i++) {
+ 			if (gi2c->tx_c[i]) {
+diff --git a/drivers/soc/qcom/qcom_ccu_qup.c b/drivers/soc/qcom/qcom_ccu_qup.c
+index 7415f396223c..88cb8c77ed2c 100644
+--- a/drivers/soc/qcom/qcom_ccu_qup.c
++++ b/drivers/soc/qcom/qcom_ccu_qup.c
+@@ -392,6 +392,9 @@ int ccu_power_on_off(struct i2c_adapter *adap, bool suspend)
+ 		return -EAGAIN;
+ 	}
+ 
++	if (suspend)
++		ccud->fw_loaded = false;
++
+ 	return 0;
+ }
+ 
+@@ -579,6 +582,17 @@ int ccu_qup_load_firmware(void)
+ 		return 0;
+ 	}
+ 
++	/* CCU_TOP_CORE_CFG register is used to configure the CCU core */
++	writel(0x3, (ccud->ccu_top + CCU_TOP_CORE_CFG));
++
++	/* CCU_QUP_CORE_CFG register is used to configure the clock gate enables for QUP Core */
++	writel(0x3f, (ccud->qup_irq_base[0] + CCU_QUP_CORE_CFG));
++	writel(0x3f, (ccud->qup_irq_base[1] + CCU_QUP_CORE_CFG));
++
++	/* Enable GPII interrupt source for CCU QUP0 & CCU QUP1 */
++	writel(CCU_GPII_IRQ, (ccud->qup_irq_base[0] + CCU_QUP_IRQ_MASK));
++	writel(CCU_GPII_IRQ, (ccud->qup_irq_base[1] + CCU_QUP_IRQ_MASK));
++
+ 	/* Make SCM call, to load the TZ FW */
+ 	ret = qcom_scm_load_ccu_qup_fw(SCM_LOAD_QUP_TYPE);
+ 	if (ret) {
+@@ -588,7 +602,8 @@ int ccu_qup_load_firmware(void)
+ 	}
+ 	ccud->fw_loaded = true;
+ 
+-	CCU_DBG_LOG(LOG_LVL_VERBOSE, ccud->dev, "CCU QUP FW Load done successfully\n");
++	CCU_DBG_LOG(LOG_LVL_VERBOSE, ccud->dev,
++		    "CCU QUP initialized and firmware loaded successfully\n");
+ 	return ret;
+ }
+ EXPORT_SYMBOL(ccu_qup_load_firmware);
+@@ -872,7 +887,6 @@ static void get_set_child_dev_node(struct work_struct *work)
+ static int ccu_get_configure_irq(struct platform_device *pdev, struct ccu_qup *ccu)
+ {
+ 	int ret;
+-	int enable = CCU_GPII_IRQ;
+ 
+ 	ccu->ccu_qup0_irq = platform_get_irq_byname(pdev, "ccu_qup0_irq");
+ 	if (ccu->ccu_qup0_irq < 0)
+@@ -896,10 +910,6 @@ static int ccu_get_configure_irq(struct platform_device *pdev, struct ccu_qup *c
+ 		return -EINVAL;
+ 	}
+ 
+-	/* Enable GPII interrupt source for CCU QUP0 & CCU QUP1*/
+-	writel_relaxed(enable, (ccu->qup_irq_base[0] + CCU_QUP_IRQ_MASK));
+-	writel_relaxed(enable, (ccu->qup_irq_base[1] + CCU_QUP_IRQ_MASK));
+-
+ 	CCU_DBG_LOG(LOG_LVL_VERBOSE, ccu->dev, "IRQ Configuration done\n");																
+ 	return 0;
+ }
+@@ -988,6 +998,18 @@ static int ccu_qup_probe(struct platform_device *pdev)
+ 		return -ENODEV;
+ 	}
+ 
++	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "ccu_top");
++	if (!res) {
++		CCU_ERR_LOG(LOG_LVL_ERROR, &pdev->dev, "missing 'reg' for CCU0 common base\n");
++		return -EINVAL;
++	}
++
++	ccu->ccu_top = devm_ioremap(&pdev->dev, res->start, resource_size(res));
++	if (!ccu->ccu_top) {
++		CCU_ERR_LOG(LOG_LVL_ERROR, &pdev->dev, "ioremap failed for ccu_top register\n");
++		return -ENODEV;
++	}
++
+ 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "ccu_qupv3_0_IRQ");
+ 	if (!res) {
+ 		CCU_ERR_LOG(LOG_LVL_ERROR, &pdev->dev, "missing 'reg' for CCU0 IRQ\n");
+diff --git a/include/linux/soc/qcom/qcom_ccu_qup.h b/include/linux/soc/qcom/qcom_ccu_qup.h
+index f4962d15be0a..18425b0c9cd7 100644
+--- a/include/linux/soc/qcom/qcom_ccu_qup.h
++++ b/include/linux/soc/qcom/qcom_ccu_qup.h
+@@ -24,6 +24,7 @@
+ 
+ #define CCU_QUP_CORE_CLK_CGC_CTRL	0x14
+ #define CCU_QUP_CORE_CFG	0x18
++#define CCU_TOP_CORE_CFG	0x34
+ 
+ /* CCU QUP Debug Register */
+ #define CCU_QUP_SCRATCH		0x80
+@@ -129,6 +130,7 @@ struct ccu_qup {
+ 	struct i2c_adapter *adap;
+ 	void __iomem *qup0_common_reg;
+ 	void __iomem *qup1_common_reg;
++	void __iomem *ccu_top;
+ 	void __iomem *qup_irq_base[2];
+ 	int ccu_qup0_irq;
+ 	int ccu_qup1_irq;
+-- 
+2.34.1
+

@@ -4,10 +4,15 @@ HOMEPAGE = "https://git.codelinaro.org"
 LICENSE = "GPLv2.0-with-linux-syscall-note"
 LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/GPL-2.0-only;md5=801f80980d171dd6425610833a22dbe6"
 
+
+
+SRCPROJECT  = "git://${OSS_REPO}/clo/le/platform/vendor/qcom-opensource/kiumd.git"
+SRCBRANCH  = "safe-services.lnx.1.0.r18-rel"
+SRCREV  = "90079a9bd5e3abe24cb234ce62fc84c7754d77b1"
+
 SRC_URI = "\
-    ${PATH_TO_REPO}/vendor/qcom/opensource/kiumd/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/kiumd;usehead=1 \
+    ${SRCPROJECT};branch=${SRCBRANCH};protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/kiumd; \
 "
-SRCREV = "${AUTOREV}"
 
 S = "${WORKDIR}/vendor/qcom/opensource/kiumd/kiumd-headers"
 

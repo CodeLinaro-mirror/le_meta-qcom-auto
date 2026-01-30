@@ -1,0 +1,286 @@
+From 28e6b8244c21a7d6ee884f4d470efa3c3faf7cec Mon Sep 17 00:00:00 2001
+From: Aniket Randive <arandive@qti.qualcomm.com>
+Date: Mon, 8 Sep 2025 16:50:20 +0530
+Subject: [PATCH 01/13] i2c: i2c-qcom-geni: Fix NULL pointer dereference issue
+ for CCU QUP
+
+During CCU mode selection, the driver dereferences a channel without
+verifying its presence, leading to NULL pointer dereference.
+
+To resolve this issue, Add check to ensure the channel exists before
+accessing it. Additionally, the logic has been optimized to allocate
+all channels during the probe phase, thereby eliminating the need to
+select GPI DMA mode during each channel allocation.
+
+[   72.598764][ T2753] Unable to handle kernel NULL pointer dereference at virtual address 00000000000001b8
+[   72.598914][ T2753] Call trace:
+[   72.598915][ T2753]  ccu_gpi_configure_mode+0x14/0x108 [gpi]
+[   72.598919][ T2753]  geni_i2c_configure_ccu_mode+0x88/0x178 [i2c_qcom_geni]
+[   72.598923][ T2753]  ccu_configure_mode+0x54/0xe8
+[   72.598931][ T2753]  ccu_config_write+0x19c/0x458.
+
+Change-Id: I8c7178647cd052f29fff29a02ce18a63b4c573f6
+Signed-off-by: Aniket Randive <arandive@qti.qualcomm.com>
+---
+ drivers/i2c/busses/i2c-qcom-geni.c | 129 ++++++++++++++---------------
+ 1 file changed, 62 insertions(+), 67 deletions(-)
+
+diff --git a/drivers/i2c/busses/i2c-qcom-geni.c b/drivers/i2c/busses/i2c-qcom-geni.c
+index ecc9734bd502..e31a8cbda7c4 100644
+--- a/drivers/i2c/busses/i2c-qcom-geni.c
++++ b/drivers/i2c/busses/i2c-qcom-geni.c
+@@ -405,14 +405,14 @@ static int geni_i2c_power_on_off(struct i2c_adapter *adap, bool suspend)
+ 		/* Decrement the device usage counter and call pm runtime idle */
+ 		ret = pm_runtime_put_sync(gi2c->se.dev);
+ 		if (ret < 0) {
+-			dev_err(gi2c->se.dev, "error turning off device :%d\n", ret);
++			I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "error turning off device :%d\n", ret);
+ 			return ret;
+ 		}
+ 	} else {
+ 		/* Increment the device usage counter and resume */
+ 		ret = pm_runtime_resume_and_get(gi2c->se.dev);
+ 		if (ret < 0) {
+-			dev_err(gi2c->se.dev, "error turning on device :%d\n", ret);
++			I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "error turning on device :%d\n", ret);
+ 			return ret;
+ 		}
+ 		for (i = 0; i < CCU_MAX_GPII; i++) {
+@@ -465,7 +465,7 @@ static int geni_i2c_send_cmd_gsi_mode(struct geni_i2c_dev *gi2c, int cmd)
+ 
+ 	ret = dmaengine_slave_config(dma_chan, &config);
+ 	if (ret) {
+-		dev_err(gi2c->se.dev, "dma config error: %d for op:%d\n", ret, cmd);
++		I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "dma config error: %d for op:%d\n", ret, cmd);
+ 		goto err_config;
+ 	}
+ 
+@@ -474,7 +474,7 @@ static int geni_i2c_send_cmd_gsi_mode(struct geni_i2c_dev *gi2c, int cmd)
+ 	flags = DMA_PREP_INTERRUPT | DMA_CTRL_ACK;
+ 	desc = dmaengine_prep_slave_single(dma_chan, addr, 1, DMA_MEM_TO_DEV, flags);
+ 	if (!desc) {
+-		dev_err(gi2c->se.dev, "prep_slave_sg failed\n");
++		I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "prep_slave_sg failed\n");
+ 		ret = -EIO;
+ 		goto err_config;
+ 	}
+@@ -483,7 +483,7 @@ static int geni_i2c_send_cmd_gsi_mode(struct geni_i2c_dev *gi2c, int cmd)
+ 	desc->callback_param = gi2c;
+ 	cookie = dmaengine_submit(desc);
+ 	if (dma_submit_error(cookie)) {
+-		dev_err(gi2c->se.dev, "%s: dmaengine_submit failed (%d)\n",
++		I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "%s: dmaengine_submit failed (%d)\n",
+ 			__func__, cookie);
+ 		goto err;
+ 	}
+@@ -493,7 +493,7 @@ static int geni_i2c_send_cmd_gsi_mode(struct geni_i2c_dev *gi2c, int cmd)
+ 	reinit_completion(&gi2c->done);
+ 	time_left = wait_for_completion_timeout(&gi2c->done, XFER_TIMEOUT);
+ 	if (!time_left) {
+-		dev_err(gi2c->se.dev, "I2C timeout for cmd:%d\n", cmd);
++		I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "I2C timeout for cmd:%d\n", cmd);
+ 		gi2c->err = -ETIMEDOUT;
+ 	}
+ 
+@@ -505,7 +505,7 @@ static int geni_i2c_send_cmd_gsi_mode(struct geni_i2c_dev *gi2c, int cmd)
+ 	kfree(buf);
+ 	return 0;
+ err:
+-	dev_err(gi2c->se.dev, "GPI transfer failed: %d\n", ret);
++	I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "GPI transfer failed: %d\n", ret);
+ 	dmaengine_terminate_sync(dma_chan);
+ err_config:
+ 	dma_unmap_single(gi2c->se.dev->parent, addr, 1, DMA_TO_DEVICE);
+@@ -530,11 +530,11 @@ static int geni_i2c_send_cmd_fifo_mode(struct geni_i2c_dev *gi2c, int cmd)
+ 	geni_se_setup_m_cmd(&gi2c->se, cmd, m_param);
+ 	time_left = wait_for_completion_timeout(&gi2c->done, XFER_TIMEOUT);
+ 	if (!time_left) {
+-		dev_err(gi2c->se.dev, "I2C timeout for cmd:%d\n", cmd);
++		I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "I2C timeout for cmd:%d\n", cmd);
+ 		return -ETIMEDOUT;
+ 	}
+ 
+-	dev_dbg(gi2c->se.dev, "CMD:%d send successfully\n", cmd);
++	I2C_DBG_LOG(LOG_LVL_INFO, gi2c->se.dev, "CMD:%d send successfully\n", cmd);
+ 	return 0;
+ }
+ 
+@@ -581,9 +581,9 @@ int geni_i2c_check_recover_ios_line(struct i2c_adapter *adap)
+ 	}
+ 
+ 	if (geni_i2c_is_bus_recovery_required(gi2c)) {
+-		dev_err(gi2c->se.dev, "IOS lines in bad state, need recovery\n");
++		I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "IOS lines in bad state, need recovery\n");
+ 	} else {
+-		dev_dbg(gi2c->se.dev, "IOS lines in good state\n");
++		I2C_DBG_LOG(LOG_LVL_INFO, gi2c->se.dev, "IOS lines in good state\n");
+ 		return 0;
+ 	}
+ 	if (gi2c->xfer_mode == GENI_GPI_DMA) {
+@@ -643,10 +643,24 @@ static int geni_i2c_configure_ccu_mode(struct i2c_adapter *adap, int gpii_no,
+ 		}
+ 	}
+ 
++	if ((ch_type != 1 && ch_type != 2) || idx < 0) {
++		dev_err(gi2c->se.dev, "%s: Invalid request, ch_type:%d, mode:%d gpii_no:%d\n",
++			__func__, ch_type, mode, gpii_no);
++		return -EINVAL;
++	}
++
+ 	gi2c->ccu.mode = mode;
+ 	gi2c->ccu.gpi[idx].type = ch_type;
+ 	gi2c->ccu.gpi[idx].gpii_mode_change = true;
+ 
++	if (!gi2c->rx_c[idx] ||  !gi2c->tx_c[idx]) {
++		ret = setup_gpi_dma(gi2c, idx);
++		if (ret) {
++			dev_err(gi2c->se.dev, "%s: Setup gpi dma failed\n", __func__);
++			return ret;
++		}
++	}
++
+ 	ccu_gpi_configure_mode(gi2c->tx_c[idx], mode, ch_type);
+ 	ccu_gpi_configure_mode(gi2c->rx_c[idx], mode, ch_type);
+ 
+@@ -659,7 +673,7 @@ static int geni_i2c_configure_ccu_mode(struct i2c_adapter *adap, int gpii_no,
+ 
+ 	ret = setup_gpi_dma(gi2c, idx);
+ 	if (ret) {
+-		dev_err(gi2c->se.dev, "AR: Setup gpi dma failed\n");
++		dev_err(gi2c->se.dev, "%s: Setup gpi dma failed\n", __func__);
+ 		return ret;
+ 	}
+ 	gi2c->ccu.gpi[idx].gpii_mode_change = false;
+@@ -1665,20 +1679,10 @@ static void release_gpi_dma(struct geni_i2c_dev *gi2c)
+ 	}
+ }
+ 
+-static inline void init_tx_rx_ch(struct geni_i2c_dev *gi2c)
+-{
+-	int i = 0;
+-
+-	for (i = 0; i < CCU_MAX_GPII; i++) {
+-		gi2c->tx_c[i] = NULL;
+-		gi2c->rx_c[i] = NULL;
+-	}
+-}
+-
+ static int setup_gpi_dma(struct geni_i2c_dev *gi2c, int idx)
+ {
+ 	int ret;
+-	int i = 0;
++
+ 	/* For TOP QUP, only a single GPII is used per serial engine. However, for CCU QUP,
+ 	 * up to three GPIIs can be used per serial engine. When a single GPII is used, the
+ 	 * "tx" and "rx" names are provided using the `dma-names` property from the DTSI.
+@@ -1688,46 +1692,35 @@ static int setup_gpi_dma(struct geni_i2c_dev *gi2c, int idx)
+ 	const char *tx_ch[CCU_MAX_GPII] = {"tx", "tx1", "tx2"};
+ 	const char *rx_ch[CCU_MAX_GPII] = {"rx", "rx1", "rx2"};
+ 
+-	geni_se_select_mode(&gi2c->se, GENI_GPI_DMA);
+-	do {
+-		if (!gi2c->tx_c[i]) {
+-			dev_err(gi2c->se.dev, "%s:[%d] Request TX chan:%s\n", __func__, i, tx_ch[i]);
+-			gi2c->tx_c[i] = dma_request_chan(gi2c->se.dev, tx_ch[i]);
+-			if (IS_ERR(gi2c->tx_c[i])) {
+-				ret = dev_err_probe(gi2c->se.dev, PTR_ERR(gi2c->tx_c[i]),
+-							"Failed to get tx%d DMA ch\n", i);
+-				goto err;
+-			}
+-		}
++	if (idx >= CCU_MAX_GPII) {
++		I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "%s: Invalid channel request:%d\n", __func__, idx);
++		return -EINVAL;
++	}
+ 
+-		if (!gi2c->rx_c[i]) {
+-			dev_err(gi2c->se.dev, "%s:[%d] Request RX chan:%s\n", __func__, i, rx_ch[i]);
+-			gi2c->rx_c[i] = dma_request_chan(gi2c->se.dev, rx_ch[i]);
+-			if (IS_ERR(gi2c->rx_c[i])) {
+-				ret = dev_err_probe(gi2c->se.dev, PTR_ERR(gi2c->rx_c[i]),
+-							"Failed to get rx%d DMA ch\n", i);
+-				dma_release_channel(gi2c->tx_c[i]);
+-				gi2c->tx_c[i] = NULL;
+-				goto err;
+-			}
++	if (!gi2c->tx_c[idx]) {
++		I2C_DBG_LOG(LOG_LVL_INFO, gi2c->se.dev, "%s:[%d] Request TX chan:%s\n", __func__, idx, tx_ch[idx]);
++		gi2c->tx_c[idx] = dma_request_chan(gi2c->se.dev, tx_ch[idx]);
++		if (IS_ERR(gi2c->tx_c[idx])) {
++			ret = dev_err_probe(gi2c->se.dev, PTR_ERR(gi2c->tx_c[idx]),
++					    "Failed to get tx%d DMA ch\n", idx);
++			return ret;
+ 		}
+-	} while (++i < idx);
+-
+-	dev_err(gi2c->se.dev, "Grabbed GPI dma channels\n");
+-	return 0;
++	}
+ 
+-err:
+-	for (idx = i; idx > 0; idx--) {
+-		if (gi2c->tx_c[idx-1]) {
+-			dma_release_channel(gi2c->tx_c[idx - 1]);
+-			gi2c->tx_c[idx -1 ] = NULL;
+-		}
+-		if (gi2c->rx_c[idx-1]) {
+-			dma_release_channel(gi2c->rx_c[idx - 1]);
+-			gi2c->rx_c[idx -1 ] = NULL;
++	if (!gi2c->rx_c[idx]) {
++		I2C_DBG_LOG(LOG_LVL_INFO, gi2c->se.dev, "%s:[%d] Request RX chan:%s\n", __func__, idx, rx_ch[idx]);
++		gi2c->rx_c[idx] = dma_request_chan(gi2c->se.dev, rx_ch[idx]);
++		if (IS_ERR(gi2c->rx_c[idx])) {
++			ret = dev_err_probe(gi2c->se.dev, PTR_ERR(gi2c->rx_c[idx]),
++					    "Failed to get rx%d DMA ch\n", idx);
++			dma_release_channel(gi2c->tx_c[idx]);
++			gi2c->tx_c[idx] = NULL;
++			return ret;
+ 		}
+ 	}
+-	return ret;
++
++	I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "Grabbed GPI dma channels\n");
++	return 0;
+ }
+ 
+ /*
+@@ -1787,7 +1780,7 @@ static int geni_i2c_init(struct geni_i2c_dev *gi2c)
+ 	const struct geni_i2c_desc *desc = NULL;
+ 	u32 proto, tx_depth;
+ 	bool fifo_disable;
+-	int ret = 0;
++	int ret = 0, idx, i;
+ 
+ 	if (gi2c->xfer_mode != GENI_SE_INVALID)
+ 		return 0;
+@@ -1817,17 +1810,19 @@ static int geni_i2c_init(struct geni_i2c_dev *gi2c)
+ 		fifo_disable = readl_relaxed(gi2c->se.base + GENI_IF_DISABLE_RO) & FIFO_IF_DISABLE;
+ 
+ 	if (fifo_disable) {
+-		init_tx_rx_ch(gi2c);
+ 		/* FIFO is disabled, so we can only use GPI DMA */
+-		ret = setup_gpi_dma(gi2c, 0);
+-		if (ret) {
+-			dev_err(gi2c->se.dev, "Failed to setup GPI DMA mode\n");
+-			goto err;
+-		}
+-
+ 		gi2c->xfer_mode = GENI_GPI_DMA;
+ 		geni_se_select_mode(&gi2c->se, gi2c->xfer_mode);
+-		I2C_DBG_LOG(LOG_LVL_INFO, gi2c->se.dev, "Using GPI DMA mode for I2C\n");
++		idx =  gi2c->is_ccu_qup ? CCU_MAX_GPII : 1;
++		for (i = 0; i < idx; i++) {
++			ret = setup_gpi_dma(gi2c, i);
++			if (ret) {
++				dev_err(gi2c->se.dev, "Failed to setup GPI DMA mode\n");
++				release_gpi_dma(gi2c);
++				goto err;
++			}
++		}
++		i2c_trace_log(gi2c->se.dev, "Using GPI DMA mode for I2C\n");
+ 	} else {
+ 		gi2c->xfer_mode = GENI_SE_FIFO;
+ 		tx_depth = geni_se_get_tx_fifo_depth(&gi2c->se);
+-- 
+2.34.1
+

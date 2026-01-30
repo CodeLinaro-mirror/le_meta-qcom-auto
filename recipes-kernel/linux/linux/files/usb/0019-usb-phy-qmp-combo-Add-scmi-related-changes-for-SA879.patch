@@ -1,0 +1,515 @@
+From 8115f70a917e5b2214f95ba235e9311f51701ea3 Mon Sep 17 00:00:00 2001
+From: Hiren Gohel <quic_vhiren@quicinc.com>
+Date: Tue, 19 Nov 2024 10:39:30 +0530
+Subject: [PATCH] usb: phy: qmp-combo: Add scmi related changes for SA8797
+
+Add scmi calls to support QMP COMBO PHY for SA8797.
+
+Change-Id: I624df342cab83b714ed30565dbe8da92842f9049
+Signed-off-by: Hiren Gohel <quic_vhiren@quicinc.com>
+Signed-off-by: Shazad Hussain <quic_shazhuss@quicinc.com>
+---
+ drivers/phy/qualcomm/phy-qcom-qmp-combo.c | 295 ++++++++++++++++++----
+ 1 file changed, 241 insertions(+), 54 deletions(-)
+
+diff --git a/drivers/phy/qualcomm/phy-qcom-qmp-combo.c b/drivers/phy/qualcomm/phy-qcom-qmp-combo.c
+index 2b77cea809ed..55130d543bfb 100644
+--- a/drivers/phy/qualcomm/phy-qcom-qmp-combo.c
++++ b/drivers/phy/qualcomm/phy-qcom-qmp-combo.c
+@@ -15,6 +15,7 @@
+ #include <linux/of_address.h>
+ #include <linux/phy/phy.h>
+ #include <linux/platform_device.h>
++#include <linux/pm_domain.h>
+ #include <linux/regulator/consumer.h>
+ #include <linux/reset.h>
+ #include <linux/slab.h>
+@@ -1344,6 +1345,9 @@ struct qmp_phy_cfg {
+ 	/* Offset from PCS to PCS_USB region */
+ 	unsigned int pcs_usb_offset;
+ 
++	/* true, if the device resources are fw managed */
++	bool fw_managed;
++
+ };
+ 
+ struct qmp_combo {
+@@ -1393,6 +1397,7 @@ struct qmp_combo {
+ 
+ 	struct typec_switch_dev *sw;
+ 	enum typec_orientation orientation;
++	struct dev_pm_domain_list *pd_list;
+ };
+ 
+ static void qmp_v3_dp_aux_init(struct qmp_combo *qmp);
+@@ -1473,6 +1478,52 @@ static const struct qmp_combo_offsets qmp_combo_offsets_v5 = {
+ 	.dp_dp_phy	= 0x2200,
+ };
+ 
++static const struct qmp_phy_cfg sa8797_usb3dpphy_cfg = {
++	.offsets		= &qmp_combo_offsets_v3,
++
++	.serdes_tbl		= sm8550_usb3_serdes_tbl,
++	.serdes_tbl_num		= ARRAY_SIZE(sm8550_usb3_serdes_tbl),
++	.tx_tbl			= sm8550_usb3_tx_tbl,
++	.tx_tbl_num		= ARRAY_SIZE(sm8550_usb3_tx_tbl),
++	.rx_tbl			= sm8550_usb3_rx_tbl,
++	.rx_tbl_num		= ARRAY_SIZE(sm8550_usb3_rx_tbl),
++	.pcs_tbl		= sm8550_usb3_pcs_tbl,
++	.pcs_tbl_num		= ARRAY_SIZE(sm8550_usb3_pcs_tbl),
++	.pcs_usb_tbl		= sm8550_usb3_pcs_usb_tbl,
++	.pcs_usb_tbl_num	= ARRAY_SIZE(sm8550_usb3_pcs_usb_tbl),
++
++	.dp_serdes_tbl		= qmp_v6_dp_serdes_tbl,
++	.dp_serdes_tbl_num	= ARRAY_SIZE(qmp_v6_dp_serdes_tbl),
++	.dp_tx_tbl		= qmp_v6_dp_tx_tbl,
++	.dp_tx_tbl_num		= ARRAY_SIZE(qmp_v6_dp_tx_tbl),
++
++	.serdes_tbl_rbr		= qmp_v6_dp_serdes_tbl_rbr,
++	.serdes_tbl_rbr_num	= ARRAY_SIZE(qmp_v6_dp_serdes_tbl_rbr),
++	.serdes_tbl_hbr		= qmp_v6_dp_serdes_tbl_hbr,
++	.serdes_tbl_hbr_num	= ARRAY_SIZE(qmp_v6_dp_serdes_tbl_hbr),
++	.serdes_tbl_hbr2	= qmp_v6_dp_serdes_tbl_hbr2,
++	.serdes_tbl_hbr2_num	= ARRAY_SIZE(qmp_v6_dp_serdes_tbl_hbr2),
++	.serdes_tbl_hbr3	= qmp_v6_dp_serdes_tbl_hbr3,
++	.serdes_tbl_hbr3_num	= ARRAY_SIZE(qmp_v6_dp_serdes_tbl_hbr3),
++
++	.swing_hbr_rbr		= &qmp_dp_v5_voltage_swing_hbr_rbr,
++	.pre_emphasis_hbr_rbr	= &qmp_dp_v6_pre_emphasis_hbr_rbr,
++	.swing_hbr3_hbr2	= &qmp_dp_v5_voltage_swing_hbr3_hbr2,
++	.pre_emphasis_hbr3_hbr2 = &qmp_dp_v5_pre_emphasis_hbr3_hbr2,
++
++	.dp_aux_init		= qmp_v4_dp_aux_init,
++	.configure_dp_tx	= qmp_v4_configure_dp_tx,
++	.configure_dp_phy	= qmp_v4_configure_dp_phy,
++	.calibrate_dp_phy	= qmp_v4_calibrate_dp_phy,
++
++	.regs			= qmp_v6_usb3phy_regs_layout,
++	.reset_list		= msm8996_usb3phy_reset_l,
++	.num_resets		= ARRAY_SIZE(msm8996_usb3phy_reset_l),
++	.vreg_list		= qmp_phy_vreg_l,
++	.num_vregs		= ARRAY_SIZE(qmp_phy_vreg_l),
++	.fw_managed		= true,
++};
++
+ static const struct qmp_phy_cfg sc7180_usb3dpphy_cfg = {
+ 	.offsets		= &qmp_combo_offsets_v3,
+ 
+@@ -1837,6 +1888,76 @@ static const struct qmp_phy_cfg sm8550_usb3dpphy_cfg = {
+ 	.num_vregs		= ARRAY_SIZE(qmp_phy_vreg_l),
+ };
+ 
++static void qmp_combo_domain_detach(struct qmp_combo *qmp)
++{
++	dev_pm_domain_detach_list(qmp->pd_list);
++}
++
++static int qmp_combo_domain_attach(struct qmp_combo *qmp)
++{
++	struct dev_pm_domain_attach_data pd_data = {
++		.pd_flags       = PD_FLAG_NO_DEV_LINK,
++		.pd_names       = (const char*[]) { "transfer", "core" },
++		.num_pd_names   = 2,
++	};
++	struct device *dev = qmp->dev;
++	int ret = 0;
++
++	ret = dev_pm_domain_attach_list(dev, &pd_data, &qmp->pd_list);
++	if (ret < 0) {
++		dev_err(dev, "domain attach failed %d)\n", ret);
++		return ret;
++	}
++	pr_err("HVG : domain attach success");
++	return 0;
++}
++
++/* d3_to_d0 transition by turning on all the suppliers */
++static int qmp_combo_d3_to_d0(struct qmp_combo *qmp)
++{
++       int ret = 0;
++
++	pr_err("HVG : %s",__func__);
++       if (!qmp->pd_list)
++               return 0;
++
++       ret = pm_runtime_resume_and_get(qmp->pd_list->pd_devs[1]);
++       if (ret)
++               return ret;
++
++       ret = pm_runtime_resume_and_get(qmp->pd_list->pd_devs[0]);
++
++       return ret;
++}
++
++/* d0_to_d3 transition by turning off all the suppliers */
++static void qmp_combo_d0_to_d3(struct qmp_combo *qmp)
++{
++       if (!qmp->pd_list)
++               return;
++
++       pm_runtime_put_sync(qmp->pd_list->pd_devs[0]);
++       pm_runtime_put_sync(qmp->pd_list->pd_devs[1]);
++}
++
++/* d1_to_d0 transition by turning on the 'tranfer' supplier */
++static int qmp_combo_d1_to_d0(struct qmp_combo *qmp)
++{
++	if (!qmp->pd_list)
++		return 0;
++
++	return pm_runtime_resume_and_get(qmp->pd_list->pd_devs[0]);
++}
++
++/* d0_to_d1 transition by turning off the 'tranfer' supplier */
++static void qmp_combo_d0_to_d1(struct qmp_combo *qmp)
++{
++	if (!qmp->pd_list)
++		return;
++
++	pm_runtime_put_sync(qmp->pd_list->pd_devs[0]);
++}
++
+ static int qmp_combo_dp_serdes_init(struct qmp_combo *qmp)
+ {
+ 	const struct qmp_phy_cfg *cfg = qmp->cfg;
+@@ -2336,30 +2457,39 @@ static int qmp_combo_com_init(struct qmp_combo *qmp, bool force)
+ 	int ret;
+ 	u32 val;
+ 
++	pr_err("HVG : %s",__func__);
+ 	if (!force && qmp->init_count++)
+ 		return 0;
+ 
+-	ret = regulator_bulk_enable(cfg->num_vregs, qmp->vregs);
+-	if (ret) {
+-		dev_err(qmp->dev, "failed to enable regulators, err=%d\n", ret);
++	ret = qmp_combo_d3_to_d0(qmp);
++	if (ret < 0) {
++		dev_err(qmp->dev, "Failed to transition to d0 state\n");
+ 		goto err_decrement_count;
+ 	}
+ 
+-	ret = reset_control_bulk_assert(cfg->num_resets, qmp->resets);
+-	if (ret) {
+-		dev_err(qmp->dev, "reset assert failed\n");
+-		goto err_disable_regulators;
+-	}
++	if (!qmp->cfg->fw_managed) {
++		ret = regulator_bulk_enable(cfg->num_vregs, qmp->vregs);
++		if (ret) {
++			dev_err(qmp->dev, "failed to enable regulators, err=%d\n", ret);
++			goto err_decrement_count;
++		}
+ 
+-	ret = reset_control_bulk_deassert(cfg->num_resets, qmp->resets);
+-	if (ret) {
+-		dev_err(qmp->dev, "reset deassert failed\n");
+-		goto err_disable_regulators;
+-	}
++		ret = reset_control_bulk_assert(cfg->num_resets, qmp->resets);
++		if (ret) {
++			dev_err(qmp->dev, "reset assert failed\n");
++			goto err_disable_regulators;
++		}
+ 
+-	ret = clk_bulk_prepare_enable(qmp->num_clks, qmp->clks);
+-	if (ret)
+-		goto err_assert_reset;
++		ret = reset_control_bulk_deassert(cfg->num_resets, qmp->resets);
++		if (ret) {
++			dev_err(qmp->dev, "reset deassert failed\n");
++			goto err_disable_regulators;
++		}
++
++		ret = clk_bulk_prepare_enable(qmp->num_clks, qmp->clks);
++		if (ret)
++			goto err_assert_reset;
++	}
+ 
+ 	qphy_setbits(com, QPHY_V3_DP_COM_POWER_DOWN_CTRL, SW_PWRDN);
+ 
+@@ -2405,11 +2535,13 @@ static int qmp_combo_com_exit(struct qmp_combo *qmp, bool force)
+ 	if (!force && --qmp->init_count)
+ 		return 0;
+ 
+-	reset_control_bulk_assert(cfg->num_resets, qmp->resets);
++	if (!qmp->cfg->fw_managed) {
++		reset_control_bulk_assert(cfg->num_resets, qmp->resets);
++		clk_bulk_disable_unprepare(qmp->num_clks, qmp->clks);
++		regulator_bulk_disable(cfg->num_vregs, qmp->vregs);
+ 
+-	clk_bulk_disable_unprepare(qmp->num_clks, qmp->clks);
+-
+-	regulator_bulk_disable(cfg->num_vregs, qmp->vregs);
++	} else
++		qmp_combo_d0_to_d3(qmp);
+ 
+ 	return 0;
+ }
+@@ -2506,10 +2638,12 @@ static int qmp_combo_usb_power_on(struct phy *phy)
+ 
+ 	qmp_configure(qmp->dev, serdes, cfg->serdes_tbl, cfg->serdes_tbl_num);
+ 
+-	ret = clk_prepare_enable(qmp->pipe_clk);
+-	if (ret) {
+-		dev_err(qmp->dev, "pipe_clk enable failed err=%d\n", ret);
+-		return ret;
++	if (!qmp->cfg->fw_managed) {
++		ret = clk_prepare_enable(qmp->pipe_clk);
++		if (ret) {
++			dev_err(qmp->dev, "pipe_clk enable failed err=%d\n", ret);
++			return ret;
++		}
+ 	}
+ 
+ 	/* Tx, Rx, and PCS configurations */
+@@ -2555,7 +2689,8 @@ static int qmp_combo_usb_power_off(struct phy *phy)
+ 	struct qmp_combo *qmp = phy_get_drvdata(phy);
+ 	const struct qmp_phy_cfg *cfg = qmp->cfg;
+ 
+-	clk_disable_unprepare(qmp->pipe_clk);
++	if (!qmp->cfg->fw_managed)
++		clk_disable_unprepare(qmp->pipe_clk);
+ 
+ 	/* PHY reset */
+ 	qphy_setbits(qmp->pcs, cfg->regs[QPHY_SW_RESET], SW_RESET);
+@@ -2701,8 +2836,12 @@ static int __maybe_unused qmp_combo_runtime_suspend(struct device *dev)
+ 
+ 	qmp_combo_enable_autonomous_mode(qmp);
+ 
+-	clk_disable_unprepare(qmp->pipe_clk);
+-	clk_bulk_disable_unprepare(qmp->num_clks, qmp->clks);
++	qmp_combo_d0_to_d1(qmp);
++
++	if (!qmp->cfg->fw_managed) {
++		clk_disable_unprepare(qmp->pipe_clk);
++		clk_bulk_disable_unprepare(qmp->num_clks, qmp->clks);
++	}
+ 
+ 	return 0;
+ }
+@@ -2719,17 +2858,24 @@ static int __maybe_unused qmp_combo_runtime_resume(struct device *dev)
+ 		return 0;
+ 	}
+ 
+-	ret = clk_bulk_prepare_enable(qmp->num_clks, qmp->clks);
+-	if (ret)
+-		return ret;
+-
+-	ret = clk_prepare_enable(qmp->pipe_clk);
+-	if (ret) {
+-		dev_err(dev, "pipe_clk enable failed, err=%d\n", ret);
+-		clk_bulk_disable_unprepare(qmp->num_clks, qmp->clks);
++	ret = qmp_combo_d1_to_d0(qmp);
++	if (ret < 0) {
++		dev_err(qmp->dev, "Failed to transition to d0 state\n");
+ 		return ret;
+ 	}
+ 
++	if (!qmp->cfg->fw_managed) {
++		ret = clk_bulk_prepare_enable(qmp->num_clks, qmp->clks);
++		if (ret)
++			return ret;
++
++		ret = clk_prepare_enable(qmp->pipe_clk);
++		if (ret) {
++			dev_err(dev, "pipe_clk enable failed, err=%d\n", ret);
++			clk_bulk_disable_unprepare(qmp->num_clks, qmp->clks);
++			return ret;
++		}
++	}
+ 	qmp_combo_disable_autonomous_mode(qmp);
+ 
+ 	return 0;
+@@ -2780,6 +2926,9 @@ static int qmp_combo_reset_init(struct qmp_combo *qmp)
+ 	int i;
+ 	int ret;
+ 
++	if (qmp->cfg->fw_managed)
++		return 0;
++
+ 	qmp->resets = devm_kcalloc(dev, cfg->num_resets,
+ 				   sizeof(*qmp->resets), GFP_KERNEL);
+ 	if (!qmp->resets)
+@@ -3240,10 +3389,12 @@ static int qmp_combo_parse_dt_lecacy_usb(struct qmp_combo *qmp, struct device_no
+ 		qmp->pcs_misc = NULL;
+ 	}
+ 
+-	qmp->pipe_clk = devm_get_clk_from_child(dev, np, NULL);
+-	if (IS_ERR(qmp->pipe_clk)) {
+-		return dev_err_probe(dev, PTR_ERR(qmp->pipe_clk),
++	if (!qmp->cfg->fw_managed) {
++		qmp->pipe_clk = devm_get_clk_from_child(dev, np, NULL);
++		if (IS_ERR(qmp->pipe_clk)) {
++			return dev_err_probe(dev, PTR_ERR(qmp->pipe_clk),
+ 				     "failed to get pipe clock\n");
++		}
+ 	}
+ 
+ 	return 0;
+@@ -3321,14 +3472,16 @@ static int qmp_combo_parse_dt(struct qmp_combo *qmp)
+ 	}
+ 	qmp->dp_dp_phy = base + offs->dp_dp_phy;
+ 
+-	ret = qmp_combo_clk_init(qmp);
+-	if (ret)
+-		return ret;
++	if (!qmp->cfg->fw_managed) {
++		ret = qmp_combo_clk_init(qmp);
++		if (ret)
++			return ret;
+ 
+-	qmp->pipe_clk = devm_clk_get(dev, "usb3_pipe");
+-	if (IS_ERR(qmp->pipe_clk)) {
+-		return dev_err_probe(dev, PTR_ERR(qmp->pipe_clk),
+-				"failed to get usb3_pipe clock\n");
++		qmp->pipe_clk = devm_clk_get(dev, "usb3_pipe");
++		if (IS_ERR(qmp->pipe_clk)) {
++			return dev_err_probe(dev, PTR_ERR(qmp->pipe_clk),
++					"failed to get usb3_pipe clock\n");
++		}
+ 	}
+ 
+ 	return 0;
+@@ -3338,13 +3491,16 @@ static struct phy *qmp_combo_phy_xlate(struct device *dev, struct of_phandle_arg
+ {
+ 	struct qmp_combo *qmp = dev_get_drvdata(dev);
+ 
++	pr_err("HVG : %s %d",__func__,__LINE__);
+ 	if (args->args_count == 0)
+ 		return ERR_PTR(-EINVAL);
+ 
+ 	switch (args->args[0]) {
+ 	case QMP_USB43DP_USB3_PHY:
++		pr_err("returning QMP_USB43DP_USB3_PHY usb_phy:%pK",qmp->usb_phy);
+ 		return qmp->usb_phy;
+ 	case QMP_USB43DP_DP_PHY:
++		pr_err("returning QMP_USB43DP_DP_PHY dp_phy:%pK",qmp->dp_phy);
+ 		return qmp->dp_phy;
+ 	}
+ 
+@@ -3359,6 +3515,7 @@ static int qmp_combo_probe(struct platform_device *pdev)
+ 	struct phy_provider *phy_provider;
+ 	int ret;
+ 
++	pr_err("HVG : entry %s",__func__);
+ 	qmp = devm_kzalloc(dev, sizeof(*qmp), GFP_KERNEL);
+ 	if (!qmp)
+ 		return -ENOMEM;
+@@ -3371,15 +3528,26 @@ static int qmp_combo_probe(struct platform_device *pdev)
+ 	if (!qmp->cfg)
+ 		return -EINVAL;
+ 
++	if (qmp->cfg->fw_managed) {
++		ret = qmp_combo_domain_attach(qmp);
++		if (ret) {
++			dev_err(dev, "Failed to attach domains. Bail out\n");
++			return ret;
++		}
++	}
++
+ 	mutex_init(&qmp->phy_mutex);
+ 
+-	ret = qmp_combo_reset_init(qmp);
+-	if (ret)
+-		return ret;
+ 
+-	ret = qmp_combo_vreg_init(qmp);
+-	if (ret)
+-		return ret;
++	if (!qmp->cfg->fw_managed) {
++		ret = qmp_combo_reset_init(qmp);
++		if (ret)
++			return ret;
++
++		ret = qmp_combo_vreg_init(qmp);
++		if (ret)
++			return ret;
++	}
+ 
+ 	if (of_property_read_bool(dev->of_node,
+ 				  "default-typec-orientation-reverse"))
+@@ -3404,6 +3572,7 @@ static int qmp_combo_probe(struct platform_device *pdev)
+ 
+ 		ret = qmp_combo_parse_dt_legacy(qmp, usb_np, dp_np);
+ 	} else {
++	dev_err(dev,"HVG : %d ",__LINE__);
+ 		usb_np = of_node_get(dev->of_node);
+ 		dp_np = of_node_get(dev->of_node);
+ 
+@@ -3412,6 +3581,7 @@ static int qmp_combo_probe(struct platform_device *pdev)
+ 	if (ret)
+ 		goto err_node_put;
+ 
++	dev_err(dev,"HVG : %d ",__LINE__);
+ 	pm_runtime_set_active(dev);
+ 	ret = devm_pm_runtime_enable(dev);
+ 	if (ret)
+@@ -3422,10 +3592,14 @@ static int qmp_combo_probe(struct platform_device *pdev)
+ 	 */
+ 	pm_runtime_forbid(dev);
+ 
+-	ret = qmp_combo_register_clocks(qmp, usb_np, dp_np);
+-	if (ret)
+-		goto err_node_put;
++	dev_err(dev,"HVG : %d ",__LINE__);
++	if (!qmp->cfg->fw_managed) {
++		ret = qmp_combo_register_clocks(qmp, usb_np, dp_np);
++		if (ret)
++			goto err_node_put;
++	}
+ 
++	dev_err(dev,"HVG : %d ",__LINE__);
+ 	qmp->usb_phy = devm_phy_create(dev, usb_np, &qmp_combo_usb_phy_ops);
+ 	if (IS_ERR(qmp->usb_phy)) {
+ 		ret = PTR_ERR(qmp->usb_phy);
+@@ -3433,6 +3607,9 @@ static int qmp_combo_probe(struct platform_device *pdev)
+ 		goto err_node_put;
+ 	}
+ 
++	pr_err("HVG : usb_phy:%pK",qmp->usb_phy);
++
++	dev_err(dev,"HVG : %d ",__LINE__);
+ 	phy_set_drvdata(qmp->usb_phy, qmp);
+ 
+ 	qmp->dp_phy = devm_phy_create(dev, dp_np, &qmp_combo_dp_phy_ops);
+@@ -3442,6 +3619,9 @@ static int qmp_combo_probe(struct platform_device *pdev)
+ 		goto err_node_put;
+ 	}
+ 
++	pr_err("HVG : dp_phy:%pK",qmp->dp_phy);
++
++	dev_err(dev,"HVG : %d ",__LINE__);
+ 	phy_set_drvdata(qmp->dp_phy, qmp);
+ 
+ 	dev_set_drvdata(dev, qmp);
+@@ -3451,12 +3631,15 @@ static int qmp_combo_probe(struct platform_device *pdev)
+ 	else
+ 		phy_provider = devm_of_phy_provider_register(dev, of_phy_simple_xlate);
+ 
++	dev_err(dev,"HVG : %d ",__LINE__);
+ 	of_node_put(usb_np);
+ 	of_node_put(dp_np);
+ 
++	dev_err(dev,"HVG : probe_sucess %d",PTR_ERR_OR_ZERO(phy_provider));
+ 	return PTR_ERR_OR_ZERO(phy_provider);
+ 
+ err_node_put:
++	dev_err(dev,"HVG : probe_failure ");
+ 	of_node_put(usb_np);
+ 	of_node_put(dp_np);
+ 	return ret;
+@@ -3507,6 +3690,10 @@ static const struct of_device_id qmp_combo_of_match_table[] = {
+ 		.compatible = "qcom,sm8550-qmp-usb3-dp-phy",
+ 		.data = &sm8550_usb3dpphy_cfg,
+ 	},
++	{
++		.compatible = "qcom,sa8797-qmp-usb3-dp-phy-fw-managed",
++		.data = &sa8797_usb3dpphy_cfg,
++	},
+ 	{
+ 		.compatible = "qcom,sm8650-qmp-usb3-dp-phy",
+ 		.data = &sm8550_usb3dpphy_cfg,
+-- 
+2.17.1
+

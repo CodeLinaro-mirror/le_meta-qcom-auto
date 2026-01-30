@@ -1,0 +1,378 @@
+From a4634e2e639e984c2f84270cd9c2bb415ab67875 Mon Sep 17 00:00:00 2001
+From: Aniket Randive <arandive@qti.qualcomm.com>
+Date: Wed, 7 May 2025 17:34:17 +0530
+Subject: [PATCH 04/13] i2c: Add support for NOP Frame
+
+Add support for NOP Frame. This NOP Frame can be used
+to consume the sync or CDM trigger without any data
+transfer on the lines.
+
+Apart from this add the NULL check to avoid derefernce
+issue in configure mode path.
+
+Change-Id: Ibbe3c85b28e2d7c297dc979154f2b89f0e77efa2
+Signed-off-by: Aniket Randive <arandive@qti.qualcomm.com>
+---
+ drivers/dma/qcom/gpi.c             |  68 +++++++++------
+ drivers/i2c/busses/i2c-qcom-geni.c | 133 ++++++++++++++++++++++++-----
+ 2 files changed, 153 insertions(+), 48 deletions(-)
+
+diff --git a/drivers/dma/qcom/gpi.c b/drivers/dma/qcom/gpi.c
+index 6cead203bfe3..a922b0421e73 100644
+--- a/drivers/dma/qcom/gpi.c
++++ b/drivers/dma/qcom/gpi.c
+@@ -36,6 +36,7 @@
+ #define TRE_TYPE_DMA		0x10
+ #define TRE_TYPE_GO		0x20
+ #define TRE_TYPE_CONFIG0	0x22
++#define TRE_TYPE_NOP		0x01
+ 
+ /* TRE flags */
+ #define TRE_FLAGS_CHAIN		BIT(0)
+@@ -101,20 +102,23 @@
+ /* Lock Unlock TRE */
+ #define TRE_I2C_UNLOCK		BIT(8)
+ 
+-/* NOOP TRE */
+-#define NOOP_TRE_LINK_RX	BIT(20)
+-#define NOOP_TRE_BEI		BIT(16)
+-#define NOOP_TRE_IEOB		BIT(9)
+-#define NOOP_TRE_IEOT		BIT(8)
+-#define NOOP_TRE_CH		BIT(0)
+-#define NOOP_TRE_MASK(link_rx, bei, ieot, ieob, ch) \
+-		(FIELD_PREP(NOOP_TRE_LINK_RX, link_rx)	| \
+-		FIELD_PREP(NOOP_TRE_BEI, bei)	|\
+-		FIELD_PREP(NOOP_TRE_IEOT, ieot)	|\
+-		FIELD_PREP(NOOP_TRE_IEOB, ieob)	|\
+-		FIELD_PREP(NOOP_TRE_CH, ch))
+-
+-#define NOOP_TRE	BIT(16)
++/* NOP TRE */
++#define NOP_TRE_LINK_RX	BIT(11)
++#define NOP_TRE_BEI		BIT(10)
++#define NOP_TRE_IEOT		BIT(9)
++#define NOP_TRE_IEOB		BIT(8)
++#define NOP_TRE_NOP_LAST BIT(3)
++#define NOP_TRE_CH_LAST BIT(2)
++#define NOP_TRE_CCU_LAST BIT(1)
++#define NOP_TRE_CH		BIT(0)
++#define NOP_TRE_MASK(link_rx, bei, ieot, ieob, ch) \
++		(FIELD_PREP(NOP_TRE_LINK_RX, link_rx)	| \
++		FIELD_PREP(NOP_TRE_BEI, bei)	|\
++		FIELD_PREP(NOP_TRE_IEOT, ieot)	|\
++		FIELD_PREP(NOP_TRE_IEOB, ieob)	|\
++		FIELD_PREP(NOP_TRE_CH, ch))
++
++#define NOP_TRE	BIT(16)
+ 
+ /* Register offsets from gpi-top */
+ #define GPII_n_CH_k_CNTXT_0_OFFS(n, k, ccu)\
+@@ -1288,10 +1292,7 @@ static void ccu_gpi_handle_isr(struct platform_device *pdev, int idx)
+ 	gpi = platform_get_drvdata(pdev);
+ 	gpii = &gpi->gpiis[idx];
+ 
+-	if (gpii->gchan[0].ch_ring.configured)
+-		process_gpi_irq(gpii);
+-	else
+-		dev_err(gpii->gpi_dev->dev, "GPII[%d] is not configured\n", idx);
++	process_gpi_irq(gpii);
+ }
+ 
+ /* process CCU Error notification event */
+@@ -1946,14 +1947,14 @@ static void gpi_queue_xfer(struct gpii *gpii, struct gchan *gchan,
+ 	*wp = ch_tre;
+ }
+ 
+-/* NOOP TRE */
+-static void gpi_noop_tre(struct gpii *gpii, struct gchan *gchan)
++/* NOP TRE */
++static void gpi_nop_tre(struct gpii *gpii, struct gchan *gchan)
+ {
+ 	struct gpi_ring *ring = &gchan->ch_ring;
+ 	struct gpi_tre *tre;
+ 	phys_addr_t local_rp, local_wp;
+ 	void *cntxt_rp;
+-	u32 noop_mask, noop_tre;
++	u32 nop_mask, nop_tre;
+ 
+ 	local_rp = to_physical(ring, ring->rp);
+ 	local_wp = to_physical(ring, ring->wp);
+@@ -1962,16 +1963,16 @@ static void gpi_noop_tre(struct gpii *gpii, struct gchan *gchan)
+ 	dev_dbg(gpii->gpi_dev->dev, "local_rp:0x%11llx, local_wp:0x%11llx\n",
+ 		local_rp, local_wp);
+ 
+-	noop_mask = NOOP_TRE_MASK(1, 0, 0, 0, 1);
+-	noop_tre = NOOP_TRE;
++	nop_mask = NOP_TRE_MASK(1, 0, 0, 0, 1);
++	nop_tre = NOP_TRE;
+ 
+ 	while (local_rp != local_wp) {
+ 		tre = (struct gpi_tre *)cntxt_rp;
+ 		dev_dbg(gpii->gpi_dev->dev, "TRE: %08x %08x %08x %08x\n",
+ 			tre->dword[0], tre->dword[1], tre->dword[2],
+ 			tre->dword[3]);
+-		tre->dword[3] &= noop_mask;
+-		tre->dword[3] |= noop_tre;
++		tre->dword[3] &= nop_mask;
++		tre->dword[3] |= nop_tre;
+ 		local_rp += ring->el_size;
+ 		cntxt_rp += ring->el_size;
+ 		if (cntxt_rp >= (ring->base + ring->len)) {
+@@ -2024,7 +2025,7 @@ static int gpi_terminate_all(struct dma_chan *chan)
+ 	if (gpii->premature_cancel) {
+ 		for (i = schid; i < echid; i++) {
+ 			gchan = &gpii->gchan[i];
+-			gpi_noop_tre(gpii, gchan);
++			gpi_nop_tre(gpii, gchan);
+ 		}
+ 		goto start_chan;
+ 	}
+@@ -2412,6 +2413,21 @@ static int gpi_create_i2c_tre(struct gchan *chan, struct gpi_desc *desc,
+ 		tre->dword[3] |= u32_encode_bits(i2c->ccu_cfg.nop_frame, TRE_FLAGS_NOP_LAST);
+ 	}
+ 
++	/* Create NOP TRE */
++	if (i2c->ccu_cfg.nop_frame) {
++		tre = &desc->tre[tre_idx];
++		tre_idx++;
++
++		tre->dword[0] = 0;
++		tre->dword[1] = 0;
++		tre->dword[2] = 0;
++		tre->dword[3] = u32_encode_bits(TRE_TYPE_NOP, TRE_FLAGS_TYPE);
++		tre->dword[3] |= u32_encode_bits(1, TRE_FLAGS_IEOT);
++		tre->dword[3] |= u32_encode_bits(i2c->ccu_cfg.ccu_last, TRE_FLAGS_CCU_LAST);
++		tre->dword[3] |= u32_encode_bits(i2c->ccu_cfg.ch_last, TRE_FLAGS_CH_LAST);
++		tre->dword[3] |= u32_encode_bits(i2c->ccu_cfg.nop_frame, TRE_FLAGS_NOP_LAST);
++		tre->dword[3] |= u32_encode_bits(1, TRE_FLAGS_IEOB);
++	}
+ end:
+ 	/* Unlock tre for last transfer */
+ 	if (i2c->shared_se && i2c->last_msg && i2c->op != I2C_READ) {
+diff --git a/drivers/i2c/busses/i2c-qcom-geni.c b/drivers/i2c/busses/i2c-qcom-geni.c
+index 2fd608a2437a..7cf0c196cb75 100644
+--- a/drivers/i2c/busses/i2c-qcom-geni.c
++++ b/drivers/i2c/busses/i2c-qcom-geni.c
+@@ -114,7 +114,7 @@ struct geni_i2c_desc {
+ #define CCU_MAX_GPII		3
+ #define REGULAR_GPII		0
+ #define MAX_NUM_MSGS		4096
+-#define MAX_NUM_FRAMES		4
++#define MAX_NUM_FRAMES		10
+ #define CCU_GET_GPII(val)	(val & CCU_GPII_MASK)
+ #define CCU_GET_ASYNC(val)	(val & BIT(5))
+ #define CCU_GET_PRIO(val)	(val & BIT(6))
+@@ -630,26 +630,18 @@ static int geni_i2c_configure_ccu_mode(struct i2c_adapter *adap, int gpii_no,
+ 	if (!gi2c->rx_c[idx] ||  !gi2c->tx_c[idx]) {
+ 		ret = setup_gpi_dma(gi2c, idx);
+ 		if (ret) {
+-			dev_err(gi2c->se.dev, "%s: Setup gpi dma failed\n", __func__);
++			dev_err(gi2c->se.dev, "%s: Setup gpi dma failed:%d\n", __func__, __LINE__);
+ 			return ret;
+ 		}
+ 	}
+ 
+-	ccu_gpi_configure_mode(gi2c->tx_c[idx], mode, ch_type);
+-	ccu_gpi_configure_mode(gi2c->rx_c[idx], mode, ch_type);
+-
+ 	if (gi2c->rx_c[idx] && gi2c->tx_c[idx]) {
+-		dma_release_channel(gi2c->rx_c[idx]);
+-		gi2c->rx_c[idx] = NULL;
+-		dma_release_channel(gi2c->tx_c[idx]);
+-		gi2c->tx_c[idx] = NULL;
++		ccu_gpi_configure_mode(gi2c->tx_c[idx], mode, ch_type);
++		ccu_gpi_configure_mode(gi2c->rx_c[idx], mode, ch_type);
++		dmaengine_terminate_sync(gi2c->tx_c[idx]);
++		dmaengine_terminate_sync(gi2c->rx_c[idx]);
+ 	}
+ 
+-	ret = setup_gpi_dma(gi2c, idx);
+-	if (ret) {
+-		dev_err(gi2c->se.dev, "%s: Setup gpi dma failed\n", __func__);
+-		return ret;
+-	}
+ 	gi2c->ccu.gpi[idx].gpii_mode_change = false;
+ 
+ 	return 0;
+@@ -1022,6 +1014,89 @@ static int geni_i2c_rx_one_msg(struct geni_i2c_dev *gi2c, struct i2c_msg *msg,
+ 	return gi2c->err;
+ }
+ 
++static int geni_i2c_gpi_nop_tre(struct geni_i2c_dev *gi2c, struct dma_slave_config *config, int idx)
++{
++	struct gpi_i2c_config *peripheral_cfg;
++	unsigned int flags;
++	struct dma_async_tx_descriptor *desc;
++	struct ccu_frame_info *frame;
++	dma_cookie_t cookie;
++	unsigned long time_left;
++	int ret;
++
++	peripheral_cfg = config->peripheral_config;
++	peripheral_cfg->ccu_cfg.ccu_last = gi2c->ccu.msg[0]->ccu_last;
++	peripheral_cfg->ccu_cfg.nop_frame = gi2c->ccu.msg[0]->nop_frame;
++	peripheral_cfg->set_config = false;
++	peripheral_cfg->multi_msg = true;
++
++	ret = dmaengine_slave_config(gi2c->tx_c[idx], config);
++	if (ret) {
++		dev_err(gi2c->se.dev, "dma config error: %d\n", ret);
++		goto err_submit;
++	}
++	peripheral_cfg->ccu_cfg.ccu_last = 0;
++	peripheral_cfg->ccu_cfg.nop_frame = false;
++	frame = &gi2c->ccu.gpi[idx].frame[gi2c->ccu.gpi[idx].recvd_cnt];
++	frame->msgs = 1;
++
++	flags = DMA_PREP_INTERRUPT | DMA_CTRL_ACK;
++
++	desc = dmaengine_prep_slave_single(gi2c->tx_c[idx], NULL, 0, DMA_MEM_TO_DEV, flags);
++	if (!desc) {
++		dev_err(gi2c->se.dev, "prep_slave_sg failed\n");
++		ret = -EIO;
++		goto err_submit;
++	}
++
++	desc->callback_result = i2c_gpi_cb_result;
++	desc->callback_param = peripheral_cfg;
++
++	cookie = dmaengine_submit(desc);
++	if (dma_submit_error(cookie)) {
++		dev_err(gi2c->se.dev, "%s: dmaengine_submit failed (%d)\n",
++			__func__, cookie);
++		dmaengine_desc_free(desc);
++		ret = -EIO;
++		goto err_submit;
++	}
++
++	dma_async_issue_pending(gi2c->tx_c[idx]);
++	/* Async transfer mode support only write transfer */
++	if (frame->async && !(gi2c->cur->flags & I2C_M_RD))
++		goto skip_completion;
++
++	time_left = wait_for_completion_timeout(&gi2c->done, XFER_TIMEOUT);
++	if (!time_left)
++		gi2c->err = -ETIMEDOUT;
++
++skip_completion:
++	if (gi2c->ccu.gpi[idx].recvd_cnt >= MAX_NUM_FRAMES -1)
++		gi2c->ccu.gpi[idx].recvd_cnt = 0;
++	else
++		gi2c->ccu.gpi[idx].recvd_cnt++;
++
++	if (gi2c->err) {
++		ret = gi2c->err;
++		goto err;
++	}
++
++	kfree(gi2c->ccu.msg[0]);
++	gi2c->ccu.msg[0] = NULL;
++	return 0;
++
++err:
++	dev_err(gi2c->se.dev, "%s: GPI transfer failed: %d\n", __func__, ret);
++	dmaengine_terminate_sync(gi2c->rx_c[idx]);
++	dmaengine_terminate_sync(gi2c->tx_c[idx]);
++
++err_submit:
++	kfree(gi2c->ccu.msg[0]);
++	gi2c->ccu.msg[0] = NULL;
++
++	return ret;
++}
++
+ static int geni_i2c_tx_one_msg(struct geni_i2c_dev *gi2c, struct i2c_msg *msg,
+ 				u32 m_param)
+ {
+@@ -1084,20 +1159,23 @@ static void  geni_i2c_release_buf(struct geni_i2c_dev *gi2c, int idx)
+ 		if (frame->msg[i].flag) {
+ 			map_dirn = DMA_FROM_DEVICE;
+ 			if (frame->msg[i].rx_buf) {
++				dma_unmap_single(gi2c->se.dev->parent, frame->msg[i].addr,
++						 frame->msg[i].len, map_dirn);
+ 				kfree(frame->msg[i].rx_buf);
+ 				frame->msg[i].rx_buf = NULL;
+ 			}
+ 		} else {
+ 			map_dirn = DMA_TO_DEVICE;
+ 			if (frame->msg[i].tx_buf) {
++				dma_unmap_single(gi2c->se.dev->parent, frame->msg[i].addr,
++						 frame->msg[i].len, map_dirn);
+ 				kfree(frame->msg[i].tx_buf);
+ 				frame->msg[i].tx_buf = NULL;
+ 			}
+ 		}
+-		dma_unmap_single(gi2c->se.dev->parent, frame->msg[i].addr,
+-				 frame->msg[i].len, map_dirn);
++		frame->msg[i].addr = 0;
+ 	}
+-	if (frame_idx >= MAX_NUM_FRAMES)
++	if (frame_idx >= MAX_NUM_FRAMES -1)
+ 		gi2c->ccu.gpi[idx].released_cnt = 0;
+ 	else
+ 		gi2c->ccu.gpi[idx].released_cnt++;
+@@ -1141,7 +1219,7 @@ static void i2c_gpi_cb_result(void *cb, const struct dmaengine_result *result)
+ 		if (!gi2c->err)
+ 			gi2c->ccu.result.err_no = gi2c->err;
+ 
+-		i2c_trace_log(gi2c->se.dev, "CB Result is for i2c-%d GPII:%d Err:%d cookie:%d\n",
++		i2c_trace_log(gi2c->se.dev, "CB Result is for i2c-%d GPII:%d Err:%d cookie:0x%x\n",
+ 					  gi2c->adap.nr, result->gpii_id, gi2c->err, gi2c->ccu.result.frame_cookie);
+ 		ccu_update_xfer_result(&gi2c->ccu.result);
+ 		/* Free the dma buffer associated to this frame */
+@@ -1435,6 +1513,19 @@ static int geni_i2c_gpi_xfer(struct geni_i2c_dev *gi2c, struct i2c_msg msgs[], i
+ 				return ret;
+ 			idx = (gi2c->ccu.msg[i]->gpii_no % CCU_MAX_GPII);
+ 			frame = &gi2c->ccu.gpi[idx].frame[gi2c->ccu.gpi[idx].recvd_cnt];
++
++			if (gi2c->ccu.msg[i]->nop_frame) {
++				if (idx == REGULAR_GPII || i != 0) {
++					dev_err(gi2c->se.dev, "Invalid Request: idx:%d, msg:%d\n", idx, i);
++					return -EINVAL;
++				}
++
++				ret = geni_i2c_gpi_nop_tre(gi2c, &config, idx);
++				if (ret)
++					return ret;
++				else
++					return num;
++			}
+ 		}
+ 		i2c_trace_log(gi2c->se.dev, "msg[%d].len:%d GPII:%d\n", i, gi2c->cur->len, idx);
+ 
+@@ -1507,14 +1598,13 @@ static int geni_i2c_gpi_xfer(struct geni_i2c_dev *gi2c, struct i2c_msg msgs[], i
+ 
+ 		geni_i2c_gpi_unmap(gi2c, &msgs[i], tx_buf, tx_addr, rx_buf, rx_addr);
+ 		if (gi2c->is_ccu_qup) {
+-			if (gi2c->ccu.gpi[idx].released_cnt >= MAX_NUM_FRAMES)
++			if (gi2c->ccu.gpi[idx].released_cnt >= MAX_NUM_FRAMES - 1)
+ 				gi2c->ccu.gpi[idx].released_cnt = 0;
+ 			else
+ 				gi2c->ccu.gpi[idx].released_cnt++;
+ 		}
+ next_msg:
+ 		if (gi2c->is_ccu_qup) {
+-			frame->msg[i].tx_buf = tx_buf;
+ 			frame->msg[i].rx_buf = rx_buf;
+ 			frame->msg[i].len = msgs[i].len;
+ 			if (msgs[i].flags & I2C_M_RD) {
+@@ -1522,7 +1612,6 @@ static int geni_i2c_gpi_xfer(struct geni_i2c_dev *gi2c, struct i2c_msg msgs[], i
+ 				frame->msg[i].addr = rx_addr;
+ 			} else {
+ 				frame->msg[i].flag = false;
+-				frame->msg[i].addr = tx_addr;
+ 			}
+ 			kfree(gi2c->ccu.msg[i]);
+ 			gi2c->ccu.msg[i] = NULL;
+@@ -1531,7 +1620,7 @@ static int geni_i2c_gpi_xfer(struct geni_i2c_dev *gi2c, struct i2c_msg msgs[], i
+ 
+ 	if (gi2c->is_ccu_qup) {
+ 		frame->msgs = num;
+-		if (gi2c->ccu.gpi[idx].recvd_cnt >= MAX_NUM_FRAMES)
++		if (gi2c->ccu.gpi[idx].recvd_cnt >= MAX_NUM_FRAMES - 1)
+ 			gi2c->ccu.gpi[idx].recvd_cnt = 0;
+ 		else
+ 			gi2c->ccu.gpi[idx].recvd_cnt++;
+-- 
+2.34.1
+

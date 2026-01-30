@@ -4,11 +4,16 @@ HOMEPAGE = "https://git.codelinaro.org"
 LICENSE = "BSD-3-Clause-Clear"
 LIC_FILES_CHKSUM = "file://${QTI_LICENSE_DIR}/${LICENSE};md5=b796c0007db682166a1721da80267bb2"
 
+
+
+SRCPROJECT  = "git://${OSS_REPO}/clo/le/platform/vendor/qcom-opensource/kiumd.git"
+SRCBRANCH  = "safe-services.lnx.1.0.r18-rel"
+SRCREV  = "90079a9bd5e3abe24cb234ce62fc84c7754d77b1"
+
 SRC_URI = "\
-    ${PATH_TO_REPO}/vendor/qcom/opensource/kiumd/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/kiumd;usehead=1 \
+    ${SRCPROJECT};branch=${SRCBRANCH};protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/kiumd; \
     file://mnt_fs.conf \
 "
-SRCREV = "${AUTOREV}"
 
 S = "${WORKDIR}/vendor/qcom/opensource/kiumd/dspfirmware-mount"
 inherit systemd
@@ -78,7 +83,9 @@ do_install:append() {
         install -m 0755 ${S}/cdsp1_cfg ${D}${sysconfdir}/sysconfig/cdsp1_cfg
         install -m 0755 ${S}/gpdsp0_cfg ${D}${sysconfdir}/sysconfig/gpdsp0_cfg
         install -m 0755 ${S}/gpdsp1_cfg ${D}${sysconfdir}/sysconfig/gpdsp1_cfg
+    fi
 
+    if ${@bb.utils.contains_any('SOC_FAMILY', 'sa7255', 'true', 'false', d)}; then
         if ${@bb.utils.contains('MACHINE_FEATURES', 'qti-vmm', 'true', 'false', d)}; then
             install -d -p ${D}/firmware/vm/boot/autoghgvmlv
             install -m 0777 ${S}/firmware-vm-boot-autoghgvmlv.automount ${D}${systemd_unitdir}/system/firmware-vm-boot-autoghgvmlv.automount

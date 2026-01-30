@@ -1,0 +1,30 @@
+From 3adafee3c3dbe84f00dac790ce9bf5184d6ed2c9 Mon Sep 17 00:00:00 2001
+From: Yadu MG <quic_ymg@quicinc.com>
+Date: Fri, 20 Dec 2024 19:17:56 +0530
+Subject: [PATCH] [DNM] QcomModulePkg: Disable Keymaster Loading for SA8797P
+
+Keymaster loading is not yet implemented for SA8797, disable
+the feature temporarily.
+
+Change-Id: Ie4f2f6751ab3e4b5d551e5f498843752f4bbd2b7
+Signed-off-by: Yadu MG <quic_ymg@quicinc.com>
+---
+ makefile | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/makefile b/makefile
+index f46ede6dc3..5099f21e0f 100644
+--- a/makefile
++++ b/makefile
+@@ -340,7 +340,7 @@ ABL_FV_IMG: $(EDK_TOOLS_PATH_MARK_FILE)
+ 	-D VERIFIED_BOOT_LE=$(VERIFIED_BOOT_LE) \
+ 	-D FORCE_NO_PIE=$(FORCE_NO_PIE) \
+ 	-D VERIFIED_BOOT_ENABLED=$(VERIFIED_BOOT_ENABLED) \
+-	-D LOAD_KM_AND_SET_ROT=$(LOAD_KM_AND_SET_ROT) \
++	-D LOAD_KM_AND_SET_ROT=0 \
+ 	-D PVM_SKIP_DTBO=$(PVM_SKIP_DTBO) \
+ 	-D EARLY_ETH_ENABLED=$(EARLY_ETH_ENABLED) \
+ 	-D ENABLE_SAIL_FLASHING=$(ENABLE_SAIL_FLASHING) \
+-- 
+2.34.1
+

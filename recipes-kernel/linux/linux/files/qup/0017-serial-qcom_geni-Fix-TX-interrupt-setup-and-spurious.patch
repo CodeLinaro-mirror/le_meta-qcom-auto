@@ -1,0 +1,77 @@
+From f0ab940f7427a65de09ff7bf7cd61cbc77cb7a30 Mon Sep 17 00:00:00 2001
+From: Aniket Randive <aniket.randive@oss.qualcomm.com>
+Date: Tue, 14 Oct 2025 14:50:04 +0530
+Subject: [PATCH] serial: qcom_geni: Fix TX interrupt setup and spurious IRQs
+ during suspend/resume
+
+When the `no_console_suspend` flag is set and a deep sleep quick boot
+test is run, the device enters suspend and resume states. During
+suspend, the serial core does not stop the TX engine, leaving the
+primary engine active. Upon resume, this causes the echo path to fail.
+
+In the TX path, `qcom_geni_serial_start_tx_fifo()` checks whether the TX
+FIFO is empty or the primary engine is active. If either condition is
+true, it returns early without setting the `TX_FIFO_WM` interrupt, which
+leads to TX path issues.
+
+To address this, add a proper check for console suspend enablement on
+console ports to ensure the interrupt is correctly configured and echo
+functionality is restored after resume.
+
+Additionally, clear all interrupts while stopping the TX and RX engines
+to avoid spurious interrupts during power transitions.
+
+Change-Id: I3f1e8647a8117d066dac2c57a49c7407e50f591b
+Signed-off-by: Aniket Randive <aniket.randive@oss.qualcomm.com>
+---
+ drivers/tty/serial/qcom_geni_serial.c | 20 ++++++++++++++++++--
+ 1 file changed, 18 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/tty/serial/qcom_geni_serial.c b/drivers/tty/serial/qcom_geni_serial.c
+index 61e203973b88..39ff6285e227 100644
+--- a/drivers/tty/serial/qcom_geni_serial.c
++++ b/drivers/tty/serial/qcom_geni_serial.c
+@@ -701,8 +701,12 @@ static void qcom_geni_serial_start_tx_fifo(struct uart_port *uport)
+ {
+ 	u32 irq_en;
+ 
+-	if (qcom_geni_serial_main_active(uport) ||
+-	    !qcom_geni_serial_tx_empty(uport))
++	if (qcom_geni_serial_main_active(uport)) {
++		if (!uart_console(uport) || console_suspend_enabled)
++			return;
++	}
++
++	if (!qcom_geni_serial_tx_empty(uport))
+ 		return;
+ 
+ 	irq_en = readl(uport->membase +	SE_GENI_M_IRQ_EN);
+@@ -721,6 +725,11 @@ static void qcom_geni_serial_stop_tx_fifo(struct uart_port *uport)
+ 	irq_en &= ~(M_CMD_DONE_EN | M_TX_FIFO_WATERMARK_EN);
+ 	writel(0, uport->membase + SE_GENI_TX_WATERMARK_REG);
+ 	writel(irq_en, uport->membase + SE_GENI_M_IRQ_EN);
++
++	/* Clear any pending TX interrupts that might cause storms */
++	writel(M_CMD_DONE_EN | M_TX_FIFO_WATERMARK_EN | M_CMD_CANCEL_EN | M_CMD_ABORT_EN,
++			uport->membase + SE_GENI_M_IRQ_CLEAR);
++
+ 	/* Possible stop tx is called multiple times. */
+ 	if (!qcom_geni_serial_main_active(uport))
+ 		return;
+@@ -774,6 +783,13 @@ static void qcom_geni_serial_stop_rx_fifo(struct uart_port *uport)
+ 	irq_en &= ~(M_RX_FIFO_WATERMARK_EN | M_RX_FIFO_LAST_EN);
+ 	writel(irq_en, uport->membase + SE_GENI_M_IRQ_EN);
+ 
++
++	/* Clear any pending RX interrupts */
++	writel(S_RX_FIFO_WATERMARK_EN | S_RX_FIFO_LAST_EN | S_CMD_CANCEL_EN | S_CMD_ABORT_EN,
++		uport->membase + SE_GENI_S_IRQ_CLEAR);
++	writel(M_RX_FIFO_WATERMARK_EN | M_RX_FIFO_LAST_EN,
++		uport->membase + SE_GENI_M_IRQ_CLEAR);
++
+ 	if (!qcom_geni_serial_secondary_active(uport))
+ 		return;
+ 
+-- 
+2.34.1
+

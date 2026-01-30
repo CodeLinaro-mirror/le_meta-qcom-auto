@@ -8,10 +8,15 @@ SYSTEMD_SERVICE:${PN} = "gvm_net_config.service"
 SYSTEMD_SERVICE:${PN}:append:sa7255-ivi = " gvm_net_config_lvgvm.service"
 SYSTEMD_SERVICE:${PN}:append:sa8255-ivi = " gvm_net_config_lvgvm.service"
 
+
+
+SRCPROJECT  = "git://${OSS_REPO}/clo/le/platform/vendor/qcom-opensource/kiumd.git"
+SRCBRANCH  = "safe-services.lnx.1.0.r18-rel"
+SRCREV  = "90079a9bd5e3abe24cb234ce62fc84c7754d77b1"
+
 SRC_URI = "\
-    ${PATH_TO_REPO}/vendor/qcom/opensource/kiumd/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/kiumd;usehead=1 \
+    ${SRCPROJECT};branch=${SRCBRANCH};protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/kiumd; \
 "
-SRCREV = "${AUTOREV}"
 
 S = "${WORKDIR}/vendor/qcom/opensource/kiumd/gvm_net_config"
 

@@ -1,0 +1,55 @@
+From e0d76e4d40b94931a215e7e5f7f771a445ff3b73 Mon Sep 17 00:00:00 2001
+From: Mrinmay Sarkar <msarkar@qti.qualcomm.com>
+Date: Tue, 5 Aug 2025 16:03:05 +0530
+Subject: [PATCH] bus: mhi: host: pci_generic: Add support for SA8797P target
+
+Add generic info for SA8797P target to support IP_SW.
+
+Change-Id: I48f62a65f76fc790ceb0621c3b8c1d641548588d
+Signed-off-by: Nitesh Gupta <nitegupt@qti.qualcomm.com>
+---
+ drivers/bus/mhi/host/pci_generic.c | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/drivers/bus/mhi/host/pci_generic.c b/drivers/bus/mhi/host/pci_generic.c
+index 6368e7194726..e6ac2023828a 100644
+--- a/drivers/bus/mhi/host/pci_generic.c
++++ b/drivers/bus/mhi/host/pci_generic.c
+@@ -19,6 +19,8 @@
+ 
+ #define MHI_PCI_DEFAULT_BAR_NUM 0
+ 
++#define MHI_NORD_BAR_NUM 1
++
+ #define MHI_POST_RESET_DELAY_MS 2000
+ 
+ #define HEALTH_CHECK_PERIOD (HZ * 2)
+@@ -320,6 +322,16 @@ static const struct mhi_pci_dev_info mhi_qcom_sa8775p_info = {
+ 	.disable_auto_suspend = true,
+ };
+ 
++static const struct mhi_pci_dev_info mhi_qcom_sa8797p_info = {
++	.name = "qcom-sa8797p",
++	.config = &modem_qcom_v3_mhiv_config,
++	.bar_num = MHI_NORD_BAR_NUM,
++	.dma_data_width = 32,
++	.mru_default = 32768,
++	.sideband_wake = false,
++	.disable_auto_suspend = true,
++};
++
+ static const struct mhi_pci_dev_info mhi_qcom_sdx65_info = {
+ 	.name = "qcom-sdx65m",
+ 	.fw = "qcom/sdx65m/xbl.elf",
+@@ -644,6 +656,8 @@ static const struct pci_device_id mhi_pci_id_table[] = {
+ 		.driver_data = (kernel_ulong_t) &mhi_qcom_sa8775p_info },
+ 	 { PCI_DEVICE(PCI_VENDOR_ID_QCOM, 0x011a),
+ 		.driver_data = (kernel_ulong_t) &mhi_qcom_sdx35_info },
++	{PCI_DEVICE(PCI_VENDOR_ID_QCOM, 0x0120),
++		.driver_data = (kernel_ulong_t) &mhi_qcom_sa8797p_info },
+ 	{ PCI_DEVICE(PCI_VENDOR_ID_QCOM, 0x0304),
+ 		.driver_data = (kernel_ulong_t) &mhi_qcom_sdx24_info },
+ 	{ PCI_DEVICE_SUB(PCI_VENDOR_ID_QCOM, 0x0306, PCI_VENDOR_ID_QCOM, 0x010c),
+-- 
+2.25.1
+

@@ -1,4 +1,4 @@
-FILESEXTRAPATHS:prepend := "${PATH_TO_REPO}/vendor/qcom/opensource/safelinux-system-cfg/irqbalance-config/:"
+FILESEXTRAPATHS:prepend := "${PATH_TO_REPO}/layers/meta-qcom-auto/recipes-core/irqbalance/files/:"
 
 SRC_URI += "file://irqbalanced.conf \
             file://set_irq_bal_level.sh"

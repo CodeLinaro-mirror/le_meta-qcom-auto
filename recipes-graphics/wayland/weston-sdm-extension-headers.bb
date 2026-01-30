@@ -10,8 +10,14 @@ CODE_DIR = "${@bb.utils.contains_any('PREFERRED_PROVIDER_virtual/kernel', 'linux
 CODE_DIR:sa8775 = "graphics/weston-sdm-extension"
 CODE_DIR:sa7255 = "graphics/weston-sdm-extension"
 
-SRC_URI = "${PATH_TO_REPO}/${CODE_DIR}/.git;protocol=${PROTO};destsuffix=${CODE_DIR};usehead=1"
-SRCREV = "${AUTOREV}"
+
+SRCPROJECT  = "git://${OSS_REPO}/clo/le/graphics/weston-sdm-extension.git"
+SRCBRANCH  = "display-userspace.lnx.3.2.r1-rel"
+SRCREV  = "c9cda1142dcb94e92ba83244e3c89534541c1593"
+
+SRC_URI = "${SRCPROJECT};branch=${SRCBRANCH};protocol=${OSS_PROTO};destsuffix=graphics/weston-sdm-extension;"
+
+
 S = "${WORKDIR}/${CODE_DIR}"
 
 PREBUILT = "1"

@@ -1,0 +1,285 @@
+From c8c40bb81ae08cd31ce86e2c8cd93d4c886836a4 Mon Sep 17 00:00:00 2001
+From: ziqic <ziqic@qti.qualcomm.com>
+Date: Mon, 30 Dec 2024 15:34:16 +0800
+Subject: [PATCH] mm: memblock:enable memory-hotplug
+
+Legacy from Gen3 memory-hotplug plan.
+
+1.mm: memblock: dynamically calculate memory hotplug range
+
+We need to support memory hotplug, but the range reserved
+for hotplug changes for different ddr size. Calculating
+range for each ddr size manually and configuring it in
+cmdline will cause us to release separate kernel image for
+each possible ddr size. This is not acceptable, so we need
+to calculate it dynamically during booting.
+We define two new early params. "no_hotplug_area" tells us
+which area is not suitable for memory hotplug so we should
+skip those areas when calculating. "dyn_memhotplug" tells
+us we need this feature(dynamically memory hotplug area
+calculating).
+We find aligned memory blocks in memory layout automatically
+except those in the no_hotplug_area and we expose the areas
+we get through sysfs to userspace so some service can
+hotplug those areas back after system fully boots up.
+
+Signed-off-by: Jiacheng Zheng <jiaczhen@codeaurora.org>
+Signed-off-by: Kaisheng Yang <quic_kaisheng@quicinc.com>
+
+2.arm64: add ARCH_MEMORY_PROBE Kconfig
+
+Add config ARCH_MEMORY_PROBE to enable memory probe sysfs interface.
+Write memory physical address to /sys/device/system/memory/probe to
+add memory to kernel.
+
+Signed-off-by: Kaisheng Yang <quic_kaisheng@quicinc.com>
+
+Change-Id: Ide2413142123b3c8154acdebcde55b4acac6d1c1
+Signed-off-by: ziqic <ziqic@qti.qualcomm.com>
+---
+ arch/arm64/Kconfig       |  12 ++++
+ drivers/base/memory.c    |  22 +++++++
+ include/linux/memblock.h |   5 ++
+ mm/memblock.c            | 126 +++++++++++++++++++++++++++++++++++++++
+ 4 files changed, 165 insertions(+)
+
+diff --git a/arch/arm64/Kconfig b/arch/arm64/Kconfig
+index 658c6a61ab6f..09c70a318b80 100644
+--- a/arch/arm64/Kconfig
++++ b/arch/arm64/Kconfig
+@@ -16,6 +16,7 @@ config ARM64
+ 	select ARCH_CORRECT_STACKTRACE_ON_KRETPROBE
+ 	select ARCH_ENABLE_HUGEPAGE_MIGRATION if HUGETLB_PAGE && MIGRATION
+ 	select ARCH_ENABLE_MEMORY_HOTPLUG
++	select ARCH_MEMORY_PROBE
+ 	select ARCH_ENABLE_MEMORY_HOTREMOVE
+ 	select ARCH_ENABLE_SPLIT_PMD_PTLOCK if PGTABLE_LEVELS > 2
+ 	select ARCH_ENABLE_THP_MIGRATION if TRANSPARENT_HUGEPAGE
+@@ -1510,6 +1511,17 @@ config HW_PERF_EVENTS
+ 	def_bool y
+ 	depends on ARM_PMU
+ 
++config ARCH_MEMORY_PROBE
++	bool "Enable sysfs memory/probe interface"
++	depends on MEMORY_HOTPLUG
++	help
++	  This option enables a sysfs memory/probe interface for testing.
++	  See Documentation/admin-guide/mm/memory-hotplug.rst for more information.
++	  If you are unsure how to answer this question, answer N.
++
++	  Add userspace sysfs memory probe interface /sys/device/system/memory/probe.
++	  Write physical address to this interface to probe memory.
++
+ # Supported by clang >= 7.0 or GCC >= 12.0.0
+ config CC_HAVE_SHADOW_CALL_STACK
+ 	def_bool $(cc-option, -fsanitize=shadow-call-stack -ffixed-x18)
+diff --git a/drivers/base/memory.c b/drivers/base/memory.c
+index 8a13babd826c..6d8d0b8288e8 100644
+--- a/drivers/base/memory.c
++++ b/drivers/base/memory.c
+@@ -22,6 +22,7 @@
+ #include <linux/stat.h>
+ #include <linux/slab.h>
+ #include <linux/xarray.h>
++#include <linux/memblock.h>
+ 
+ #include <linux/atomic.h>
+ #include <linux/uaccess.h>
+@@ -472,6 +473,22 @@ static DEVICE_ATTR_RW(state);
+ static DEVICE_ATTR_RO(phys_device);
+ static DEVICE_ATTR_RO(removable);
+ 
++#ifdef CONFIG_MEMORY_HOTPLUG
++static ssize_t show_aligned_blocks_addr(struct device *dev,
++			struct device_attribute *attr, char *buf)
++{
++	return memblock_dump_aligned_blocks_addr(buf);
++}
++
++static ssize_t show_aligned_blocks_num(struct device *dev,
++			struct device_attribute *attr, char *buf)
++{
++	return memblock_dump_aligned_blocks_num(buf);
++}
++static DEVICE_ATTR(aligned_blocks_addr, 0444, show_aligned_blocks_addr, NULL);
++static DEVICE_ATTR(aligned_blocks_num, 0444, show_aligned_blocks_num, NULL);
++#endif
++
+ /*
+  * Show the memory block size (shared by all memory blocks).
+  */
+@@ -921,6 +938,11 @@ static struct attribute *memory_root_attrs[] = {
+ #ifdef CONFIG_CRASH_HOTPLUG
+ 	&dev_attr_crash_hotplug.attr,
+ #endif
++
++#ifdef CONFIG_MEMORY_HOTPLUG
++	&dev_attr_aligned_blocks_addr.attr,
++	&dev_attr_aligned_blocks_num.attr,
++#endif
+ 	NULL
+ };
+ 
+diff --git a/include/linux/memblock.h b/include/linux/memblock.h
+index ed57c23f80ac..2e0e4f72a350 100644
+--- a/include/linux/memblock.h
++++ b/include/linux/memblock.h
+@@ -132,6 +132,11 @@ void memblock_free_all(void);
+ void memblock_free(void *ptr, size_t size);
+ void reset_all_zones_managed_pages(void);
+ 
++#ifdef CONFIG_MEMORY_HOTPLUG
++int memblock_dump_aligned_blocks_addr(char *buf);
++int memblock_dump_aligned_blocks_num(char *buf);
++#endif
++
+ /* Low level functions */
+ void __next_mem_range(u64 *idx, int nid, enum memblock_flags flags,
+ 		      struct memblock_type *type_a,
+diff --git a/mm/memblock.c b/mm/memblock.c
+index d630f5c2bdb9..b8c31d9c4cca 100644
+--- a/mm/memblock.c
++++ b/mm/memblock.c
+@@ -16,6 +16,7 @@
+ #include <linux/kmemleak.h>
+ #include <linux/seq_file.h>
+ #include <linux/memblock.h>
++#include <linux/memory.h>
+ 
+ #include <asm/sections.h>
+ #include <linux/io.h>
+@@ -2186,6 +2187,131 @@ void __init memblock_free_all(void)
+ 	totalram_pages_add(pages);
+ }
+ 
++#ifdef CONFIG_MEMORY_HOTPLUG
++#define NUM_NOHP 8
++#define NUM_ALIGN_BLK 512
++static phys_addr_t no_hotplug_area[NUM_NOHP];
++static phys_addr_t aligned_blocks[NUM_ALIGN_BLK];
++
++static int __init early_no_hotplug_area(char *p)
++{
++	phys_addr_t base, size;
++	int idx = 0;
++	char *endp = p;
++
++	while (1) {
++		base = memparse(endp, &endp);
++		if (base && *endp == ',') {
++			size = memparse(endp + 1, &endp);
++			if (size) {
++				no_hotplug_area[idx++] = base;
++				no_hotplug_area[idx++] = base+size;
++
++				if (*endp == ';' && idx <= NUM_NOHP-2) {
++					endp++;
++				} else {
++					if (*endp == ';' && idx == NUM_NOHP-1)
++						pr_err("%s: nohp overflows\n", __func__);
++					break;
++				}
++			} else
++				break;
++		} else
++			break;
++	}
++	return 0;
++}
++early_param("no_hotplug_area", early_no_hotplug_area);
++
++static bool __init memblock_in_no_hotplug_area(phys_addr_t addr)
++{
++	int idx = 0;
++
++	while (idx < NUM_NOHP) {
++		if (!no_hotplug_area[idx])
++			break;
++
++		if ((addr + MIN_MEMORY_BLOCK_SIZE <= no_hotplug_area[idx])
++			|| (addr >= no_hotplug_area[idx+1])) {
++			idx += 2;
++			continue;
++		}
++
++		return true;
++	}
++	return false;
++}
++
++static int __init early_dyn_memhotplug(char *p)
++{
++	unsigned long idx = 0;
++	unsigned long old_cnt;
++	phys_addr_t addr, rgn_end;
++	struct memblock_region *rgn;
++	int blk = 0;
++
++	while ((idx) < memblock.memory.cnt) {
++		old_cnt = memblock.memory.cnt;
++		rgn = &memblock.memory.regions[idx++];
++		addr = ALIGN(rgn->base, MIN_MEMORY_BLOCK_SIZE);
++		rgn_end = rgn->base + rgn->size;
++		if (idx == memblock.memory.cnt)
++			rgn_end--;
++		while (addr + MIN_MEMORY_BLOCK_SIZE <= rgn_end) {
++			if (!memblock_in_no_hotplug_area(addr)) {
++				if (blk == NUM_ALIGN_BLK-1) {
++					pr_err("%s: aligned_blocks overflows\n", __func__);
++					return 0;
++				}
++				aligned_blocks[blk++] = addr;
++				memblock_remove(addr, MIN_MEMORY_BLOCK_SIZE);
++			}
++			addr += MIN_MEMORY_BLOCK_SIZE;
++		}
++		if (old_cnt != memblock.memory.cnt)
++			idx--;
++	}
++	return 0;
++}
++early_param("dyn_memhotplug", early_dyn_memhotplug);
++
++int memblock_dump_aligned_blocks_addr(char *buf)
++{
++	int idx = 0;
++	int size = 0;
++
++	if (aligned_blocks[idx]) {
++		size += snprintf(buf+size, 32, "0x%llx", aligned_blocks[idx]);
++		idx++;
++	}
++
++	while (aligned_blocks[idx]) {
++		size += snprintf(buf+size, 32, ",0x%llx", aligned_blocks[idx]);
++		idx++;
++	}
++	return size;
++}
++
++int memblock_dump_aligned_blocks_num(char *buf)
++{
++	int idx = 0;
++	int size = 0;
++
++	if (aligned_blocks[idx]) {
++		size += snprintf(buf+size, 16, "%d",
++			(int)(aligned_blocks[idx] >> SECTION_SIZE_BITS));
++		idx++;
++	}
++
++	while (aligned_blocks[idx]) {
++		size += snprintf(buf+size, 16, ",%d",
++			(int)(aligned_blocks[idx] >> SECTION_SIZE_BITS));
++		idx++;
++	}
++	return size;
++}
++#endif
++
+ #if defined(CONFIG_DEBUG_FS) && defined(CONFIG_ARCH_KEEP_MEMBLOCK)
+ static const char * const flagname[] = {
+ 	[ilog2(MEMBLOCK_HOTPLUG)] = "HOTPLUG",
+-- 
+2.34.1
+

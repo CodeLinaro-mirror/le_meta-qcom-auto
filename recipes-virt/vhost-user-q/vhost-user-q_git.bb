@@ -58,7 +58,6 @@ SYSTEMD_SERVICE:${PN}:append:sa8255-ivi = "\
 
 SYSTEMD_SERVICE:${PN}:append:sa8775-flex = "\
     ${LA_EXTRA_SERVICES_LIST_GEN4_5} \
-    ${LV_SERVICES_LIST} \
 "
 
 SYSTEMD_SERVICE:${PN}:append:gen5 = "\
@@ -79,8 +78,13 @@ DEPENDS += "vmm-lib"
 DEPENDS += "${@bb.utils.contains("MACHINE_FEATURES", "qti-umd", "msmhab", "", d)}"
 DEPENDS += "systemd"
 
-SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/vhost-user/.git;protocol=${PROTO};destsuffix=vhost-user-q;usehead=1"
-SRCREV = "${AUTOREV}"
+
+
+SRCPROJECT  = "git://${OSS_REPO}/clo/le/platform/vendor/qcom-opensource/vhost-user.git"
+SRCBRANCH  = "vhost-user.lnx.2.0.r13-rel"
+SRCREV  = "04015df67dafb45636a215f4abbf781353256f57"
+
+SRC_URI = "${SRCPROJECT};branch=${SRCBRANCH};protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/vhost-user;"
 
 S = "${WORKDIR}/vendor/qcom/opensource/vhost-user"
 
@@ -120,10 +124,6 @@ do_install:append:sa8255-ivi() {
 
 do_install:append:sa8775-flex() {
     for service in ${LA_EXTRA_SERVICES_LIST_GEN4_5}; do
-        install -m 0644 ${S}/${service} -D ${D}${systemd_unitdir}/system/
-    done
-
-    for service in ${LV_SERVICES_LIST}; do
         install -m 0644 ${S}/${service} -D ${D}${systemd_unitdir}/system/
     done
 }

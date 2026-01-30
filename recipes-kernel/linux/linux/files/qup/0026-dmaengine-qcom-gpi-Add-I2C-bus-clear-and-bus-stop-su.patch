@@ -1,0 +1,211 @@
+From b558bebf1d6fc686f5f56f391f800a12a00a7de7 Mon Sep 17 00:00:00 2001
+From: Aniket Randive <arandive@qti.qualcomm.com>
+Date: Mon, 8 Sep 2025 17:01:04 +0530
+Subject: [PATCH 02/13] dmaengine: qcom: gpi: Add I2C bus clear and bus stop
+ support
+
+This patch adds support for I2C bus clear and bus stop functionality
+in the GPI driver.
+
+Additionally, this change avoids and removes unnecessary steps,
+enhancing relevant APIs in the GENI I2C driver.
+
+It also fixes a potential NULL dereference issue by assigning the
+correct pointer to callback_param in the GENI I2C driver.
+
+Change-Id: Ic66fa0247f99dbbc8cc666cef59e7f6835ec0076
+Signed-off-by: Maramaina Naresh <mnaresh@qti.qualcomm.com>
+Signed-off-by: Aniket Randive <arandive@qti.qualcomm.com>
+---
+ drivers/dma/qcom/gpi.c             | 11 +++++
+ drivers/i2c/busses/i2c-qcom-geni.c | 73 +++++++++++-------------------
+ include/linux/dma/qcom-gpi-dma.h   |  2 +
+ 3 files changed, 39 insertions(+), 47 deletions(-)
+
+diff --git a/drivers/dma/qcom/gpi.c b/drivers/dma/qcom/gpi.c
+index 4fd0a7ed17be..6cead203bfe3 100644
+--- a/drivers/dma/qcom/gpi.c
++++ b/drivers/dma/qcom/gpi.c
+@@ -2354,6 +2354,16 @@ static int gpi_create_i2c_tre(struct gchan *chan, struct gpi_desc *desc,
+ 		tre->dword[3] |= u32_encode_bits(0, TRE_FLAGS_NOP_LAST);
+ 	}
+ 
++	/* create the GO tre for bus clear or bus stop */
++	if (i2c->op == I2C_BUS_CLEAR || i2c->op == I2C_BUS_STOP) {
++		tre = &desc->tre[tre_idx];
++		tre_idx++;
++		tre->dword[0] = u32_encode_bits(i2c->op, TRE_I2C_GO_CMD);
++		tre->dword[3] = u32_encode_bits(TRE_TYPE_GO, TRE_FLAGS_TYPE);
++		tre->dword[3] |= u32_encode_bits(1, TRE_FLAGS_IEOT);
++		goto end;
++	}
++
+ 	/* create the GO tre for Tx */
+ 	if (i2c->op == I2C_WRITE) {
+ 		tre = &desc->tre[tre_idx];
+@@ -2402,6 +2412,7 @@ static int gpi_create_i2c_tre(struct gchan *chan, struct gpi_desc *desc,
+ 		tre->dword[3] |= u32_encode_bits(i2c->ccu_cfg.nop_frame, TRE_FLAGS_NOP_LAST);
+ 	}
+ 
++end:
+ 	/* Unlock tre for last transfer */
+ 	if (i2c->shared_se && i2c->last_msg && i2c->op != I2C_READ) {
+ 		tre = &desc->tre[tre_idx];
+diff --git a/drivers/i2c/busses/i2c-qcom-geni.c b/drivers/i2c/busses/i2c-qcom-geni.c
+index e31a8cbda7c4..2fd608a2437a 100644
+--- a/drivers/i2c/busses/i2c-qcom-geni.c
++++ b/drivers/i2c/busses/i2c-qcom-geni.c
+@@ -428,64 +428,49 @@ static int geni_i2c_power_on_off(struct i2c_adapter *adap, bool suspend)
+ }
+ 
+ /*
+- * geni_i2c_send_cmd_gsi_mode - This function is used to send bus cmd
+- *			in GPI mode.
++ * geni_i2c_gpi_send_bus_cmd - This function is used to send bus cmd
++ * in GPI mode.
+  * @gi2c: Handle of the I2C device
+  * @cmd: opcode command
+  *
+  * Return: zero on success and error on failure.
+  */
+-static int geni_i2c_send_cmd_gsi_mode(struct geni_i2c_dev *gi2c, int cmd)
++static int geni_i2c_gpi_send_bus_cmd(struct geni_i2c_dev *gi2c, u8 cmd)
+ {
+ 	struct dma_slave_config config = {};
+ 	struct gpi_i2c_config peripheral = {};
+ 	struct dma_chan *dma_chan = gi2c->tx_c[0];
+ 	struct dma_async_tx_descriptor *desc;
+ 	dma_cookie_t cookie;
++	unsigned int time_left;
+ 	int ret;
+-	unsigned int flags, time_left;
+-	void *buf;
+-	dma_addr_t addr;
+ 
+ 	config.peripheral_config = &peripheral;
+ 	config.peripheral_size = sizeof(peripheral);
+ 	peripheral.op = cmd;
+-	peripheral.set_config = 1;
+-	peripheral.multi_msg = false;
+-
+-	buf = kzalloc(1, GFP_KERNEL);
+-	if (!buf)
+-		return -ENOMEM;
+-
+-	addr = dma_map_single(gi2c->se.dev->parent, buf, 1, DMA_TO_DEVICE);
+-	if (dma_mapping_error(gi2c->se.dev->parent, addr)) {
+-		kfree(buf);
+-		return -ENOMEM;
+-	}
++	peripheral.gi2c = gi2c;
+ 
+ 	ret = dmaengine_slave_config(dma_chan, &config);
+ 	if (ret) {
+-		I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "dma config error: %d for op:%d\n", ret, cmd);
+-		goto err_config;
++		dev_err(gi2c->se.dev, "dma config error: %d for op:%d\n", ret, cmd);
++		return ret;
+ 	}
+ 
+-	peripheral.set_config = 0;
+-
+-	flags = DMA_PREP_INTERRUPT | DMA_CTRL_ACK;
+-	desc = dmaengine_prep_slave_single(dma_chan, addr, 1, DMA_MEM_TO_DEV, flags);
++	desc = dmaengine_prep_slave_single(dma_chan, NULL, 0, DMA_MEM_TO_DEV,
++					   DMA_PREP_INTERRUPT | DMA_CTRL_ACK);
+ 	if (!desc) {
+-		I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "prep_slave_sg failed\n");
+-		ret = -EIO;
+-		goto err_config;
++		dev_err(gi2c->se.dev, "%s: prep_slave_sg failed\n", __func__);
++		return -EIO;
+ 	}
+ 
+ 	desc->callback_result = i2c_gpi_cb_result;
+-	desc->callback_param = gi2c;
++	desc->callback_param = &peripheral;
+ 	cookie = dmaengine_submit(desc);
+ 	if (dma_submit_error(cookie)) {
+-		I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "%s: dmaengine_submit failed (%d)\n",
++		dev_err(gi2c->se.dev, "%s: dmaengine_submit failed (%d)\n",
+ 			__func__, cookie);
+-		goto err;
++		dmaengine_desc_free(desc);
++		return -EIO;
+ 	}
+ 
+ 	dma_async_issue_pending(dma_chan);
+@@ -493,24 +478,12 @@ static int geni_i2c_send_cmd_gsi_mode(struct geni_i2c_dev *gi2c, int cmd)
+ 	reinit_completion(&gi2c->done);
+ 	time_left = wait_for_completion_timeout(&gi2c->done, XFER_TIMEOUT);
+ 	if (!time_left) {
+-		I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "I2C timeout for cmd:%d\n", cmd);
++		dev_err(gi2c->se.dev, "%s: I2C timeout for cmd:%d\n", __func__, cmd);
+ 		gi2c->err = -ETIMEDOUT;
++		dmaengine_terminate_sync(dma_chan);
+ 	}
+ 
+-	if (gi2c->err) {
+-		ret = gi2c->err;
+-		goto err;
+-	}
+-
+-	kfree(buf);
+-	return 0;
+-err:
+-	I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "GPI transfer failed: %d\n", ret);
+-	dmaengine_terminate_sync(dma_chan);
+-err_config:
+-	dma_unmap_single(gi2c->se.dev->parent, addr, 1, DMA_TO_DEVICE);
+-	kfree(buf);
+-	return ret;
++	return gi2c->err;
+ }
+ 
+ /*
+@@ -586,14 +559,15 @@ int geni_i2c_check_recover_ios_line(struct i2c_adapter *adap)
+ 		I2C_DBG_LOG(LOG_LVL_INFO, gi2c->se.dev, "IOS lines in good state\n");
+ 		return 0;
+ 	}
++
+ 	if (gi2c->xfer_mode == GENI_GPI_DMA) {
+-		ret = geni_i2c_send_cmd_gsi_mode(gi2c, I2C_BUS_CLEAR);
++		ret = geni_i2c_gpi_send_bus_cmd(gi2c, I2C_BUS_CLEAR);
+ 		if (ret) {
+ 			dev_err(gi2c->se.dev, "BUS CLEAR cmd failed for GPI mode\n");
+ 			return ret;
+ 		}
+ 
+-		ret = geni_i2c_send_cmd_gsi_mode(gi2c, I2C_STOP_ON_BUS);
++		ret = geni_i2c_gpi_send_bus_cmd(gi2c, I2C_STOP_ON_BUS);
+ 		if (ret) {
+ 			dev_err(gi2c->se.dev, "STOP_ON_BUS cmd failed for GPI mode\n");
+ 			return ret;
+@@ -1150,6 +1124,11 @@ static void i2c_gpi_cb_result(void *cb, const struct dmaengine_result *result)
+ 			    "DMA xfer has pending: %d\n", result->residue);
+ 	}
+ 
++	if (i2c->op == I2C_BUS_CLEAR || i2c->op == I2C_STOP_ON_BUS) {
++		complete(&gi2c->done);
++		return;
++	}
++
+ 	gpii_idx = result->gpii_id % CCU_MAX_GPII;
+ 	if (gi2c->is_ccu_qup)
+ 		frame_idx = gi2c->ccu.gpi[gpii_idx].released_cnt;
+diff --git a/include/linux/dma/qcom-gpi-dma.h b/include/linux/dma/qcom-gpi-dma.h
+index 2d7af187511a..d94b7b3f67f9 100644
+--- a/include/linux/dma/qcom-gpi-dma.h
++++ b/include/linux/dma/qcom-gpi-dma.h
+@@ -85,6 +85,8 @@ struct gpi_ccu_i2c_config {
+ enum i2c_op {
+ 	I2C_WRITE = 1,
+ 	I2C_READ,
++	I2C_BUS_CLEAR = 6,
++	I2C_BUS_STOP,
+ };
+ 
+ /**
+-- 
+2.34.1
+

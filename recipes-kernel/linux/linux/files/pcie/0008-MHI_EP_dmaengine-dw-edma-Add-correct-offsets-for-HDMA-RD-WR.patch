@@ -1,0 +1,30 @@
+From b66bb806a54426d27162323abdc4fecf86bb2cac Mon Sep 17 00:00:00 2001
+From: Nitesh Gupta <nitegupt@qti.qualcomm.com>
+Date: Wed, 21 May 2025 15:38:46 +0530
+Subject: [PATCH] dmaengine: dw-edma: Add correct offsets for HDMA RD/WR
+ channels
+
+Add correct strcuture padding to reflect RD/WR channel offsets for
+HDMA on sa8797p platform.
+
+Change-Id: I113ed398984b3e52f102b68ed86a84be9b612665
+Signed-off-by: Nitesh Gupta <nitegupt@qti.qualcomm.com>
+---
+ drivers/dma/dw-edma/dw-hdma-v0-regs.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/dma/dw-edma/dw-hdma-v0-regs.h b/drivers/dma/dw-edma/dw-hdma-v0-regs.h
+index eab5fd7177e5..f9f67e99c274 100644
+--- a/drivers/dma/dw-edma/dw-hdma-v0-regs.h
++++ b/drivers/dma/dw-edma/dw-hdma-v0-regs.h
+@@ -83,7 +83,7 @@ struct dw_hdma_v0_ch_regs {
+ 		};
+ 	} msi_abort;
+ 	u32 msi_msgdata;			/* 0x00a8 */
+-	u32 padding_2[21];			/* 0x00ac..0x00fc */
++	u8 padding[3924];
+ } __packed;
+ 
+ struct dw_hdma_v0_ch {
+-- 
+

@@ -4,9 +4,14 @@ HOMEPAGE = "https://git.codelinaro.org"
 LICENSE = "GPL-2.0-only"
 LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/${LICENSE};md5=801f80980d171dd6425610833a22dbe6"
 
-SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/safelinux-sec-modules/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/safelinux-sec-modules;usehead=1"
 
-SRCREV = "${AUTOREV}"
+
+SRCPROJECT  = "git://${OSS_REPO}/clo/le/platform/vendor/qcom-opensource/safelinux-sec-modules.git"
+SRCBRANCH  = "sec-safe-kernel.lnx.1.0.r10-rel"
+SRCREV  = "47de9d911c9a6cc22322141509cc07a4137fd96f"
+
+SRC_URI = "${SRCPROJECT};branch=${SRCBRANCH};protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/safelinux-sec-modules;"
+
 
 S = "${WORKDIR}/vendor/qcom/opensource/safelinux-sec-modules/security-modules"
 

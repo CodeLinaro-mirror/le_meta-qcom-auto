@@ -9,11 +9,16 @@ DEPENDS += "glib-2.0"
 
 PR = "r1"
 
+
+
+SRCPROJECT  = "git://${OSS_REPO}/clo/le/platform/system/core.git"
+SRCBRANCH  = "lv-blast.lnx.1.1.r56-rel"
+SRCREV  = "0d3d6f588509bdd67606fb783d50b5dd415562e6"
+
 SRC_URI = "\
-    ${PATH_TO_REPO}/system/core/.git;protocol=${PROTO};destsuffix=system/core;usehead=1 \
+    ${SRCPROJECT};branch=${SRCBRANCH};protocol=${OSS_PROTO};destsuffix=system/core; \
     file://50-log.rules \
 "
-SRCREV = "${AUTOREV}"
 
 S = "${WORKDIR}/system/core/liblog"
 

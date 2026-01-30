@@ -4,10 +4,15 @@ HOMEPAGE = "https://git.codelinaro.org"
 LICENSE = "GPL-2.0-only"
 LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/GPL-2.0-only;md5=801f80980d171dd6425610833a22dbe6"
 
+
+
+SRCPROJECT  = "git://${OSS_REPO}/clo/la/platform/vendor/opensource/virtio-video.git"
+SRCBRANCH  = "video-hyp.lnx.2.0.r41-rel"
+SRCREV  = "bd638ccaa3183012d992912bc58457686d7ad4b0"
+
 SRC_URI = "\
-    ${PATH_TO_REPO}/vendor/qcom/opensource/virtio-video/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/virtio-video;usehead=1 \
+    ${SRCPROJECT};branch=${SRCBRANCH};protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/virtio-video; \
 "
-SRCREV = "${AUTOREV}"
 
 S = "${WORKDIR}/vendor/qcom/opensource/virtio-video"
 

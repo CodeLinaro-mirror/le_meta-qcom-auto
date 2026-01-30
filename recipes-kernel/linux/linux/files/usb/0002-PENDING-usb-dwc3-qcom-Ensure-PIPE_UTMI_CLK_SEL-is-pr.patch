@@ -1,0 +1,123 @@
+From 6cf560ac148193e0aa08dcbd98b0fe7b1845a276 Mon Sep 17 00:00:00 2001
+From: Sriram Dash <quic_sriramd@quicinc.com>
+Date: Thu, 27 Feb 2025 21:32:11 +0530
+Subject: [PATCH] PENDING: usb: dwc3: qcom: Ensure PIPE_UTMI_CLK_SEL is proper
+ after APPS Resume
+
+During APPS Suspend, the clock controller unit disables all
+clocks to the CPU and subsystems, causing the controller to
+enter the Power-On Reset (POR) state. This results in the
+loss of Qscratch programming.
+
+Upon APPS Resume, the USB controller does not have the proper
+PIPE_UTMI_CLK_SEL set. If only the High-Speed PHY is used for
+a controller capable of SuperSpeed operations, the controller
+will assume it should use the USB3 PHY and not the HS PHY as
+configured before APPS Suspend. This behavior disrupts the
+normal operation of the USB controller.
+
+Address the issue by ensuring that the PIPE_UTMI_CLK_SEL is
+properly set for the controller after the system resumes from
+APPS Suspend. This is crucial for maintaining the correct
+operational state of the USB controller and preventing
+unintended suspensions of the PHYs.
+
+Change-Id: I98e8d94652fd840fc8c1da35458636b5783eb2b6
+Signed-off-by: Sriram Dash <quic_sriramd@quicinc.com>
+---
+ drivers/usb/dwc3/dwc3-qcom.c | 43 +++++++++++++++++++-----------------
+ 1 file changed, 23 insertions(+), 20 deletions(-)
+
+diff --git a/drivers/usb/dwc3/dwc3-qcom.c b/drivers/usb/dwc3/dwc3-qcom.c
+index 9dc9684344ff..413a1a706ff9 100644
+--- a/drivers/usb/dwc3/dwc3-qcom.c
++++ b/drivers/usb/dwc3/dwc3-qcom.c
+@@ -96,6 +96,7 @@ struct dwc3_qcom {
+ 	struct icc_path		*icc_path_ddr;
+ 	struct icc_path		*icc_path_apps;
+ 
++	bool			ignore_pipe_clk;
+ 	enum usb_role		current_role;
+ 	struct notifier_block	xhci_nb;
+ };
+@@ -465,6 +466,23 @@ static void dwc3_qcom_vbus_regulator_enable(struct dwc3_qcom *qcom, bool on)
+ 	}
+ }
+ 
++static void dwc3_qcom_select_utmi_clk(struct dwc3_qcom *qcom)
++{
++	/* Configure dwc3 to use UTMI clock as PIPE clock not present */
++	dwc3_qcom_setbits(qcom->qscratch_base, QSCRATCH_GENERAL_CFG,
++			  PIPE_UTMI_CLK_DIS);
++
++	usleep_range(100, 1000);
++
++	dwc3_qcom_setbits(qcom->qscratch_base, QSCRATCH_GENERAL_CFG,
++			  PIPE_UTMI_CLK_SEL | PIPE3_PHYSTATUS_SW);
++
++	usleep_range(100, 1000);
++
++	dwc3_qcom_clrbits(qcom->qscratch_base, QSCRATCH_GENERAL_CFG,
++			  PIPE_UTMI_CLK_DIS);
++}
++
+ static int dwc3_qcom_suspend(struct dwc3_qcom *qcom, bool wakeup)
+ {
+ 	u32 val;
+@@ -540,6 +558,9 @@ static int dwc3_qcom_resume(struct dwc3_qcom *qcom, bool wakeup)
+ 	if (!(dwc3_qcom_is_host(qcom) && wakeup))
+ 		dwc3_qcom_vbus_override_enable(qcom, true);
+ 
++	if (!wakeup && qcom->ignore_pipe_clk)
++		dwc3_qcom_select_utmi_clk(qcom);
++
+ 	qcom->is_suspended = false;
+ 
+ 	return 0;
+@@ -572,23 +593,6 @@ static irqreturn_t qcom_dwc3_resume_irq(int irq, void *data)
+ 	return IRQ_HANDLED;
+ }
+ 
+-static void dwc3_qcom_select_utmi_clk(struct dwc3_qcom *qcom)
+-{
+-	/* Configure dwc3 to use UTMI clock as PIPE clock not present */
+-	dwc3_qcom_setbits(qcom->qscratch_base, QSCRATCH_GENERAL_CFG,
+-			  PIPE_UTMI_CLK_DIS);
+-
+-	usleep_range(100, 1000);
+-
+-	dwc3_qcom_setbits(qcom->qscratch_base, QSCRATCH_GENERAL_CFG,
+-			  PIPE_UTMI_CLK_SEL | PIPE3_PHYSTATUS_SW);
+-
+-	usleep_range(100, 1000);
+-
+-	dwc3_qcom_clrbits(qcom->qscratch_base, QSCRATCH_GENERAL_CFG,
+-			  PIPE_UTMI_CLK_DIS);
+-}
+-
+ static int dwc3_qcom_get_irq(struct platform_device *pdev,
+ 			     const char *name, int num)
+ {
+@@ -1029,7 +1033,6 @@ static int dwc3_qcom_probe(struct platform_device *pdev)
+ 	struct resource		*res, *parent_res = NULL;
+ 	struct resource		local_res;
+ 	int			ret, i;
+-	bool			ignore_pipe_clk;
+ 	bool			wakeup_source;
+ 	bool			legacy_binding;
+ 
+@@ -1121,9 +1124,9 @@ static int dwc3_qcom_probe(struct platform_device *pdev)
+ 	 * Disable pipe_clk requirement if specified. Used when dwc3
+ 	 * operates without SSPHY and only HS/FS/LS modes are supported.
+ 	 */
+-	ignore_pipe_clk = device_property_read_bool(dev,
++	qcom->ignore_pipe_clk = device_property_read_bool(dev,
+ 				"qcom,select-utmi-as-pipe-clk");
+-	if (ignore_pipe_clk)
++	if (qcom->ignore_pipe_clk)
+ 		dwc3_qcom_select_utmi_clk(qcom);
+ 
+ 	if (!legacy_binding) {
+-- 
+2.34.1
+

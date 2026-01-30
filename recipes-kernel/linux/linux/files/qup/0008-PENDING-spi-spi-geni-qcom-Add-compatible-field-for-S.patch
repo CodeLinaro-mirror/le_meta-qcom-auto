@@ -1,0 +1,39 @@
+From 7fd4b9db9e8ffa6e83294f01686aef26de92b999 Mon Sep 17 00:00:00 2001
+From: Praveen Talari <quic_ptalari@quicinc.com>
+Date: Wed, 4 Dec 2024 16:15:24 +0530
+Subject: [PATCH 2/3] PENDING: spi: spi-geni-qcom: Add compatible field for
+ SA8797P
+
+Add compatible field for SPI driver for SA8797P.
+
+Change-Id: I10b039f1530211aeb80243d22341791f15142cbe
+Signed-off-by: Praveen Talari <quic_ptalari@quicinc.com>
+---
+ drivers/spi/spi-geni-qcom.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/spi/spi-geni-qcom.c b/drivers/spi/spi-geni-qcom.c
+index 2cdb13181376..1386340a449c 100644
+--- a/drivers/spi/spi-geni-qcom.c
++++ b/drivers/spi/spi-geni-qcom.c
+@@ -1230,7 +1230,8 @@ static int spi_geni_probe(struct platform_device *pdev)
+ 		return -ENXIO;
+ 
+ 	if (of_device_is_compatible(dev->of_node, "qcom,sa8255p-geni-spi") ||
+-			of_device_is_compatible(dev->of_node, "qcom,sa7255p-geni-spi")) {
++			of_device_is_compatible(dev->of_node, "qcom,sa7255p-geni-spi") ||
++			of_device_is_compatible(dev->of_node, "qcom,sa8797p-geni-spi")) {
+ 		ret = dev_pm_domain_attach_list(&pdev->dev, &mas->dev_data->pd_data,
+ 						&mas->se.pd_list);
+ 		if (ret < 0)
+@@ -1441,6 +1442,7 @@ static const struct of_device_id spi_geni_dt_match[] = {
+ 	{ .compatible = "qcom,geni-spi", .data = &geni_spi },
+ 	{ .compatible = "qcom,sa7255p-geni-spi", .data = &remotely_geni_spi },
+ 	{ .compatible = "qcom,sa8255p-geni-spi", .data = &remotely_geni_spi },
++	{ .compatible = "qcom,sa8797p-geni-spi", .data = &remotely_geni_spi },
+ 	{}
+ };
+ MODULE_DEVICE_TABLE(of, spi_geni_dt_match);
+-- 
+2.17.1
+

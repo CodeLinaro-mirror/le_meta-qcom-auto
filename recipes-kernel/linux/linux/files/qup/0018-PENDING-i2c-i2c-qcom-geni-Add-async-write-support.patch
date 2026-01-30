@@ -1,0 +1,517 @@
+From 4a820e72a941c5a26aa2ae198a2423b20d91233a Mon Sep 17 00:00:00 2001
+From: Aniket Randive <arandive@qti.qualcomm.com>
+Date: Mon, 8 Sep 2025 15:46:19 +0530
+Subject: [PATCH 06/12] PENDING: i2c: i2c-qcom-geni: Add async write support
+
+For the camera use case, the client needs to send
+control information for various sensors on different
+GPIIs, which will be processed once the sync timer
+arrives. The client does not want to wait for the actual
+transfer completion. Currently, the I2C GENI driver and
+framework support only synchronous data transfer. To
+enable the CCU QUP client to queue write frames without
+waiting for transfer completion, add asynchronous write
+data transfer support to the I2C driver.
+
+Change-Id: I50189925683eed8d67b195b800d8500ce9c9c1ca
+Signed-off-by: Aniket Randive <arandive@qti.qualcomm.com>
+---
+ drivers/dma/qcom/gpi.c                |   2 +-
+ drivers/i2c/busses/i2c-qcom-geni.c    | 182 +++++++++++++++++++++++---
+ include/linux/dma/qcom-gpi-dma.h      |   4 +-
+ include/linux/soc/qcom/qcom_ccu_qup.h |  33 +++++
+ 4 files changed, 201 insertions(+), 20 deletions(-)
+
+diff --git a/drivers/dma/qcom/gpi.c b/drivers/dma/qcom/gpi.c
+index 6968f32407c9..ea7e0020ea1c 100644
+--- a/drivers/dma/qcom/gpi.c
++++ b/drivers/dma/qcom/gpi.c
+@@ -2392,7 +2392,7 @@ static int gpi_create_i2c_tre(struct gchan *chan, struct gpi_desc *desc,
+ 		tre->dword[3] |= u32_encode_bits(1, TRE_FLAGS_IEOT);
+ 		tre->dword[3] |= u32_encode_bits(i2c->ccu_cfg.ccu_last, TRE_FLAGS_CCU_LAST);
+ 		tre->dword[3] |= u32_encode_bits(i2c->ccu_cfg.ch_last, TRE_FLAGS_CH_LAST);
+-		tre->dword[3] |= u32_encode_bits(i2c->ccu_cfg.nop_last, TRE_FLAGS_NOP_LAST);
++		tre->dword[3] |= u32_encode_bits(i2c->ccu_cfg.nop_frame, TRE_FLAGS_NOP_LAST);
+ 	}
+ 
+ 	/* Unlock tre for last transfer */
+diff --git a/drivers/i2c/busses/i2c-qcom-geni.c b/drivers/i2c/busses/i2c-qcom-geni.c
+index e9c7664c302c..3a7b0871fd47 100644
+--- a/drivers/i2c/busses/i2c-qcom-geni.c
++++ b/drivers/i2c/busses/i2c-qcom-geni.c
+@@ -17,6 +17,7 @@
+ #include <linux/of.h>
+ #include <linux/platform_device.h>
+ #include <linux/pm_runtime.h>
++#include <linux/soc/qcom/qcom_ccu_qup.h>
+ #include <linux/soc/qcom/geni-se.h>
+ #include <linux/spinlock.h>
+ #include <linux/suspend.h>
+@@ -113,8 +114,9 @@ struct geni_i2c_desc {
+ #define CCU_MAX_GPII		3
+ #define REGULAR_GPII		0
+ #define MAX_NUM_MSGS		4096
++#define MAX_NUM_FRAMES		4
+ #define CCU_GET_GPII(val)	(val & CCU_GPII_MASK)
+-#define CCU_GET_SYNC(val)	(val & BIT(5))
++#define CCU_GET_ASYNC(val)	(val & BIT(5))
+ #define CCU_GET_PRIO(val)	(val & BIT(6))
+ #define CCU_GET_NOP_FRAME(val)	(val & BIT(7))
+ #define CCU_GET_INSERT_DELAY_BEFORE(val)	(val & BIT(8))
+@@ -125,19 +127,53 @@ struct geni_i2c_desc {
+ #define CCU_GET_PKT_LEN(val)		((val & CCU_PKT_LEN_MASK) >> CCU_PKT_LEN_SHFT)
+ #define CCU_GET_FRAME_COOKIE(val)	((val & CCU_FRAME_COOKIE_MASK) >> CCU_FRAME_COOKIE_SHFT)
+ 
++/*
++ * struct ccu_msg_info - represent single message
++ * @len: length of current message
++ * @addr: dma addr of tx/rx xfer
++ * @tx_buf: hold tx message
++ * @rx_buf: hold incoming rx message
++ * @flag: indicate current message is read or write
++*/
++struct ccu_msg_info {
++	int len;
++	dma_addr_t addr;
++	void *tx_buf;
++	void *rx_buf;
++	bool flag;
++};
++
++ /*
++ * struct ccu_frame_info - represent single transfer
++ * @msgs: indicates the number of message within single i2c xfer
++ * frame_cookie: indicate unique frame cookie for transfer.
++ * @msg: array of messages
++ * @async: represents the asynchornous transfer.
++ */
++struct ccu_frame_info {
++	int msgs;
++	int frame_cookie;
++	struct ccu_msg_info msg[MAX_NUM_MSGS];
++	bool async;
++};
+ /* struct ccu_gpii_info - represents the GPII information
+  * @type: indicate current gpii is regular or sync ch0 or sync ch1
+  * @gpii_mode_change: flag to indicate the mode change
++ * @frame: points to the ccu_frame_info structure
++ * @recvd_cnt: indicate the count of received frame
++ * @released_cnt: indicate the count of xfer completed frames
+  */
+ struct ccu_gpii_info {
+-	int type; /* Regular or Sync channel */
++	int type;
+ 	bool gpii_mode_change;
++	struct ccu_frame_info frame[MAX_NUM_FRAMES];
++	int recvd_cnt;
++	int released_cnt;
+ };
+ 
+ /*
+  * struct ccu_msg_config - used to store the configuration of single frame.
+  * @gpii_no: represents the GPII no on which transfer need to send
+- * @sync: represents the synchronous or asynchornous transfer
+  * @priority: represents high priority data transfer
+  * @nop_frame: when SW wants to NOP the FRAME(s)
+  * @pre_delay: insert predefined delay before I2C transaction
+@@ -146,11 +182,9 @@ struct ccu_gpii_info {
+  * @arb_lost_retry: re-transmit count for arb lost in address phase
+  * @ch_last: indicates last packet (TX & RX) of a current FRAME
+  * @ccu_last: indicates end of transfer for single SYNC request
+- * @frame_cookie: indicate unique frame cookie for transfer.
+  */
+ struct ccu_msg_config {
+ 	int gpii_no;
+-	bool sync;
+ 	bool priority;
+ 	bool nop_frame;
+ 	bool pre_delay;
+@@ -159,7 +193,6 @@ struct ccu_msg_config {
+ 	int arb_lost_retry;
+ 	bool ch_last;
+ 	bool ccu_last;
+-	int frame_cookie;
+ };
+ 
+ /*
+@@ -169,13 +202,15 @@ struct ccu_msg_config {
+  * @mode: indicated CDM(1) or SYNC(0) mode
+  * @inter_delay: inter transfer delay
+  * @gpi: handle for struct ccu_gpii_info
++ * @result: handle for struct ccu_xfer_result
+  */
+ struct ccu_i2c_config {
+ 	struct ccu_msg_config *msg[MAX_NUM_MSGS];
+-	int idx; /* Represents the GPII number */
+-	int mode; /* CDM(1) or SYNC(0) mode */
++	int idx;
++	int mode;
+ 	unsigned long inter_delay;
+ 	struct ccu_gpii_info gpi[CCU_MAX_GPII];
++	struct ccu_xfer_result result;
+ };
+ 
+ struct geni_i2c_dev {
+@@ -256,6 +291,7 @@ static const struct geni_i2c_clk_fld geni_i2c_clk_map[] = {
+ static int setup_gpi_dma(struct geni_i2c_dev *gi2c);
+ static void release_gpi_dma(struct geni_i2c_dev *gi2c);
+ static void i2c_gpi_cb_result(void *cb, const struct dmaengine_result *result);
++static ccu_qup_notify_client ccu_qup_update_xfer_completion = NULL;
+ 
+ static int log_level = -1;
+ static ssize_t log_level_show(struct device *dev,
+@@ -308,6 +344,18 @@ static void qcom_geni_i2c_conf(struct geni_i2c_dev *gi2c)
+ 	writel_relaxed(val, gi2c->se.base + SE_I2C_SCL_COUNTERS);
+ }
+ 
++/*
++ * geni_i2c_register_callback - Used to register callback function
++ * @cb: handle points to the xfer completion callback function.
++ *
++ * Return none.
++ */
++void geni_i2c_register_callback(ccu_qup_notify_client cb)
++{
++	ccu_qup_update_xfer_completion = cb;
++}
++EXPORT_SYMBOL(geni_i2c_register_callback);
++
+ /*
+  * geni_i2c_power_on_off - This function is used to turn on or off all the clock
+  *                         and it will free the GPII resources in suspend path and
+@@ -526,7 +574,7 @@ int geni_i2c_check_recover_ios_line(struct i2c_adapter *adap)
+ 		dev_dbg(gi2c->se.dev, "IOS lines in good state\n");
+ 		return 0;
+ 	}
+-	if (gi2c->gpi_mode) {
++	if (gi2c->xfer_mode == GENI_GPI_DMA) {
+ 		ret = geni_i2c_send_cmd_gsi_mode(gi2c, I2C_BUS_CLEAR);
+ 		if (ret) {
+ 			dev_err(gi2c->se.dev, "BUS CLEAR cmd failed for GPI mode\n");
+@@ -664,12 +712,12 @@ void geni_i2c_configure_pre_delay(struct i2c_adapter *adap, unsigned long time)
+ 
+ 	if (!adap) {
+ 		pr_err("%s: Adap is NULL\n", __func__);
+-		return -EINVAL;
++		return;
+ 	} else {
+ 		gi2c = adap->dev.driver_data;
+ 		if (!gi2c) {
+ 			pr_err("%s: I2C driver data is NULL\n", __func__);
+-			return -EINVAL;
++			return;
+ 		}
+ 	}
+ 
+@@ -986,10 +1034,50 @@ static int geni_i2c_tx_one_msg(struct geni_i2c_dev *gi2c, struct i2c_msg *msg,
+ 	return gi2c->err;
+ }
+ 
++/*
++ * geni_i2c_release_buf - This function is used to free the dma buffer
++ *
++ * @gi2c: Handle of the I2C device.
++ * @idx: indicate the gpii no
++ */
++static void  geni_i2c_release_buf(struct geni_i2c_dev *gi2c, int idx)
++{
++	int i, msgs, frame_idx;
++	struct ccu_frame_info *frame;
++	enum dma_data_direction map_dirn;
++
++	frame_idx = gi2c->ccu.gpi[idx].released_cnt;
++	frame = &gi2c->ccu.gpi[idx].frame[frame_idx];
++	msgs = frame->msgs;
++
++	for (i = 0; i < msgs; i++) {
++		if (frame->msg[i].flag) {
++			map_dirn = DMA_FROM_DEVICE;
++			if (frame->msg[i].rx_buf) {
++				kfree(frame->msg[i].rx_buf);
++				frame->msg[i].rx_buf = NULL;
++			}
++		} else {
++			map_dirn = DMA_TO_DEVICE;
++			if (frame->msg[i].tx_buf) {
++				kfree(frame->msg[i].tx_buf);
++				frame->msg[i].tx_buf = NULL;
++			}
++		}
++		dma_unmap_single(gi2c->se.dev->parent, frame->msg[i].addr,
++				 frame->msg[i].len, map_dirn);
++	}
++	if (frame_idx >= MAX_NUM_FRAMES)
++		gi2c->ccu.gpi[idx].released_cnt = 0;
++	else
++		gi2c->ccu.gpi[idx].released_cnt++;
++}
++
+ static void i2c_gpi_cb_result(void *cb, const struct dmaengine_result *result)
+ {
+ 	struct gpi_i2c_config *i2c = cb;
+ 	struct geni_i2c_dev *gi2c = i2c->gi2c;
++	int gpii_idx, frame_idx;
+ 
+ 	if (i2c->status & (BIT(NACK) << 5)) {
+ 		geni_i2c_err(gi2c, NACK);
+@@ -1006,6 +1094,21 @@ static void i2c_gpi_cb_result(void *cb, const struct dmaengine_result *result)
+ 			    "DMA xfer has pending: %d\n", result->residue);
+ 	}
+ 
++	gpii_idx = result->gpii_id % CCU_MAX_GPII;
++	frame_idx = gi2c->ccu.gpi[gpii_idx].released_cnt;
++	if (gi2c->is_ccu_qup && gi2c->ccu.gpi[gpii_idx].frame[frame_idx].async) {
++		gi2c->ccu.result.gpii_no = result->gpii_id;
++		gi2c->ccu.result.adap_nr = gi2c->adap.nr;
++		gi2c->ccu.result.frame_cookie =
++			gi2c->ccu.gpi[gpii_idx].frame[frame_idx].frame_cookie;
++		if (!gi2c->err)
++			gi2c->ccu.result.err_no = gi2c->err;
++
++		ccu_qup_update_xfer_completion(&gi2c->ccu.result);
++		/* Free the dma buffer associated to this frame */
++		geni_i2c_release_buf(gi2c, gpii_idx);
++	}
++
+ 	complete(&gi2c->done);
+ }
+ 
+@@ -1163,6 +1266,7 @@ static int geni_i2c_extract_frame_cfg(struct geni_i2c_dev *gi2c, struct i2c_msg
+ {
+ 	u64 data;
+ 	u64 *msg_buf = NULL;
++	int gpii_idx, frame_idx;
+ 
+ 	if (msg->len <= CCU_DATA_OFFSET) {
+ 		dev_err(gi2c->se.dev, "%s: CCU config data not present. len:%d\n",
+@@ -1187,7 +1291,6 @@ static int geni_i2c_extract_frame_cfg(struct geni_i2c_dev *gi2c, struct i2c_msg
+ 	data = *msg_buf;
+ 
+ 	gi2c->ccu.msg[msg_idx]->gpii_no = CCU_GET_GPII(data);
+-	gi2c->ccu.msg[msg_idx]->sync =  CCU_GET_SYNC(data);
+ 	gi2c->ccu.msg[msg_idx]->priority = CCU_GET_PRIO(data);
+ 	gi2c->ccu.msg[msg_idx]->nop_frame = CCU_GET_NOP_FRAME(data);
+ 	gi2c->ccu.msg[msg_idx]->pre_delay = CCU_GET_INSERT_DELAY_BEFORE(data);
+@@ -1196,7 +1299,13 @@ static int geni_i2c_extract_frame_cfg(struct geni_i2c_dev *gi2c, struct i2c_msg
+ 	gi2c->ccu.msg[msg_idx]->ccu_last = CCU_GET_LAST(data);
+ 	gi2c->ccu.msg[msg_idx]->arb_lost_retry = CCU_GET_ARB_LOST_CNT(data);
+ 	gi2c->ccu.msg[msg_idx]->pkt_len = CCU_GET_PKT_LEN(data);
+-	gi2c->ccu.msg[msg_idx]->frame_cookie = CCU_GET_FRAME_COOKIE(data);
++	gpii_idx = gi2c->ccu.msg[msg_idx]->gpii_no % CCU_MAX_GPII;
++	frame_idx = gi2c->ccu.gpi[gpii_idx].recvd_cnt;
++	gi2c->ccu.gpi[gpii_idx].frame[frame_idx].async = CCU_GET_ASYNC(data);
++
++	if (gi2c->ccu.gpi[gpii_idx].frame[frame_idx].async)
++		gi2c->ccu.gpi[gpii_idx].frame[frame_idx].frame_cookie =
++				CCU_GET_FRAME_COOKIE(data);
+ 
+ 	i2c_trace_log(gi2c->se.dev, "%s: *** Message[%d] configuration ***\n"
+ 				  "GPII:%d Sync:%d Prio:%d Delay after:%d\n"
+@@ -1204,7 +1313,7 @@ static int geni_i2c_extract_frame_cfg(struct geni_i2c_dev *gi2c, struct i2c_msg
+ 				  "arb_lost_retry:%d pkt_len:%d\n"
+ 				  "cookie:0x%x\n", __func__, msg_idx,
+ 				  gi2c->ccu.msg[msg_idx]->gpii_no,
+-				  gi2c->ccu.msg[msg_idx]->sync,
++				  gi2c->ccu.gpi[gpii_idx].frame[frame_idx].async,
+ 				  gi2c->ccu.msg[msg_idx]->priority,
+ 				  gi2c->ccu.msg[msg_idx]->post_delay,
+ 				  gi2c->ccu.msg[msg_idx]->pre_delay,
+@@ -1212,7 +1321,7 @@ static int geni_i2c_extract_frame_cfg(struct geni_i2c_dev *gi2c, struct i2c_msg
+ 				  gi2c->ccu.msg[msg_idx]->ccu_last,
+ 				  gi2c->ccu.msg[msg_idx]->arb_lost_retry,
+ 				  gi2c->ccu.msg[msg_idx]->pkt_len,
+-				  gi2c->ccu.msg[msg_idx]->frame_cookie);
++				  gi2c->ccu.gpi[gpii_idx].frame[frame_idx].frame_cookie);
+ 	kfree(msg_buf);
+ 	msg_buf = NULL;
+ 
+@@ -1228,6 +1337,7 @@ static int geni_i2c_gpi_xfer(struct geni_i2c_dev *gi2c, struct i2c_msg msgs[], i
+ 	dma_addr_t tx_addr, rx_addr;
+ 	void *tx_buf = NULL, *rx_buf = NULL;
+ 	const struct geni_i2c_clk_fld *itr = gi2c->clk_fld;
++	struct ccu_frame_info *frame;
+ 
+ 	peripheral = devm_kzalloc(gi2c->se.dev, sizeof(*peripheral), GFP_KERNEL);
+ 	if (!peripheral)
+@@ -1264,6 +1374,7 @@ static int geni_i2c_gpi_xfer(struct geni_i2c_dev *gi2c, struct i2c_msg msgs[], i
+ 			if (ret)
+ 				return ret;
+ 			idx = (gi2c->ccu.msg[i]->gpii_no % CCU_MAX_GPII);
++			frame = &gi2c->ccu.gpi[idx].frame[gi2c->ccu.gpi[idx].recvd_cnt];
+ 		}
+ 		i2c_trace_log(gi2c->se.dev, "msg[%d].len:%d GPII:%d\n", i, gi2c->cur->len, idx);
+ 
+@@ -1273,8 +1384,13 @@ static int geni_i2c_gpi_xfer(struct geni_i2c_dev *gi2c, struct i2c_msg msgs[], i
+ 
+ 		peripheral->addr = msgs[i].addr;
+ 
+-		ret =  geni_i2c_gpi(gi2c, &msgs[i], &config,
+-				    &tx_addr, &tx_buf, I2C_WRITE, gi2c->tx_c[idx], i);
++		if (gi2c->is_ccu_qup)
++			ret = geni_i2c_gpi(gi2c, &msgs[i], &config,
++					   &frame->msg[i].addr, &frame->msg[i].tx_buf,
++					   I2C_WRITE, gi2c->tx_c[idx], i);
++		else
++			ret = geni_i2c_gpi(gi2c, &msgs[i], &config,
++					   &tx_addr, &tx_buf, I2C_WRITE, gi2c->tx_c[idx], i);
+ 		if (ret)
+ 			goto err;
+ 
+@@ -1284,6 +1400,9 @@ static int geni_i2c_gpi_xfer(struct geni_i2c_dev *gi2c, struct i2c_msg msgs[], i
+ 			if (ret)
+ 				goto err;
+ 
++			/* Reduce the length so actual data provided to client*/
++			if (gi2c->is_ccu_qup)
++				msgs[i].len -= CCU_DATA_OFFSET;
+ 			dma_async_issue_pending(gi2c->rx_c[idx]);
+ 		}
+ 
+@@ -1304,6 +1423,10 @@ static int geni_i2c_gpi_xfer(struct geni_i2c_dev *gi2c, struct i2c_msg msgs[], i
+ 		}
+ 
+ 		dma_async_issue_pending(gi2c->tx_c[idx]);
++		/* Async transfer mode support only write transfer */
++		if (gi2c->is_ccu_qup && (frame->async &&
++					 !(msgs[i].flags & I2C_M_RD)))
++			goto next_msg;
+ 
+ 		time_left = wait_for_completion_timeout(&gi2c->done, XFER_TIMEOUT);
+ 		if (!time_left)
+@@ -1316,10 +1439,35 @@ static int geni_i2c_gpi_xfer(struct geni_i2c_dev *gi2c, struct i2c_msg msgs[], i
+ 
+ 		geni_i2c_gpi_unmap(gi2c, &msgs[i], tx_buf, tx_addr, rx_buf, rx_addr);
+ 		if (gi2c->is_ccu_qup) {
++			if (gi2c->ccu.gpi[idx].released_cnt >= MAX_NUM_FRAMES)
++				gi2c->ccu.gpi[idx].released_cnt = 0;
++			else
++				gi2c->ccu.gpi[idx].released_cnt++;
++		}
++next_msg:
++		if (gi2c->is_ccu_qup) {
++			frame->msg[i].tx_buf = tx_buf;
++			frame->msg[i].rx_buf = rx_buf;
++			frame->msg[i].len = msgs[i].len;
++			if (msgs[i].flags & I2C_M_RD) {
++				frame->msg[i].flag = true;
++				frame->msg[i].addr = rx_addr;
++			} else {
++				frame->msg[i].flag = false;
++				frame->msg[i].addr = tx_addr;
++			}
+ 			kfree(gi2c->ccu.msg[i]);
+ 			gi2c->ccu.msg[i] = NULL;
+ 		}
+ 	}
++
++	if (gi2c->is_ccu_qup) {
++		frame->msgs = num;
++		if (gi2c->ccu.gpi[idx].recvd_cnt >= MAX_NUM_FRAMES)
++			gi2c->ccu.gpi[idx].recvd_cnt = 0;
++		else
++			gi2c->ccu.gpi[idx].recvd_cnt++;
++	}
+ 	return num;
+ 
+ err:
+diff --git a/include/linux/dma/qcom-gpi-dma.h b/include/linux/dma/qcom-gpi-dma.h
+index b0ba2db0dde2..2c3c6304c496 100644
+--- a/include/linux/dma/qcom-gpi-dma.h
++++ b/include/linux/dma/qcom-gpi-dma.h
+@@ -72,14 +72,14 @@ struct gpi_spi_config {
+  * @ccu_last: indicates end of transfer for single SYNC request
+  * @ch_last: This bit indicates last TRE of a channel (TX & RX)
+  *	     of a current FRAME
+- * @nop_last: This field is used only when SW wants to NOP the FRAME
++ * @nop_frame: This field is used only when SW wants to NOP the FRAME
+  */
+ struct gpi_ccu_i2c_config {
+ 	bool rand_wr;
+ 	u8 retry;
+ 	bool ccu_last;
+ 	bool ch_last;
+-	bool nop_last;
++	bool nop_frame;
+ };
+ 
+ enum i2c_op {
+diff --git a/include/linux/soc/qcom/qcom_ccu_qup.h b/include/linux/soc/qcom/qcom_ccu_qup.h
+index 6d493c1139cc..b61e78efbe03 100644
+--- a/include/linux/soc/qcom/qcom_ccu_qup.h
++++ b/include/linux/soc/qcom/qcom_ccu_qup.h
+@@ -44,6 +44,16 @@
+ #define CCU_QUPV3_SYNC1_ID_SE_MAP4	0x170
+ #define CCU_QUPV3_SYNC_DATA_DEBUG	0x180
+ 
++/* struct ccu_response_data - Contains result of completed async xfer.
++ * @res_buf: contains the client data which will pass to the user
++ *           space client.
++ * @list: list of xfer results.
++ */
++struct ccu_response_data {
++	char *res_buf;
++	struct list_head list;
++};
++
+ /* struct child_probe_status - Child probe status
+  * @probe_state: represents the child probe completed or not.
+  * @count: Count of probed device nodes
+@@ -55,6 +65,22 @@ struct child_probe_status {
+ 	int max_cnt;
+ };
+ 
++/*
++ * struct ccu_xfer_result - represents the client data which will
++ *                              pass to the user space client in asyncronous
++ *                              mode of transfer.
++ * @gpii_no: GPII Number for which error is received.
++ * @adap_nr: represents the SE adapter.
++ * @frame_cookie: Frame cookie to know which frame has error.
++ * @err_no: represents standard error code in case of transfer failure.
++ */
++struct ccu_xfer_result {
++	u8 gpii_no;
++	u8 adap_nr;
++	u32 frame_cookie;
++	int err_no;
++};
++
+ /*
+  * struct ccu_qup - Structre is for ccu_qup info
+  * @dev: points to device node
+@@ -68,6 +94,7 @@ struct child_probe_status {
+  * @ccu_qup1_irq: Irq number of CCU QUP1.
+  * @gpi_dev[2]: Array of pointer which hold base address of
+  *              GPI register space.
++ * @lock: mutex lock to protect the callback function.
+  * @gpi0_idx: represents the index for gpi dma 0.
+  * @gpi1_idx: represents the index for gpi dma 1.
+  * @common_reg_off: hold the address of common reg of CCU QUP.
+@@ -92,6 +119,7 @@ struct ccu_qup {
+ 	int ccu_qup1_irq;
+ 	struct platform_device *gpi_pdev[2];
+ 	void __iomem *gpi_dev[2];
++	struct mutex lock;
+ 	int gpi0_idx;
+ 	int gpi1_idx;
+ 	u32 common_reg_off;
+@@ -108,6 +136,8 @@ struct ccu_qup {
+ 	u32 ccu1_irq_stat;
+ };
+ 
++typedef void (*ccu_qup_notify_client)(struct ccu_xfer_result *);
++
+ static int ccu_open(struct inode *inode, struct file *filp);
+ 
+ static ssize_t ccu_config_write(struct file *filp, const char __user *buf,
+@@ -137,4 +167,7 @@ int geni_i2c_check_recover_ios_line(struct i2c_adapter *adap);
+ 
+ int geni_i2c_power_on_off(struct i2c_adapter *adap, bool suspend);
+ 
++void ccu_update_xfer_result(struct ccu_xfer_result *result);
++
++void geni_i2c_register_callback(ccu_qup_notify_client cb);
+ #endif /* _QCOM_CCU_QUP_H_ */
+-- 
+2.34.1
+

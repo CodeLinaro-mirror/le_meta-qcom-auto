@@ -5,13 +5,18 @@ LICENSE = "BSD-2-Clause"
 LIC_FILES_CHKSUM = "file://${WORKDIR}/external/wpa_supplicant_8/COPYING;md5=5ebcb90236d1ad640558c3d3cd3035df"
 
 DEPENDS += "dbus libnl openssl"
-SRC_URI = "${PATH_TO_REPO}/external/wpa_supplicant_8/.git;protocol=${PROTO};destsuffix=external/wpa_supplicant_8;usehead=1 \
+
+
+SRCPROJECT  = "git://${OSS_REPO}/clo/la/platform/external/wpa_supplicant_8.git"
+SRCBRANCH  = "auto-wlan-service.lnx.1.1.r18-rel"
+SRCREV  = "033b843b76ad435aa48060248ac988f9342c9a40"
+
+SRC_URI = "${SRCPROJECT};branch=${SRCBRANCH};protocol=${OSS_PROTO};destsuffix=external/wpa_supplicant_8; \
            file://wpa_supplicant.conf-sane \
            file://defconfig-qcacld \
            file://wpa-supplicant.sh \
            file://99_wpa_supplicant \
           "
-SRCREV = "${AUTOREV}"
 PR = "r5.2"
 
 SOLIBS = "*.so"

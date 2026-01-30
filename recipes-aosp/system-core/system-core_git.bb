@@ -10,8 +10,13 @@ DEPENDS += "ext4-utils glib-2.0 libbase libcutils libmincrypt libutils virtual/k
 
 PR = "r19"
 
-SRC_URI = "${PATH_TO_REPO}/system/core/.git;protocol=${PROTO};destsuffix=system/core;usehead=1"
-SRCREV = "${AUTOREV}"
+
+
+SRCPROJECT  = "git://${OSS_REPO}/clo/le/platform/system/core.git"
+SRCBRANCH  = "lv-blast.lnx.1.1.r56-rel"
+SRCREV  = "0d3d6f588509bdd67606fb783d50b5dd415562e6"
+
+SRC_URI = "${SRCPROJECT};branch=${SRCBRANCH};protocol=${OSS_PROTO};destsuffix=system/core;"
 
 S = "${WORKDIR}/system/core"
 

@@ -10,8 +10,13 @@ DEPENDS += "libcutils libhardware-headers liblog libutils virtual/kernel-headers
 
 PR = "r3"
 
-SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/commonsys-intf/display/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/commonsys-intf/display;usehead=1"
-SRCREV = "${AUTOREV}"
+
+
+SRCPROJECT  = "git://${OSS_REPO}/clo/la/platform/vendor/qcom-opensource/display-commonsys-intf.git"
+SRCBRANCH  = "display-android-commonsys.lnx.1.0.r67-rel"
+SRCREV  = "992d69ea4f36455fb57aba066a6e2f014cbd70d8"
+
+SRC_URI = "${SRCPROJECT};branch=${SRCBRANCH};protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/commonsys-intf/display;"
 S = "${WORKDIR}/vendor/qcom/opensource/commonsys-intf/display"
 
 inherit autotools pkgconfig
