@@ -1,0 +1,86 @@
+From 9f8702d3554c28e64368d08c9a1552823ca1b9f0 Mon Sep 17 00:00:00 2001
+From: Sriram Dash <sriram.dash@oss.qualcomm.com>
+Date: Mon, 22 Dec 2025 14:34:27 +0530
+Subject: [PATCH 4/4] PENDING: usb: dwc3: qcom: Trivial code cleanup
+
+Trivial code cleanup for supporting cyclomatic complexity.
+
+Change-Id: I4238b893efbadb16772be6a25111fdc892b9672c
+Signed-off-by: Sriram Dash <sriram.dash@oss.qualcomm.com>
+Signed-off-by: Shazad Hussain <quic_shazhuss@quicinc.com>
+---
+ drivers/usb/dwc3/dwc3-qcom.c | 51 ++++++++++++++++++++++--------------
+ 1 file changed, 32 insertions(+), 19 deletions(-)
+
+diff --git a/drivers/usb/dwc3/dwc3-qcom.c b/drivers/usb/dwc3/dwc3-qcom.c
+index c6367dd563dd..f5dea1e8798a 100644
+--- a/drivers/usb/dwc3/dwc3-qcom.c
++++ b/drivers/usb/dwc3/dwc3-qcom.c
+@@ -1034,6 +1034,35 @@ static void dwc3_qcom_vbus_regulator_get(struct dwc3_qcom *qcom)
+ 	}
+ }
+ 
++static int dwc3_qcom_acpi_register_core(struct platform_device *pdev,
++					struct dwc3_qcom *qcom)
++{
++	struct device   *dev = &pdev->dev;
++	int		ret;
++
++	qcom->acpi_pdata = acpi_device_get_match_data(dev);
++	if (!qcom->acpi_pdata) {
++		dev_err(&pdev->dev, "no supporting ACPI device data\n");
++		return -EINVAL;
++	}
++
++	ret = device_add_software_node(&pdev->dev, &dwc3_qcom_swnode);
++	if (ret < 0) {
++		dev_err(&pdev->dev, "failed to add properties\n");
++		return ret;
++	}
++
++#ifdef CONFIG_ACPI
++	if (qcom->acpi_pdata->is_urs) {
++		ret = dwc3_qcom_acpi_merge_urs_resources(pdev);
++		if (ret < 0)
++			return ret;
++	}
++#endif
++
++	return 0;
++}
++
+ static int dwc3_qcom_probe(struct platform_device *pdev)
+ {
+ 	struct device_node	*np = pdev->dev.of_node;
+@@ -1060,25 +1089,9 @@ static int dwc3_qcom_probe(struct platform_device *pdev)
+ 	qcom->dwc.dev = qcom->dev;
+ 
+ 	if (has_acpi_companion(dev)) {
+-		qcom->acpi_pdata = acpi_device_get_match_data(dev);
+-		if (!qcom->acpi_pdata) {
+-			dev_err(&pdev->dev, "no supporting ACPI device data\n");
+-			return -EINVAL;
+-		}
+-
+-		ret = device_add_software_node(&pdev->dev, &dwc3_qcom_swnode);
+-		if (ret < 0) {
+-			dev_err(&pdev->dev, "failed to add properties\n");
+-			return ret;
+-		}
+-
+-#ifdef CONFIG_ACPI
+-		if (qcom->acpi_pdata->is_urs) {
+-			ret = dwc3_qcom_acpi_merge_urs_resources(pdev);
+-			if (ret < 0)
+-				goto clk_disable;
+-		}
+-#endif
++		ret = dwc3_qcom_acpi_register_core(pdev, qcom);
++		if (ret < 0)
++			goto clk_disable;
+ 	}
+ 
+ 	qcom->resets = devm_reset_control_array_get_optional_exclusive(dev);
+-- 
+2.34.1
+

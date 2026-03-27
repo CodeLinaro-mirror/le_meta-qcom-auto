@@ -7,9 +7,17 @@ DEPENDS += "bzip2-replacement-native checkpolicy-native m4-native policycoreutil
 
 PROVIDES = "virtual/refpolicy"
 
-SRC_URI = "git://git.codelinaro.org/clo/yocto-mirrors/github/selinuxproject/refpolicy.git;protocol=https;branch=master;name=refpolicy;destsuffix=refpolicy \
-        ${PATH_TO_REPO}/lv-sepolicy/.git;protocol=${PROTO};destsuffix=lv-sepolicy;usehead=1 \
+
+QCOM_LELV_SEPOLICY_SRC_bb = "${CLO_LE_GIT}/lv-sepolicy.git"
+QCOM_LELV_SEPOLICY_SRCBRANCH_bb  = "lv-sepolicy.lnx.2.0.r18-rel"
+QCOM_LELV_SEPOLICY_SRCREV_bb = "442433d7395a3b86eef326c7c6ee00543dd1f33a"
+
+
+
+SRC_URI = "git://git.codelinaro.org/clo/yocto-mirrors/github/selinuxproject/refpolicy.git;protocol=${OSS_PROTO};branch=master;name=refpolicy;destsuffix=refpolicy \
+ ${QCOM_LELV_SEPOLICY_SRC_bb};branch=${QCOM_LELV_SEPOLICY_SRCBRANCH_bb};protocol=${OSS_PROTO};destsuffix=lv-sepolicy;name=lelvpolicy \
 "
+
 
 # Specific config files for Poky
 SRC_URI += "file://customizable_types  \
@@ -20,7 +28,12 @@ SRC_URI += "file://customizable_types  \
             file://0004-open-nscd_use_shm-boolean.patch \
 "
 
+SRCREV_FORMAT="refpolicy_lelvpolicy"
+
+
+SRCREV_lelvpolicy  = "${QCOM_LELV_SEPOLICY_SRCREV_bb}"
 SRCREV_refpolicy = "429b26878be53e0b3537771a98e240e6e383ee73"
+
 
 S = "${WORKDIR}/refpolicy"
 

@@ -1,0 +1,92 @@
+From 2b898489d349d85652c38ad60d66033646d1260b Mon Sep 17 00:00:00 2001
+From: Aniket Randive <arandive@qti.qualcomm.com>
+Date: Tue, 16 Sep 2025 18:06:56 +0530
+Subject: [PATCH] i2c: Prevent kernel panic by handling ERR_PTR from
+ dma_request_chan
+
+Prevent passing an ERR_PTR to dma_release_channel() by checking the
+return value of dma_request_chan() and setting the channel pointer to
+NULL on failure. This avoids potential kernel NULL pointer dereference
+during cleanup in setup_gpi_dma() when both TX and RX DMA channel
+requests fail.
+
+Change-Id: Ibdf994b6d88a26f0f1c1094f0b8902752cee97c8
+Signed-off-by: Aniket Randive <arandive@qti.qualcomm.com>
+---
+ drivers/i2c/busses/i2c-qcom-geni.c |  8 ++++++--
+ drivers/soc/qcom/qcom_ccu_qup.c    | 11 ++++++-----
+ 2 files changed, 12 insertions(+), 7 deletions(-)
+
+diff --git a/drivers/i2c/busses/i2c-qcom-geni.c b/drivers/i2c/busses/i2c-qcom-geni.c
+index 7343a8ee4c5d..6523c7db8d51 100644
+--- a/drivers/i2c/busses/i2c-qcom-geni.c
++++ b/drivers/i2c/busses/i2c-qcom-geni.c
+@@ -1838,6 +1838,7 @@ static int setup_gpi_dma(struct geni_i2c_dev *gi2c, int idx)
+ 		if (IS_ERR(gi2c->tx_c[idx])) {
+ 			ret = dev_err_probe(gi2c->se.dev, PTR_ERR(gi2c->tx_c[idx]),
+ 					    "Failed to get tx%d DMA ch\n", idx);
++			gi2c->tx_c[idx] = NULL;
+ 			return ret;
+ 		}
+ 	}
+@@ -1848,8 +1849,11 @@ static int setup_gpi_dma(struct geni_i2c_dev *gi2c, int idx)
+ 		if (IS_ERR(gi2c->rx_c[idx])) {
+ 			ret = dev_err_probe(gi2c->se.dev, PTR_ERR(gi2c->rx_c[idx]),
+ 					    "Failed to get rx%d DMA ch\n", idx);
+-			dma_release_channel(gi2c->tx_c[idx]);
+-			gi2c->tx_c[idx] = NULL;
++			gi2c->rx_c[idx] = NULL;
++			if (gi2c->tx_c[idx]) {
++				dma_release_channel(gi2c->tx_c[idx]);
++				gi2c->tx_c[idx] = NULL;
++			}
+ 			return ret;
+ 		}
+ 	}
+diff --git a/drivers/soc/qcom/qcom_ccu_qup.c b/drivers/soc/qcom/qcom_ccu_qup.c
+index 88cb8c77ed2c..34282309e53e 100644
+--- a/drivers/soc/qcom/qcom_ccu_qup.c
++++ b/drivers/soc/qcom/qcom_ccu_qup.c
+@@ -47,6 +47,7 @@
+ #define CCU_MAX_QUP		2
+ #define CCU_MAX_SE		5
+ #define GPII_IRQ_COUNT		(GPII_14_IRQ - GPII_0_IRQ + 1)
++#define CCU_RETRY_TIME		30
+ 
+ struct ccu_qup *ccud;
+ 
+@@ -848,9 +849,9 @@ static void get_set_child_dev_node(struct work_struct *work)
+ 
+ 	device_for_each_child(ccu->dev, child_status, check_probe_status);
+ 	if (!child_status->probe_state) {
+-		if (retry_cnt++ < 10)
++		if (retry_cnt++ < 30)
+ 			queue_delayed_work(ccu->gpi_wq, &ccu->get_child_dev_node,
+-					   msecs_to_jiffies(100));
++					   msecs_to_jiffies(CCU_RETRY_TIME));
+ 		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, " Retry cnt:%d\n", retry_cnt);
+ 		kfree(child_status);
+ 		return;
+@@ -1060,16 +1061,16 @@ static int ccu_qup_probe(struct platform_device *pdev)
+ 
+ 	ccud = ccu;
+ 	ccud->fw_loaded = false;
+-	/* Queue the delayed work to be executed after 3 seconds */
++	/* Queue the delayed work to be executed after 30 milli second */
+ 	queue_delayed_work(ccu->gpi_wq, &ccu->get_child_dev_node,
+-			   msecs_to_jiffies(3000));
++			   msecs_to_jiffies(CCU_RETRY_TIME));
+ 
+ 	ret = device_create_file(&pdev->dev, &dev_attr_log_level);
+ 	if (ret)
+ 		CCU_ERR_LOG(LOG_LVL_ERROR, &pdev->dev,
+ 			    "Failed to create sysfs entry ret:%d\n", ret);
+ 
+-	CCU_DBG_LOG(LOG_LVL_INFO, &pdev->dev, "CCU QUP Probe completed\n");
++	CCU_DBG_LOG(LOG_LVL_VERBOSE, &pdev->dev, "CCU QUP Probe completed\n");
+ 
+ 	return devm_of_platform_populate(&pdev->dev);
+ }
+-- 
+2.34.1
+

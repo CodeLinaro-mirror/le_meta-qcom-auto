@@ -1,0 +1,54 @@
+From 0a22966f82a147c28f1fe75f0267236c17ad73b5 Mon Sep 17 00:00:00 2001
+From: Ram Kumar Dwivedi <rdwivedi@qti.qualcomm.com>
+Date: Wed, 30 Jul 2025 21:45:59 +0530
+Subject: [PATCH 2/3] PENDING: ufs: ufs-qcom: Skip hibern8 FSM state check for
+ SCMI-based targets
+
+On SCMI-based targets, the PHY is already initialized in GearVM
+before the UFS probe begins. As a result, the MPHY TX FSM state
+does not follow the usual Disabled to Hibernate transition.
+Calling ufs_qcom_check_hibern8() in this context is unnecessary
+and may lead to incorrect assumptions about the PHY state.
+This change removes the hibern8 state check for SCMI-based targets.
+
+Change-Id: Id16472744ff62b7d437073da2a9cf87d59082462
+Signed-off-by: Ram Kumar Dwivedi <rdwivedi@qti.qualcomm.com>
+---
+ drivers/ufs/host/ufs-qcom.c | 9 +++------
+ 1 file changed, 3 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/ufs/host/ufs-qcom.c b/drivers/ufs/host/ufs-qcom.c
+index 50cf39c8543b..9eddd6afa130 100644
+--- a/drivers/ufs/host/ufs-qcom.c
++++ b/drivers/ufs/host/ufs-qcom.c
+@@ -609,24 +609,21 @@ static int ufs_qcom_fmr_hce_enable_notify(struct ufs_hba *hba,
+ 				      enum ufs_notify_change_status status)
+ {
+ 	struct ufs_qcom_host *host = ufshcd_get_variant(hba);
+-	int err = 0;
+ 
+ 	switch (status) {
+ 	case PRE_CHANGE:
+ 		ufs_qcom_select_unipro_mode(host);
+ 		break;
+ 	case POST_CHANGE:
+-		/* check if UFS PHY moved from DISABLED to HIBERN8 */
+-		err = ufs_qcom_check_hibern8(hba);
+ 		ufs_qcom_enable_hw_clk_gating(hba);
+ 		ufs_qcom_ice_enable(host);
+ 		break;
+ 	default:
+ 		dev_err(hba->dev, "%s: invalid status %d\n", __func__, status);
+-		err = -EINVAL;
+-		break;
++		return -EINVAL;
+ 	}
+-	return err;
++
++	return 0;
+ }
+ 
+ /**
+-- 
+2.50.1
+

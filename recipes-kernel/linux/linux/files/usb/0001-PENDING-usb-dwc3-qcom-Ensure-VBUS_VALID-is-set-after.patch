@@ -1,0 +1,46 @@
+From 99e4177f3027e11aaf8e34cda87805a1fde71168 Mon Sep 17 00:00:00 2001
+From: Sriram Dash <quic_sriramd@quicinc.com>
+Date: Thu, 27 Feb 2025 13:57:11 +0530
+Subject: [PATCH 01/20] PENDING: usb: dwc3: qcom: Ensure VBUS_VALID is set
+ after APPS Resume
+
+During APPS Suspend, the clock controller unit disables all clocks
+to the CPU and subsystems, causing the controller to enter the
+Power-On Reset (POR) state. This results in the loss of
+Qscratch programming.
+
+Upon APPS Resume, the USB controller operating in device mode does
+not have the VBUS_VALID signal set, which causes the PHYs to
+transition into the suspend state. This behavior disrupts the
+normal operation of the USB controller.
+
+This commit addresses the issue by ensuring that the VBUS_VALID
+signal is properly set for both High-Speed and SuperSpeed PHYs
+after the system resumes from Deep Sleep. This is crucial
+for maintaining the correct operational state of the USB
+controller and preventing unintended suspensions of the PHYs.
+
+Change-Id: Ic3fdfc366eb56104e79c7a727935dd1fe7cf8363
+Signed-off-by: Sriram Dash <quic_sriramd@quicinc.com>
+---
+ drivers/usb/dwc3/dwc3-qcom.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/drivers/usb/dwc3/dwc3-qcom.c b/drivers/usb/dwc3/dwc3-qcom.c
+index ddd846b5c48db..55cdfe7e8469c 100644
+--- a/drivers/usb/dwc3/dwc3-qcom.c
++++ b/drivers/usb/dwc3/dwc3-qcom.c
+@@ -536,6 +536,10 @@ static int dwc3_qcom_resume(struct dwc3_qcom *qcom, bool wakeup)
+ 	dwc3_qcom_setbits(qcom->qscratch_base, PWR_EVNT_IRQ_STAT_REG,
+ 			  PWR_EVNT_LPM_IN_L2_MASK | PWR_EVNT_LPM_OUT_L2_MASK);
+ 
++	/* Make sure vbus valid is set for PHYs after PM resume */
++	if (!(dwc3_qcom_is_host(qcom) && wakeup))
++		dwc3_qcom_vbus_override_enable(qcom, true);
++
+ 	qcom->is_suspended = false;
+ 
+ 	return 0;
+-- 
+2.17.1
+

@@ -11,8 +11,13 @@ DEPENDS += "safe-iop"
 
 PR = "r1"
 
-SRC_URI = "${PATH_TO_REPO}/system/core/.git;protocol=${PROTO};destsuffix=system/core;usehead=1"
-SRCREV = "${AUTOREV}"
+
+
+SRCPROJECT  = "${CLO_LE_GIT}/platform/system/core.git"
+SRCBRANCH  = "lv-blast.lnx.1.1.r57-rel"
+SRCREV  = "004f355bc763dd7df18b650afe34c42b566c1545"
+
+SRC_URI = "${SRCPROJECT};branch=${SRCBRANCH};protocol=${OSS_PROTO};destsuffix=system/core;"
 
 S = "${WORKDIR}/system/core/libutils"
 

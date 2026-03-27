@@ -4,9 +4,14 @@ LICENSE = "BSD-3-Clause-Clear"
 LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/${LICENSE};md5=7a434440b651f4a472ca93716d01033a"
 DEPENDS = "kmod util-linux"
 
-SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/early-ramdisk-init/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/early-ramdisk-init;usehead=1"
+
+
+SRCPROJECT  = "${CLO_LE_GIT}/platform/vendor/opensource/early-ramdisk-init.git"
+SRCBRANCH  = "lv-blast.lnx.1.1.r57-rel"
+SRCREV  = "2d214e1e94b1cbc8d77e71172f9c9be75ecce4c1"
+
+SRC_URI = "${SRCPROJECT};branch=${SRCBRANCH};protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/early-ramdisk-init;"
 SRC_URI:append = "${@bb.utils.contains("MACHINE_FEATURES", "qti-umd", " file://vfio_param.conf", "", d)}"
-SRCREV = "${AUTOREV}"
 
 S = "${WORKDIR}/vendor/qcom/opensource/early-ramdisk-init"
 

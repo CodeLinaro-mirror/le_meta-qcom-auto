@@ -6,7 +6,13 @@ LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/${LICENSE};md5
 
 DEPENDS += "${@bb.utils.contains('PREFERRED_PROVIDER_virtual/kernel', 'linux-ark', 'safelinux-sec-modules','', d)}"
 
-SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/safelinux-cfg-modules/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/safelinux-cfg-modules;usehead=1"
+
+
+SRCPROJECT  = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/safelinux-cfg-modules.git"
+SRCBRANCH  = "safe-services.lnx.1.0.r19-rel"
+SRCREV  = "0c3c72730025e0dc383b6b12b298e8365c5bb280"
+
+SRC_URI = "${SRCPROJECT};branch=${SRCBRANCH};protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/safelinux-cfg-modules;"
 SRC_URI:append = " \
     ${@bb.utils.contains("PREFERRED_VERSION_linux-msm", "6.1", 'file://0001-safelinux-cfg-mdoules-fix-build-issue-for-msm-6.1.patch;patchdir=../', '', d)} \
     ${@bb.utils.contains("PREFERRED_VERSION_linux-msm", "6.1", 'file://Kbuild', '', d)} \
@@ -18,7 +24,6 @@ UMD_LOAD_CONF ?= "umd_load_sa8797.conf"
 UMD_LOAD_CONF:sa8775 = "umd_load_sa8775.conf"
 UMD_LOAD_CONF:sa7255 = "umd_load_sa8775.conf"
 
-SRCREV = "${AUTOREV}"
 
 S = "${WORKDIR}/vendor/qcom/opensource/safelinux-cfg-modules/safelinux-modules"
 

@@ -1,0 +1,38 @@
+From ef3d240f359f4f6c0ead8e40fddbed6df26745ae Mon Sep 17 00:00:00 2001
+From: Maramaina Naresh <mnaresh@qti.qualcomm.com>
+Date: Fri, 13 Feb 2026 10:50:00 +0530
+Subject: [PATCH] serial: qcom-geni: set lowest OPP during console suspend to
+ ensure proper resume
+
+When a port is suspended, the current OPP is retained, which can
+cause the OPP framework to skip reapplying the same OPP upon resume.
+This can cause hardware misconfigurations, such as incorrect UART
+clock rates(frequency / baudrate), due to missing perf level request
+to the firmware.
+
+To address this, explicitly set the lowest OPP during console suspend,
+ensuring that the OPP framework correctly reapplies the desired
+same OPP (perf level) upon resume.
+
+Change-Id: Ib217c26c88e44a7fd69a9d95ffa013c53cb0a733
+Signed-off-by: Maramaina Naresh <mnaresh@qti.qualcomm.com>
+---
+ drivers/tty/serial/qcom_geni_serial.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/drivers/tty/serial/qcom_geni_serial.c b/drivers/tty/serial/qcom_geni_serial.c
+index b5fd88ee6260..626fec738b14 100644
+--- a/drivers/tty/serial/qcom_geni_serial.c
++++ b/drivers/tty/serial/qcom_geni_serial.c
+@@ -1967,6 +1967,8 @@ static int qcom_geni_serial_sys_suspend(struct device *dev)
+ 	if (uart_console(uport)) {
+ 		geni_icc_set_tag(&port->se, QCOM_ICC_TAG_ACTIVE_ONLY);
+ 		geni_icc_set_bw(&port->se);
++		if (port->dev_data->geni_se_set_rate)
++			port->dev_data->geni_se_set_rate(&port->se, 300);
+ 	}
+ 	return uart_suspend_port(private_data->drv, uport);
+ }
+-- 
+2.34.1
+

@@ -27,8 +27,13 @@ QCNODE_QC_TARGET_SOC = "8797"
 DEPENDS += "aosal apdf fastrpc libkiumd libstd rpcmem camera-qcx fadas adreno virtual/kernel-headers mm-osal video-driver gbm gbm-headers drm gtest libbsd \
             nlohmann-json sv-auto sv-auto-noship"
 
-SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/qcnode/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/qcnode;usehead=1"
-SRCREV = "${AUTOREV}"
+
+
+SRCPROJECT  = "${CLO_LE_GIT}/vendor/qcom/opensource/qcnode.git"
+SRCBRANCH  = "qcnode.auto.2.0.r2-rel"
+SRCREV  = "024c04beb5104e1d21adb42b55f936c860c73c7c"
+
+SRC_URI = "${SRCPROJECT};branch=${SRCBRANCH};protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/qcnode;"
 S = "${WORKDIR}/vendor/qcom/opensource/qcnode"
 
 inherit cmake

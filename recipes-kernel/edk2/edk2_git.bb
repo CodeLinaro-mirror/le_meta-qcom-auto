@@ -11,11 +11,20 @@ PROVIDES = "virtual/bootloader"
 PR = "r1"
 PV = "3.0"
 
-SRC_URI = "${PATH_TO_REPO}/bootable/bootloader/edk2/.git;protocol=${PROTO};destsuffix=bootable/bootloader/edk2;usehead=1"
 
-SRCREV = "${AUTOREV}"
+
+SRCPROJECT  = "${CLO_LE_GIT}/abl/tianocore/edk2.git"
+SRCBRANCH  = "uefi.lnx.4.0.r81-rel"
+SRCREV  = "b97c3fe824af52523ef198f455000dd9ff3bd920"
+
+SRC_URI = "${SRCPROJECT};branch=${SRCBRANCH};protocol=${OSS_PROTO};destsuffix=bootable/bootloader/edk2;"
+
 
 S = "${WORKDIR}/bootable/bootloader/edk2"
+
+inherit python3native
+DEPENDS += "python3-setuptools-native"
+
 
 inherit deploy
 
@@ -96,6 +105,7 @@ do_compile () {
         export LINUX_BOOT_CPU_SELECTION_ENABLED=1
         export TARGET_LINUX_BOOT_CPU_ID=7
     fi
+    ln -frs "${PYTHON}" "${STAGING_BINDIR_NATIVE}/python"
     oe_runmake -f makefile all
 }
 do_install() {

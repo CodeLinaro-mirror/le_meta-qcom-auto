@@ -4,8 +4,13 @@ HOMEPAGE = "https://git.codelinaro.org/"
 LICENSE = "BSD-3-Clause-Clear"
 LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/${LICENSE};md5=7a434440b651f4a472ca93716d01033a"
 
-SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/display-intf/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/display-intf;usehead=1"
-SRCREV = "${AUTOREV}"
+
+
+SRCPROJECT  = "${CLO_LA_GIT}/platform/vendor/opensource/display-intf.git"
+SRCBRANCH  = "display-intf.lnx.1.0.r40-rel"
+SRCREV  = "4fc099a351f4a74782008c1c1f04dbca5e01569c"
+
+SRC_URI = "${SRCPROJECT};branch=${SRCBRANCH};protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/display-intf;"
 S = "${WORKDIR}/vendor/qcom/opensource/display-intf"
 
 do_configure[noexec] = "1"

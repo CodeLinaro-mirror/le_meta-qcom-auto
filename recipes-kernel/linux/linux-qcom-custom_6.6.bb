@@ -8,9 +8,16 @@ require recipes-kernel/linux/linux-qcom.inc
 
 COMPATIBLE_MACHINE = "sa8775|sa7255|gen5"
 
+SRCPROJECT  = "${CLO_LA_GIT}/kernel/qcom.git"
+SRCBRANCH  = "kernel.qclinux.1.0.r13-rel"
+SRCREV  = "01859753058a29a4e6603490cefc1c524a88de0d"
+
+
+
 SRC_URI = "\
-    ${PATH_TO_REPO}/kernel/kernel_platform/kernel/.git;protocol=${PROTO};destsuffix=kernel/kernel_platform/kernel;usehead=1 \
+${SRCPROJECT};protocol=${OSS_PROTO};branch=${SRCBRANCH};destsuffix=kernel/kernel_platform/kernel  \
 "
+
 
 S = "${WORKDIR}/kernel/kernel_platform/kernel"
 

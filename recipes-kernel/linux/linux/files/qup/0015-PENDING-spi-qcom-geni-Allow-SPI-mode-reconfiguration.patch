@@ -1,0 +1,35 @@
+From 361697e5f5bafd18e1871611b96952844f2e5c6a Mon Sep 17 00:00:00 2001
+From: Praveen Talari <ptalari@qti.qualcomm.com>
+Date: Wed, 21 May 2025 20:53:43 +0530
+Subject: [PATCH] PENDING: spi: qcom-geni: Allow SPI mode reconfiguration after
+ S2R
+
+The SPI driver caches the last mode to avoid redundant
+configuration. However, after S2R, the hardware context is lost,
+and skipping mode setup can lead to incorrect behavior.
+
+Reset the cached last mode on system resume to allow proper
+reconfiguration, even if the mode hasn't changed.
+
+Change-Id: Iec9a2539680a2a42e082437c808203c717351f00
+Signed-off-by: Praveen Talari <ptalari@qti.qualcomm.com>
+---
+ drivers/spi/spi-geni-qcom.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/spi/spi-geni-qcom.c b/drivers/spi/spi-geni-qcom.c
+index 7be08c9c41e2..7f4940f5e38b 100644
+--- a/drivers/spi/spi-geni-qcom.c
++++ b/drivers/spi/spi-geni-qcom.c
+@@ -1433,7 +1433,7 @@ static int __maybe_unused spi_geni_resume(struct device *dev)
+ 	if (pm_suspend_target_state == PM_SUSPEND_MEM) {
+ 		dev_dbg(dev, "%s: In S2R\n", __func__);
+ 		mas->cur_xfer_mode = GENI_SE_INVALID;
+-
++		mas->last_mode = 0;
+ 		ret = spi_geni_init(mas);
+ 		if (ret)
+ 			return ret;
+-- 
+2.34.1
+

@@ -1,0 +1,1209 @@
+From a5563e8b8442331ead717febc490ab1eeef5594c Mon Sep 17 00:00:00 2001
+From: Aniket Randive <arandive@qti.qualcomm.com>
+Date: Mon, 8 Sep 2025 15:16:01 +0530
+Subject: [PATCH 03/12] PENDING: dmaengine: gpi: Add new API to enhance CCU QUP
+ features
+
+Introduce a new API to support CCU QUP features, including
+multi-slave arbitration, priority data transfer in GSI mode,
+updating the channel CCU mode and type of GPII, premature
+cancel feature, static gpii and noop TRE support.
+
+Change-Id: I24a3d02b175d514c88922d7c1b313db8cd158e22
+Signed-off-by: Aniket Randive <arandive@qti.qualcomm.com>
+---
+ drivers/dma/qcom/gpi.c           | 559 ++++++++++++++++++++++++++-----
+ include/linux/dma/qcom-gpi-dma.h |  34 ++
+ include/linux/dmaengine.h        |  24 ++
+ 3 files changed, 524 insertions(+), 93 deletions(-)
+
+diff --git a/drivers/dma/qcom/gpi.c b/drivers/dma/qcom/gpi.c
+index 32d554ee7f56..6968f32407c9 100644
+--- a/drivers/dma/qcom/gpi.c
++++ b/drivers/dma/qcom/gpi.c
+@@ -38,6 +38,9 @@
+ 
+ /* TRE flags */
+ #define TRE_FLAGS_CHAIN		BIT(0)
++#define TRE_FLAGS_CCU_LAST	BIT(1)
++#define TRE_FLAGS_CH_LAST	BIT(2)
++#define TRE_FLAGS_NOP_LAST	BIT(3)
+ #define TRE_FLAGS_IEOB		BIT(8)
+ #define TRE_FLAGS_IEOT		BIT(9)
+ #define TRE_FLAGS_BEI		BIT(10)
+@@ -57,6 +60,7 @@
+ /* CONFIG0 WD2 */
+ #define TRE_C0_CLK_DIV		GENMASK(11, 0)
+ #define TRE_C0_CLK_SRC		GENMASK(19, 16)
++#define TRE_C0_RETRY		GENMASK(27, 24)
+ 
+ /* SPI GO WD0 */
+ #define TRE_SPI_GO_CMD		GENMASK(4, 0)
+@@ -73,10 +77,16 @@
+ #define TRE_I2C_C0_TX_PACK	BIT(24)
+ #define TRE_I2C_C0_RX_PACK      BIT(25)
+ 
++/* I2C Config WD1 */
++#define TRE_I2C_C1_DELAY	GENMASK(21, 16)
++
+ /* I2C GO WD0 */
+ #define TRE_I2C_GO_CMD          GENMASK(4, 0)
+ #define TRE_I2C_GO_ADDR		GENMASK(14, 8)
++#define TRE_I2C_GO_RAND_WR	BIT(18)
++#define TRE_I2C_GO_PRE_DELAY	BIT(24)
+ #define TRE_I2C_GO_STRETCH	BIT(26)
++#define TRE_I2C_GO_POST_DELAY	BIT(28)
+ 
+ /* DMA TRE */
+ #define TRE_DMA_LEN		GENMASK(23, 0)
+@@ -90,6 +100,21 @@
+ /* Lock Unlock TRE */
+ #define TRE_I2C_UNLOCK		BIT(8)
+ 
++/* NOOP TRE */
++#define NOOP_TRE_LINK_RX	BIT(20)
++#define NOOP_TRE_BEI		BIT(16)
++#define NOOP_TRE_IEOB		BIT(9)
++#define NOOP_TRE_IEOT		BIT(8)
++#define NOOP_TRE_CH		BIT(0)
++#define NOOP_TRE_MASK(link_rx, bei, ieot, ieob, ch) \
++		(FIELD_PREP(NOOP_TRE_LINK_RX, link_rx)	| \
++		FIELD_PREP(NOOP_TRE_BEI, bei)	|\
++		FIELD_PREP(NOOP_TRE_IEOT, ieot)	|\
++		FIELD_PREP(NOOP_TRE_IEOB, ieob)	|\
++		FIELD_PREP(NOOP_TRE_CH, ch))
++
++#define NOOP_TRE	BIT(16)
++
+ /* Register offsets from gpi-top */
+ #define GPII_n_CH_k_CNTXT_0_OFFS(n, k, ccu)\
+ 	((ccu) ? (0x20000 + (0x1000 * (n)) + (0x80 * (k)))\
+@@ -114,8 +139,8 @@
+ #define GPII_n_CH_k_DOORBELL_0_OFFS(n, k, db_off)\
+ 	((db_off) ? ((0x22000 - db_off) + (0x1000 * (n)) + (0x8 * (k))) \
+ 	: (0x22000 + (0x4000 * (n)) + (0x8 * (k))))
+-#define GPII_n_CH_CMD_OFFS(n, ccu)\
+-	((ccu) ? (0x23008 + (0x1000 * (n)))\
++#define GPII_n_CH_CMD_OFFS(n, irq_off)\
++	((irq_off) ? ((0x23008 - irq_off) + (0x1000 * (n)))\
+ 	: (0x23008 + (0x4000 * (n))))
+ #define GPII_n_CH_CMD_OPCODE			GENMASK(31, 24)
+ #define GPII_n_CH_CMD_CHID			GENMASK(7, 0)
+@@ -130,7 +155,10 @@
+ #define GPII_n_CH_CMD_DE_ALLOC		(10)
+ #define GPII_n_CH_CMD_UART_SW_STALE	(32)
+ #define GPII_n_CH_CMD_UART_RFR_READY	(33)
+-#define GPII_n_CH_CMD_UART_RFR_NOT_READY (34)
++#define GPII_n_CH_CMD_UART_RFR_NOT_READY	(34)
++#define GPII_n_CH_CMD_PRIORITIZE_REG_CHAN	(0x3B)
++#define GPII_n_CH_CMD_SYNC_TRIGGER_EN		(0x3D)
++#define GPII_n_CH_CMD_SYNC_TRIGGER_DIS		(0x3E)
+ 
+ /* EV Context Array */
+ #define GPII_n_EV_CH_k_CNTXT_0_OFFS(n, k, offset)\
+@@ -169,8 +197,8 @@ enum CNTXT_OFFS {
+ #define GPII_n_EV_CH_k_DOORBELL_0_OFFS(n, k, offset)\
+ 	((offset) ? ((0x22100 - offset) + (0x1000 * (n)) + (0x8 * (k)))\
+ 	: (0x22100 + (0x4000 * (n)) + (0x8 * (k))))
+-#define GPII_n_EV_CH_CMD_OFFS(n, offset)\
+-	((offset) ? ((0x23010 - offset) + (0x1000 * (n)))\
++#define GPII_n_EV_CH_CMD_OFFS(n, irq_off)\
++	((irq_off) ? ((0x23010 - irq_off) + (0x1000 * (n)))\
+ 	: (0x23010 + (0x4000 * (n))))
+ #define GPII_n_EV_CMD_OPCODE			GENMASK(31, 24)
+ #define GPII_n_EV_CMD_CHID			GENMASK(7, 0)
+@@ -197,6 +225,19 @@ enum CNTXT_OFFS {
+ #define GPII_n_CNTXT_TYPE_IRQ_MSK_EV_CTRL	BIT(1)
+ #define GPII_n_CNTXT_TYPE_IRQ_MSK_CH_CTRL	BIT(0)
+ 
++#define GPII_n_CNTXT_TYPE_COMP_IRQ_OFFS(n, irq_off)\
++	((0x2312c - irq_off) + (0x1000 * (n)))
++
++/* mask type register */
++#define GPII_n_CNTXT_TYPE_COMP_IRQ_MSK_OFFS(n, irq_off)\
++	((0x23130 - irq_off) + (0x1000 * (n)))
++#define GPII_n_CNTXT_TYPE_COMP_IRQ_MSK_BMSK		GENMASK(6, 0)
++#define GPII_n_CNTXT_TYPE_COMP_IRQ_MSK_GENERAL		BIT(6)
++#define GPII_n_CNTXT_TYPE_COMP_IRQ_MSK_IEOB		BIT(3)
++#define GPII_n_CNTXT_TYPE_COMP_IRQ_MSK_GLOB		BIT(2)
++#define GPII_n_CNTXT_TYPE_COMP_IRQ_MSK_EV_CTRL		BIT(1)
++#define GPII_n_CNTXT_TYPE_COMP_IRQ_MSK_CH_CTRL		BIT(0)
++
+ #define GPII_n_CNTXT_SRC_GPII_CH_IRQ_OFFS(n, irq_off)\
+ 	((irq_off) ? ((0x23090 - irq_off) + (0x1000 * (n)))\
+ 	: (0x23090 + (0x4000 * (n))))
+@@ -285,6 +326,11 @@ enum CNTXT_OFFS {
+ #define GPII_n_CH_k_QOS_OFFS(n, k, ccu)\
+ 	((ccu) ? (0x2005C + (0x1000 * (n)) + (0x80 * (k)))\
+ 	: (0x2005C + (0x4000 * (n)) + (0x80 * (k))))
++#define GPII_n_CH_k_QOS_PREFETCH_MODE		(0x400)
++
++/* GPII general control register */
++#define GPI_REE_CFG_OFFS			0x38
++#define GPI_RFE_INT_FAIR_RR_ARB_EN		BIT(16)
+ 
+ /* Scratch registers */
+ #define GPII_n_CH_k_SCRATCH_0_OFFS(n, k, ccu)\
+@@ -315,6 +361,8 @@ enum CNTXT_OFFS {
+ #define GPI_MULTI_VM_FEATURE_EN (0x1F020)
+ #define GPI_GPII_n_EV_CNTXT_TYPE_COMP_IRQ(n) (0x20D2C + (0x1000 * n))
+ 
++#define STATIC_GPII_BMASK	(0xF)
++
+ struct __packed gpi_tre {
+ 	u32 dword[4];
+ };
+@@ -328,6 +376,7 @@ enum msm_gpi_tce_code {
+ 
+ #define CMD_TIMEOUT_MS		(250)
+ 
++#define MAX_IRQ_RW_LOCK		(2)
+ #define MAX_CHANNELS_PER_GPII	(2)
+ #define GPI_TX_CHAN		(0)
+ #define GPI_RX_CHAN		(1)
+@@ -370,10 +419,21 @@ struct __packed gpi_ere {
+ 	u32 dword[4];
+ };
+ 
++struct __packed ccu_error_notif_event {
++	u32 status;
++	u32 irq_status;
++	u32 resvd:24;
++	u32 code:8;
++	u16 resvd1;
++	u8 type;
++	u8 chid;
++};
++
+ enum GPI_EV_TYPE {
+ 	XFER_COMPLETE_EV_TYPE = 0x22,
+ 	IMMEDIATE_DATA_EV_TYPE = 0x30,
+ 	QUP_NOTIF_EV_TYPE = 0x31,
++	CCU_ERROR_NOTIFICATION_EV_TYPE = 0x37,
+ 	STALE_EV_TYPE = 0xFF,
+ };
+ 
+@@ -382,6 +442,7 @@ union __packed gpi_event {
+ 	struct __packed immediate_data_event immediate_data_event;
+ 	struct __packed qup_notif_event qup_notif_event;
+ 	struct __packed gpi_ere gpi_ere;
++	struct __packed ccu_error_notif_event ccu_error_notif_event;
+ };
+ 
+ enum gpii_irq_settings {
+@@ -425,7 +486,10 @@ enum gpi_cmd {
+ 	GPI_CH_CMD_UART_SW_STALE,
+ 	GPI_CH_CMD_UART_RFR_READY,
+ 	GPI_CH_CMD_UART_RFR_NOT_READY,
+-	GPI_CH_CMD_END = GPI_CH_CMD_UART_RFR_NOT_READY,
++	GPI_CH_CMD_PRIORITIZE_REG_CHAN,
++	GPI_CH_CMD_SYNC_TRIGGER_EN,
++	GPI_CH_CMD_SYNC_TRIGGER_DIS,
++	GPI_CH_CMD_END = GPI_CH_CMD_SYNC_TRIGGER_DIS,
+ 	GPI_EV_CMD_BEGIN,
+ 	GPI_EV_CMD_ALLOCATE = GPI_EV_CMD_BEGIN,
+ 	GPI_EV_CMD_RESET,
+@@ -445,6 +509,9 @@ static const char *const gpi_cmd_str[GPI_MAX_CMD] = {
+ 	[GPI_CH_CMD_UART_SW_STALE] = "UART SW STALE",
+ 	[GPI_CH_CMD_UART_RFR_READY] = "UART RFR READY",
+ 	[GPI_CH_CMD_UART_RFR_NOT_READY] = "UART RFR NOT READY",
++	[GPI_CH_CMD_PRIORITIZE_REG_CHAN] = "CH Prioritize",
++	[GPI_CH_CMD_SYNC_TRIGGER_EN] = "SYNC TRIGGER ENABLE",
++	[GPI_CH_CMD_SYNC_TRIGGER_DIS] = "SYNC TRIGGER DISABLE",
+ 	[GPI_EV_CMD_ALLOCATE] = "EV ALLOCATE",
+ 	[GPI_EV_CMD_RESET] = "EV RESET",
+ 	[GPI_EV_CMD_DEALLOC] = "EV DEALLOC",
+@@ -532,6 +599,21 @@ static const struct {
+ 		GPII_n_CH_CMD_UART_RFR_NOT_READY,
+ 		STATE_IGNORE,
+ 	},
++	{
++		GPI_CH_CMD_PRIORITIZE_REG_CHAN,
++		GPII_n_CH_CMD_PRIORITIZE_REG_CHAN,
++		STATE_IGNORE,
++	},
++	{
++		GPI_CH_CMD_SYNC_TRIGGER_EN,
++		GPII_n_CH_CMD_SYNC_TRIGGER_EN,
++		STATE_IGNORE,
++	},
++	{
++		GPI_CH_CMD_SYNC_TRIGGER_DIS,
++		GPII_n_CH_CMD_SYNC_TRIGGER_DIS,
++		STATE_IGNORE,
++	},
+ 	{
+ 		GPI_EV_CMD_ALLOCATE,
+ 		GPII_n_EV_CH_CMD_ALLOCATE,
+@@ -580,9 +662,10 @@ struct gpi_dev {
+ 	void __iomem *ee_base; /*ee register base address*/
+ 	u32 max_gpii; /* maximum # of gpii instances available per gpi block */
+ 	u32 gpii_mask; /* gpii instances available for apps */
++	u32 static_gpii_mask; /* static gpii instances available for apps */
+ 	u32 ev_factor; /* ev ring length factor */
+ 	struct gpii *gpiis;
+-	struct gpi_config *cfg;
++	struct gpi_config cfg;
+ };
+ 
+ struct reg_info {
+@@ -625,12 +708,14 @@ struct gpii {
+ 	bool configured_irq;
+ 	enum gpi_pm_state pm_state;
+ 	rwlock_t pm_lock;
++	rwlock_t irq_lock;
+ 	struct gpi_ring ev_ring;
+ 	struct tasklet_struct ev_task; /* event processing tasklet */
+ 	struct completion cmd_completion;
+ 	enum gpi_cmd gpi_cmd;
+ 	u32 cntxt_type_irq_msk;
+ 	bool ieob_set;
++	bool premature_cancel;
+ };
+ 
+ #define MAX_TRE 5
+@@ -652,6 +737,8 @@ static irqreturn_t gpi_handle_irq(int irq, void *data);
+ static void gpi_ring_recycle_ev_element(struct gpi_ring *ring);
+ static int gpi_ring_add_element(struct gpi_ring *ring, void **wp);
+ static void gpi_process_events(struct gpii *gpii);
++static int gpi_send_cmd(struct gpii *gpii, struct gchan *gchan,
++			enum gpi_cmd gpi_cmd);
+ 
+ static int log_level = -1;
+ static ssize_t log_level_show(struct device *dev,
+@@ -705,17 +792,6 @@ static inline void gpi_write_reg(struct gpii *gpii, void __iomem *addr, u32 val)
+ 	writel_relaxed(val, addr);
+ }
+ 
+-/* gpi_write_reg_field - write to specific bit field */
+-static inline void gpi_write_reg_field(struct gpii *gpii, void __iomem *addr,
+-				       u32 mask, u32 shift, u32 val)
+-{
+-	u32 tmp = gpi_read_reg(gpii, addr);
+-
+-	tmp &= ~mask;
+-	val = tmp | ((val << shift) & mask);
+-	gpi_write_reg(gpii, addr, val);
+-}
+-
+ static __always_inline void
+ gpi_update_reg(struct gpii *gpii, u32 offset, u32 mask, u32 val)
+ {
+@@ -728,32 +804,123 @@ gpi_update_reg(struct gpii *gpii, u32 offset, u32 mask, u32 val)
+ 	gpi_write_reg(gpii, addr, tmp);
+ }
+ 
++/*
++ * ccu_gpi_prioritize_chan - This function is used to give priority
++ *                       to REGULAR channels.
++ *
++ * @chan : DMA transfer channel.
++ *
++ * Return 0 on success and failure on error.
++ */
++int ccu_gpi_prioritize_chan(struct dma_chan *chan)
++{
++	struct gchan *gchan = to_gchan(chan);
++	struct gpii *gpii = gchan->gpii;
++	struct gpi_ring *ring = &gchan->ch_ring;
++	int ret = 0;
++
++	/* Check Previous Transfer completed or not */
++	dev_dbg(gpii->gpi_dev->dev, "wp:0x%0llx rp:0x%0llx\n", ring->wp, ring->rp);
++	if (ring->wp == ring->rp) {
++		/* send command to Prioritize the channel */
++		ret = gpi_send_cmd(gpii, gchan, GPI_CH_CMD_PRIORITIZE_REG_CHAN);
++		if (ret) {
++			dev_err(gpii->gpi_dev->dev, "Error to prioritize reg Chan:%d\n", ret);
++			return -EIO;
++		}
++	} else {
++		dev_err(gpii->gpi_dev->dev, "Pending TRE's are present\n");
++		return -EAGAIN;
++	}
++
++	return 0;
++}
++EXPORT_SYMBOL(ccu_gpi_prioritize_chan);
++
++/*
++ * ccu_gpi_configure_mode - This function used to update the channel CCU
++ * mode and type.
++ *
++ * @chan : DMA transfer channel
++ * @ch_type: Channel type (0 – Regular, 1 – sync ch0, 2 – sync ch1)
++ * @mode: Represents SE mode (0 – sync trigger mode and 1 – CDM mode)
++ *
++ * Return none.
++ */
++void ccu_gpi_configure_mode(struct dma_chan *chan, int mode, int type)
++{
++	struct gchan *gchan = to_gchan(chan);
++	struct gpii *gpii = gchan->gpii;
++	u32 enable = (GPII_n_CNTXT_TYPE_COMP_IRQ_MSK_IEOB |
++		GPII_n_CNTXT_TYPE_COMP_IRQ_MSK_GLOB);
++
++	gchan->mode = mode;
++	gchan->ch_type = type;
++	if (mode) {
++		/* Enable the Global & IEOB IRQ of GPII in CDM mode */
++		gpi_update_reg(gpii, GPII_n_CNTXT_TYPE_COMP_IRQ_MSK_OFFS(gpii->gpii_id, gpii->gpi_dev->cfg.irq_off),
++			       GPII_n_CNTXT_TYPE_COMP_IRQ_MSK_BMSK, enable);
++	}
++}
++EXPORT_SYMBOL(ccu_gpi_configure_mode);
++
++/*
++ * ccu_gpi_set_premature_cancel_flag - This function is used to set the
++ *                                 flag when premature cancellation
++ *                                 is required.
++ * @chan: DMA transfer channel.
++ * @flag: Boolean flag.
++ *
++ * Returen none.
++ */
++void ccu_gpi_set_premature_cancel_flag(struct dma_chan *chan)
++{
++	struct gchan *gchan = to_gchan(chan);
++	struct gpii *gpii = gchan->gpii;
++
++	gpii->premature_cancel = true;
++}
++EXPORT_SYMBOL(ccu_gpi_set_premature_cancel_flag);
++
++/* gpi_write_reg_field - write to specific bit field */
++static inline void gpi_write_reg_field(struct gpii *gpii, void __iomem *addr,
++				       u32 mask, u32 shift, u32 val)
++{
++	u32 tmp = gpi_read_reg(gpii, addr);
++
++	tmp &= ~mask;
++	val = tmp | ((val << shift) & mask);
++	gpi_write_reg(gpii, addr, val);
++}
++
+ static void gpi_disable_interrupts(struct gpii *gpii)
+ {
+ 	gpi_update_reg(gpii, GPII_n_CNTXT_TYPE_IRQ_MSK_OFFS
+-			(gpii->gpii_id, gpii->gpi_dev->cfg->irq_off),
++			(gpii->gpii_id, gpii->gpi_dev->cfg.irq_off),
+ 		       GPII_n_CNTXT_TYPE_IRQ_MSK_BMSK, 0);
+ 	gpi_update_reg(gpii, GPII_n_CNTXT_SRC_IEOB_IRQ_MSK_OFFS
+-			(gpii->gpii_id, gpii->gpi_dev->cfg->irq_off),
++			(gpii->gpii_id, gpii->gpi_dev->cfg.irq_off),
+ 		       GPII_n_CNTXT_SRC_IEOB_IRQ_MSK_BMSK, 0);
+ 	gpi_update_reg(gpii, GPII_n_CNTXT_SRC_CH_IRQ_MSK_OFFS
+-			(gpii->gpii_id, gpii->gpi_dev->cfg->irq_off),
++			(gpii->gpii_id, gpii->gpi_dev->cfg.irq_off),
+ 		       GPII_n_CNTXT_SRC_CH_IRQ_MSK_BMSK, 0);
+ 	gpi_update_reg(gpii, GPII_n_CNTXT_SRC_EV_CH_IRQ_MSK_OFFS
+-			(gpii->gpii_id, gpii->gpi_dev->cfg->irq_off),
++			(gpii->gpii_id, gpii->gpi_dev->cfg.irq_off),
+ 		       GPII_n_CNTXT_SRC_EV_CH_IRQ_MSK_BMSK, 0);
+ 	gpi_update_reg(gpii, GPII_n_CNTXT_GLOB_IRQ_EN_OFFS
+-			(gpii->gpii_id, gpii->gpi_dev->cfg->irq_off),
++			(gpii->gpii_id, gpii->gpi_dev->cfg.irq_off),
+ 		       GPII_n_CNTXT_GPII_IRQ_EN_BMSK, 0);
+ 	gpi_update_reg(gpii, GPII_n_CNTXT_GPII_IRQ_EN_OFFS
+-			(gpii->gpii_id, gpii->gpi_dev->cfg->irq_off),
++			(gpii->gpii_id, gpii->gpi_dev->cfg.irq_off),
+ 		       GPII_n_CNTXT_GPII_IRQ_EN_BMSK, 0);
+ 	gpi_update_reg(gpii, GPII_n_CNTXT_INTSET_OFFS
+-			(gpii->gpii_id, gpii->gpi_dev->cfg->irq_off),
++			(gpii->gpii_id, gpii->gpi_dev->cfg.irq_off),
+ 		       GPII_n_CNTXT_INTSET_BMSK, 0);
+ 
+ 	gpii->cntxt_type_irq_msk = 0;
+-	devm_free_irq(gpii->gpi_dev->dev, gpii->irq, gpii);
++
++	if (!gpii->gpi_dev->cfg.is_ccu_qup)
++		devm_free_irq(gpii->gpi_dev->dev, gpii->irq, gpii);
+ 	gpii->configured_irq = false;
+ }
+ 
+@@ -767,7 +934,7 @@ static int gpi_config_interrupts(struct gpii *gpii, enum gpii_irq_settings setti
+ 			      GPII_n_CNTXT_TYPE_IRQ_MSK_CH_CTRL);
+ 	int ret;
+ 
+-	if (!gpii->configured_irq) {
++	if (!gpii->configured_irq && !gpii->gpi_dev->cfg.is_ccu_qup) {
+ 		ret = devm_request_irq(gpii->gpi_dev->dev, gpii->irq,
+ 				       gpi_handle_irq, IRQF_TRIGGER_HIGH,
+ 				       "gpi-dma", gpii);
+@@ -788,51 +955,51 @@ static int gpi_config_interrupts(struct gpii *gpii, enum gpii_irq_settings setti
+ 		else
+ 			gpii->cntxt_type_irq_msk &= ~(GPII_n_CNTXT_TYPE_IRQ_MSK_IEOB);
+ 		gpi_update_reg(gpii, GPII_n_CNTXT_TYPE_IRQ_MSK_OFFS
+-			       (gpii->gpii_id, gpii->gpi_dev->cfg->irq_off),
++			       (gpii->gpii_id, gpii->gpi_dev->cfg.irq_off),
+ 			       GPII_n_CNTXT_TYPE_IRQ_MSK_BMSK, gpii->cntxt_type_irq_msk);
+ 		gpi_update_reg(gpii, GPII_n_CNTXT_TYPE_IRQ_MSK_OFFS
+-			       (gpii->gpii_id, gpii->gpi_dev->cfg->irq_off),
++			       (gpii->gpii_id, gpii->gpi_dev->cfg.irq_off),
+ 			       GPII_n_CNTXT_TYPE_IRQ_MSK_BMSK,
+ 			       gpii->cntxt_type_irq_msk);
+ 	} else {
+ 		gpi_update_reg(gpii, GPII_n_CNTXT_TYPE_IRQ_MSK_OFFS
+-			       (gpii->gpii_id, gpii->gpi_dev->cfg->irq_off),
++			       (gpii->gpii_id, gpii->gpi_dev->cfg.irq_off),
+ 			       GPII_n_CNTXT_TYPE_IRQ_MSK_BMSK, enable);
+ 		gpi_update_reg(gpii, GPII_n_CNTXT_TYPE_IRQ_MSK_OFFS
+-			       (gpii->gpii_id, gpii->gpi_dev->cfg->irq_off),
++			       (gpii->gpii_id, gpii->gpi_dev->cfg.irq_off),
+ 			       GPII_n_CNTXT_TYPE_IRQ_MSK_BMSK, enable);
+ 		gpi_update_reg(gpii, GPII_n_CNTXT_SRC_IEOB_IRQ_MSK_OFFS
+-			       (gpii->gpii_id, gpii->gpi_dev->cfg->irq_off),
++			       (gpii->gpii_id, gpii->gpi_dev->cfg.irq_off),
+ 			       GPII_n_CNTXT_SRC_IEOB_IRQ_MSK_BMSK,
+ 			       GPII_n_CNTXT_SRC_IEOB_IRQ_MSK_BMSK);
+ 		gpi_update_reg(gpii, GPII_n_CNTXT_SRC_CH_IRQ_MSK_OFFS
+-			       (gpii->gpii_id, gpii->gpi_dev->cfg->irq_off),
++			       (gpii->gpii_id, gpii->gpi_dev->cfg.irq_off),
+ 			       GPII_n_CNTXT_SRC_CH_IRQ_MSK_BMSK,
+ 			       GPII_n_CNTXT_SRC_CH_IRQ_MSK_BMSK);
+ 		gpi_update_reg(gpii, GPII_n_CNTXT_SRC_EV_CH_IRQ_MSK_OFFS
+-			       (gpii->gpii_id, gpii->gpi_dev->cfg->irq_off),
++			       (gpii->gpii_id, gpii->gpi_dev->cfg.irq_off),
+ 			       GPII_n_CNTXT_SRC_EV_CH_IRQ_MSK_BMSK,
+ 			       GPII_n_CNTXT_SRC_EV_CH_IRQ_MSK_BMSK);
+ 		gpi_update_reg(gpii, GPII_n_CNTXT_GLOB_IRQ_EN_OFFS
+-			       (gpii->gpii_id, gpii->gpi_dev->cfg->irq_off),
++			       (gpii->gpii_id, gpii->gpi_dev->cfg.irq_off),
+ 			       GPII_n_CNTXT_GPII_IRQ_EN_BMSK,
+ 			       GPII_n_CNTXT_GPII_IRQ_EN_BMSK);
+ 		gpi_update_reg(gpii, GPII_n_CNTXT_GPII_IRQ_EN_OFFS
+-			       (gpii->gpii_id, gpii->gpi_dev->cfg->irq_off),
++			       (gpii->gpii_id, gpii->gpi_dev->cfg.irq_off),
+ 			       GPII_n_CNTXT_GPII_IRQ_EN_BMSK, GPII_n_CNTXT_GPII_IRQ_EN_BMSK);
+ 		gpi_update_reg(gpii, GPII_n_CNTXT_MSI_BASE_LSB_OFFS
+-			       (gpii->gpii_id, gpii->gpi_dev->cfg->irq_off), U32_MAX, 0);
++			       (gpii->gpii_id, gpii->gpi_dev->cfg.irq_off), U32_MAX, 0);
+ 		gpi_update_reg(gpii, GPII_n_CNTXT_MSI_BASE_MSB_OFFS
+-			       (gpii->gpii_id, gpii->gpi_dev->cfg->irq_off), U32_MAX, 0);
++			       (gpii->gpii_id, gpii->gpi_dev->cfg.irq_off), U32_MAX, 0);
+ 		gpi_update_reg(gpii, GPII_n_CNTXT_SCRATCH_0_OFFS
+-			       (gpii->gpii_id, gpii->gpi_dev->cfg->scratch_off), U32_MAX, 0);
++			       (gpii->gpii_id, gpii->gpi_dev->cfg.scratch_off), U32_MAX, 0);
+ 		gpi_update_reg(gpii, GPII_n_CNTXT_SCRATCH_1_OFFS
+-			       (gpii->gpii_id, gpii->gpi_dev->cfg->scratch_off), U32_MAX, 0);
++			       (gpii->gpii_id, gpii->gpi_dev->cfg.scratch_off), U32_MAX, 0);
+ 		gpi_update_reg(gpii, GPII_n_CNTXT_INTSET_OFFS
+-			       (gpii->gpii_id, gpii->gpi_dev->cfg->irq_off),
++			       (gpii->gpii_id, gpii->gpi_dev->cfg.irq_off),
+ 			       GPII_n_CNTXT_INTSET_BMSK, 1);
+ 		gpi_update_reg(gpii, GPII_n_ERROR_LOG_OFFS
+-			       (gpii->gpii_id, gpii->gpi_dev->cfg->irq_off), U32_MAX, 0);
++			       (gpii->gpii_id, gpii->gpi_dev->cfg.irq_off), U32_MAX, 0);
+ 
+ 		gpii->cntxt_type_irq_msk = enable;
+ 	}
+@@ -912,7 +1079,11 @@ static inline void gpi_write_ev_db(struct gpii *gpii,
+ /* process transfer completion interrupt */
+ static void gpi_process_ieob(struct gpii *gpii)
+ {
+-	gpi_write_reg(gpii, gpii->ieob_clr_reg, BIT(0));
++	struct gchan *chan = &gpii->gchan[0];
++
++	/* In CDM mode, client should clear the IEOB IRQ so skip it*/
++	if (!chan->mode)
++		gpi_write_reg(gpii, gpii->ieob_clr_reg, BIT(0));
+ 
+ 	gpi_config_interrupts(gpii, MASK_IEOB_SETTINGS, 0);
+ 	tasklet_hi_schedule(&gpii->ev_task);
+@@ -922,13 +1093,13 @@ static void gpi_process_ieob(struct gpii *gpii)
+ static void gpi_process_ch_ctrl_irq(struct gpii *gpii)
+ {
+ 	u32 gpii_id = gpii->gpii_id;
+-	u32 offset = GPII_n_CNTXT_SRC_GPII_CH_IRQ_OFFS(gpii_id, gpii->gpi_dev->cfg->irq_off);
++	u32 offset = GPII_n_CNTXT_SRC_GPII_CH_IRQ_OFFS(gpii_id, gpii->gpi_dev->cfg.irq_off);
+ 	u32 ch_irq = gpi_read_reg(gpii, gpii->regs + offset);
+ 	struct gchan *gchan;
+ 	u32 chid, state;
+ 
+ 	/* clear the status */
+-	offset = GPII_n_CNTXT_SRC_CH_IRQ_CLR_OFFS(gpii_id, gpii->gpi_dev->cfg->irq_off);
++	offset = GPII_n_CNTXT_SRC_CH_IRQ_CLR_OFFS(gpii_id, gpii->gpi_dev->cfg.irq_off);
+ 	gpi_write_reg(gpii, gpii->regs + offset, (u32)ch_irq);
+ 
+ 	for (chid = 0; chid < MAX_CHANNELS_PER_GPII; chid++) {
+@@ -963,7 +1134,7 @@ static void gpi_process_ch_ctrl_irq(struct gpii *gpii)
+ static void gpi_process_gen_err_irq(struct gpii *gpii)
+ {
+ 	u32 gpii_id = gpii->gpii_id;
+-	u32 offset = GPII_n_CNTXT_GPII_IRQ_STTS_OFFS(gpii_id, gpii->gpi_dev->cfg->irq_off);
++	u32 offset = GPII_n_CNTXT_GPII_IRQ_STTS_OFFS(gpii_id, gpii->gpi_dev->cfg.irq_off);
+ 	u32 irq_stts = gpi_read_reg(gpii, gpii->regs + offset);
+ 
+ 	/* clear the status */
+@@ -971,7 +1142,7 @@ static void gpi_process_gen_err_irq(struct gpii *gpii)
+ 		    irq_stts);
+ 
+ 	/* Clear the register */
+-	offset = GPII_n_CNTXT_GPII_IRQ_CLR_OFFS(gpii_id, gpii->gpi_dev->cfg->irq_off);
++	offset = GPII_n_CNTXT_GPII_IRQ_CLR_OFFS(gpii_id, gpii->gpi_dev->cfg.irq_off);
+ 	gpi_write_reg(gpii, gpii->regs + offset, irq_stts);
+ }
+ 
+@@ -980,10 +1151,10 @@ static void gpi_process_glob_err_irq(struct gpii *gpii)
+ {
+ 	u32 gpii_id = gpii->gpii_id;
+ 	u32 offset = GPII_n_CNTXT_GLOB_IRQ_STTS_OFFS
+-			(gpii_id, gpii->gpi_dev->cfg->irq_off);
++			(gpii_id, gpii->gpi_dev->cfg.irq_off);
+ 	u32 irq_stts = gpi_read_reg(gpii, gpii->regs + offset);
+ 
+-	offset = GPII_n_CNTXT_GLOB_IRQ_CLR_OFFS(gpii_id, gpii->gpi_dev->cfg->irq_off);
++	offset = GPII_n_CNTXT_GLOB_IRQ_CLR_OFFS(gpii_id, gpii->gpi_dev->cfg.irq_off);
+ 	gpi_write_reg(gpii, gpii->regs + offset, irq_stts);
+ 
+ 	/* only error interrupt should be set */
+@@ -993,14 +1164,13 @@ static void gpi_process_glob_err_irq(struct gpii *gpii)
+ 		return;
+ 	}
+ 
+-	offset = GPII_n_ERROR_LOG_OFFS(gpii_id, gpii->gpi_dev->cfg->irq_off);
++	offset = GPII_n_ERROR_LOG_OFFS(gpii_id, gpii->gpi_dev->cfg.irq_off);
+ 	gpi_write_reg(gpii, gpii->regs + offset, 0);
+ }
+ 
+-/* gpii interrupt handler */
+-static irqreturn_t gpi_handle_irq(int irq, void *data)
++/* handle GPII ISR */
++static void process_gpi_irq(struct gpii *gpii)
+ {
+-	struct gpii *gpii = data;
+ 	u32 gpii_id = gpii->gpii_id;
+ 	u32 type, offset;
+ 	unsigned long flags;
+@@ -1018,7 +1188,13 @@ static irqreturn_t gpi_handle_irq(int irq, void *data)
+ 		goto exit_irq;
+ 	}
+ 
+-	offset = GPII_n_CNTXT_TYPE_IRQ_OFFS(gpii->gpii_id, gpii->gpi_dev->cfg->irq_off);
++	/* In CDM mode, GSI completion IRQ is changed so read that IRQ register */
++	if (gpii->gchan[0].mode)
++		offset = GPII_n_CNTXT_TYPE_COMP_IRQ_OFFS(gpii->gpii_id,
++							 gpii->gpi_dev->cfg.irq_off);
++	else
++		offset = GPII_n_CNTXT_TYPE_IRQ_OFFS(gpii->gpii_id, gpii->gpi_dev->cfg.irq_off);
++
+ 	type = gpi_read_reg(gpii, gpii->regs + offset);
+ 
+ 	do {
+@@ -1042,11 +1218,11 @@ static irqreturn_t gpi_handle_irq(int irq, void *data)
+ 			GPI_DBG_LOG(LOG_LVL_INFO, gpii->gpi_dev->dev,
+ 				    "processing EV CTRL interrupt\n");
+ 			offset = GPII_n_CNTXT_SRC_EV_CH_IRQ_OFFS
+-				(gpii_id, gpii->gpi_dev->cfg->irq_off);
++				(gpii_id, gpii->gpi_dev->cfg.irq_off);
+ 			ev_ch_irq = gpi_read_reg(gpii, gpii->regs + offset);
+ 
+ 			offset = GPII_n_CNTXT_SRC_EV_CH_IRQ_CLR_OFFS
+-				(gpii_id, gpii->gpi_dev->cfg->irq_off);
++				(gpii_id, gpii->gpi_dev->cfg.irq_off);
+ 			gpi_write_reg(gpii, gpii->regs + offset, ev_ch_irq);
+ 			ev_state = gpi_read_reg(gpii, gpii->ev_cntxt_base_reg +
+ 						CNTXT_0_CONFIG);
+@@ -1083,16 +1259,87 @@ static irqreturn_t gpi_handle_irq(int irq, void *data)
+ 			goto exit_irq;
+ 		}
+ 
+-		offset = GPII_n_CNTXT_TYPE_IRQ_OFFS(gpii->gpii_id, gpii->gpi_dev->cfg->irq_off);
++		offset = GPII_n_CNTXT_TYPE_IRQ_OFFS(gpii->gpii_id, gpii->gpi_dev->cfg.irq_off);
+ 		type = gpi_read_reg(gpii, gpii->regs + offset);
+ 	} while (type);
+ 
+ exit_irq:
+ 	read_unlock_irqrestore(&gpii->pm_lock, flags);
++}
++
++/* gpii interrupt handler */
++static irqreturn_t gpi_handle_irq(int irq, void *data)
++{
++	struct gpii *gpii = data;
++
++	process_gpi_irq(gpii);
+ 
+ 	return IRQ_HANDLED;
+ }
+ 
++/* Handle IRQ for GPII */
++void ccu_gpi_handle_isr(void *dev, int idx)
++{
++	struct gpi_dev *gpi = (struct gpi_dev *)dev;
++	struct gpii *gpii = &gpi->gpiis[idx];
++
++	process_gpi_irq(gpii);
++}
++EXPORT_SYMBOL(ccu_gpi_handle_isr);
++
++/* process CCU Error notification event */
++static void gpi_process_ccu_error_event(struct gchan *gchan,
++					struct ccu_error_notif_event *error_event)
++{
++	struct gpii *gpii = gchan->gpii;
++	struct dmaengine_result result;
++	struct gpi_desc *gpi_desc;
++	struct virt_dma_desc *vd;
++	unsigned long flags;
++
++	if (gchan->pm_state != ACTIVE_STATE) {
++		dev_err(gpii->gpi_dev->dev, "skipping processing event because ch @ %s state\n",
++			TO_GPI_PM_STR(gchan->pm_state));
++		return;
++	}
++
++	spin_lock_irqsave(&gchan->vc.lock, flags);
++	vd = vchan_next_desc(&gchan->vc);
++	if (!vd) {
++		struct gpi_ere *gpi_ere;
++
++		spin_unlock_irqrestore(&gchan->vc.lock, flags);
++		dev_err(gpii->gpi_dev->dev, "Event without a pending descriptor!\n");
++		gpi_ere = (struct gpi_ere *)error_event;
++		dev_err(gpii->gpi_dev->dev,
++			"Event: %08x %08x %08x %08x\n",
++			gpi_ere->dword[0], gpi_ere->dword[1],
++			gpi_ere->dword[2], gpi_ere->dword[3]);
++		return;
++	}
++	gpi_desc = to_gpi_desc(vd);
++	spin_unlock_irqrestore(&gchan->vc.lock, flags);
++
++	/* make sure rp updates are immediately visible to all cores */
++	smp_wmb();
++
++	if (error_event->code == MSM_GPI_TCE_UNEXP_ERR &&
++			error_event->type == CCU_ERROR_NOTIFICATION_EV_TYPE) {
++		dev_err(gpii->gpi_dev->dev, "I2C CCU SYNC TRE Not Found\n");
++		result.result = DMA_TRANS_ABORTED;
++		result.gpii_id = gpii->gpii_id;
++	}
++
++	dma_cookie_complete(&vd->tx);
++	dmaengine_desc_get_callback_invoke(&vd->tx, &result);
++
++	spin_lock_irqsave(&gchan->vc.lock, flags);
++	list_del(&vd->node);
++	spin_unlock_irqrestore(&gchan->vc.lock, flags);
++	kfree(gpi_desc);
++	gpi_desc = NULL;
++}
++
+ /* process DMA Immediate completion data events */
+ static void gpi_process_imed_data_event(struct gchan *gchan,
+ 					struct immediate_data_event *imed_event)
+@@ -1165,6 +1412,7 @@ static void gpi_process_imed_data_event(struct gchan *gchan,
+ 	else
+ 		result.result = DMA_TRANS_NOERROR;
+ 	result.residue = gpi_desc->len - imed_event->length;
++	result.gpii_id = gpii->gpii_id;
+ 
+ 	dma_cookie_complete(&vd->tx);
+ 	dmaengine_desc_get_callback_invoke(&vd->tx, &result);
+@@ -1247,6 +1495,7 @@ static void gpi_process_xfer_compl_event(struct gchan *gchan,
+ 		result.result = DMA_TRANS_NOERROR;
+ 	}
+ 	result.residue = gpi_desc->len - compl_event->length;
++	result.gpii_id = gpii->gpii_id;
+ 	GPI_DBG_LOG(LOG_LVL_VERBOSE, gpii->gpi_dev->dev,
+ 		    "Residue %d\n", result.residue);
+ 
+@@ -1315,6 +1564,13 @@ static void gpi_process_events(struct gpii *gpii)
+ 				GPI_DBG_LOG(LOG_LVL_VERBOSE, gpii->gpi_dev->dev,
+ 					    "QUP_NOTIF_EV_TYPE\n");
+ 				break;
++			case CCU_ERROR_NOTIFICATION_EV_TYPE:
++				GPI_DBG_LOG(LOG_LVL_VERBOSE, gpii->gpi_dev->dev,
++					    "CCU error notifcation event\n");
++				gchan = &gpii->gchan[chid];
++				gpi_process_ccu_error_event(gchan,
++							    &gpi_event->ccu_error_notif_event);
++				break;
+ 			default:
+ 				GPI_DBG_LOG(LOG_LVL_VERBOSE, gpii->gpi_dev->dev,
+ 					    "not supported event type:0x%x\n", type);
+@@ -1323,8 +1579,9 @@ static void gpi_process_events(struct gpii *gpii)
+ 		}
+ 		gpi_write_ev_db(gpii, ev_ring, ev_ring->wp);
+ 
+-		/* clear pending IEOB events */
+-		gpi_write_reg(gpii, gpii->ieob_clr_reg, BIT(0));
++		/* Clear pending IEOB events in non CDM mode*/
++		if (!gchan->mode)
++			gpi_write_reg(gpii, gpii->ieob_clr_reg, BIT(0));
+ 
+ 		cntxt_rp = gpi_read_reg(gpii, gpii->ev_ring_rp_lsb_reg);
+ 		rp = to_virtual(ev_ring, cntxt_rp);
+@@ -1484,21 +1741,28 @@ static int gpi_alloc_chan(struct gchan *chan, bool send_alloc_cmd)
+ 	gpi_write_reg(gpii, chan->ch_cntxt_db_reg + CNTXT_5_RING_RP_MSB - CNTXT_4_RING_RP_LSB,
+ 		      upper_32_bits(ring->phys_addr));
+ 	gpi_write_reg(gpii, gpii->regs + GPII_n_CH_k_SCRATCH_0_OFFS
+-		      (id, chid, gpii->gpi_dev->cfg->is_ccu_qup),
++		      (id, chid, gpii->gpi_dev->cfg.is_ccu_qup),
+ 		      GPII_n_CH_k_SCRATCH_0(pair_chid, chan->protocol, chan->mode,
+ 					    chan->ch_type, chan->seid));
+ 	gpi_write_reg(gpii, gpii->regs + GPII_n_CH_k_SCRATCH_0_OFFS
+-		      (id, chid, gpii->gpi_dev->cfg->is_ccu_qup),
++		      (id, chid, gpii->gpi_dev->cfg.is_ccu_qup),
+ 		       GPII_n_CH_k_SCRATCH_0(pair_chid, chan->protocol, chan->mode,
+ 					     chan->ch_type, chan->seid));
+ 	gpi_write_reg(gpii, gpii->regs + GPII_n_CH_k_SCRATCH_1_OFFS
+-		      (id, chid, gpii->gpi_dev->cfg->is_ccu_qup), 0);
++		      (id, chid, gpii->gpi_dev->cfg.is_ccu_qup), 0);
+ 	gpi_write_reg(gpii, gpii->regs + GPII_n_CH_k_SCRATCH_2_OFFS
+-		      (id, chid, gpii->gpi_dev->cfg->is_ccu_qup), 0);
++		      (id, chid, gpii->gpi_dev->cfg.is_ccu_qup), 0);
+ 	gpi_write_reg(gpii, gpii->regs + GPII_n_CH_k_SCRATCH_3_OFFS
+-		      (id, chid, gpii->gpi_dev->cfg->is_ccu_qup), 0);
+-	gpi_write_reg(gpii, gpii->regs + GPII_n_CH_k_QOS_OFFS
+-		      (id, chid, gpii->gpi_dev->cfg->is_ccu_qup), 1);
++		      (id, chid, gpii->gpi_dev->cfg.is_ccu_qup), 0);
++	if (gpii->gpi_dev->cfg.is_ccu_qup) {
++		/* Enable Multi-Slave arbitration */
++		gpi_write_reg(gpii, gpii->regs + GPII_n_CH_k_QOS_OFFS
++			      (id, chid, gpii->gpi_dev->cfg.is_ccu_qup),
++			      GPII_n_CH_k_QOS_PREFETCH_MODE);
++	} else {
++		gpi_write_reg(gpii, gpii->regs + GPII_n_CH_k_QOS_OFFS
++			      (id, chid, gpii->gpi_dev->cfg.is_ccu_qup), 1);
++	}
+ 
+ 	/* flush all the writes */
+ 	wmb();
+@@ -1675,6 +1939,41 @@ static void gpi_queue_xfer(struct gpii *gpii, struct gchan *gchan,
+ 	*wp = ch_tre;
+ }
+ 
++/* NOOP TRE */
++static void gpi_noop_tre(struct gpii *gpii, struct gchan *gchan)
++{
++	struct gpi_ring *ring = &gchan->ch_ring;
++	struct gpi_tre *tre;
++	phys_addr_t local_rp, local_wp;
++	void *cntxt_rp;
++	u32 noop_mask, noop_tre;
++
++	local_rp = to_physical(ring, ring->rp);
++	local_wp = to_physical(ring, ring->wp);
++	cntxt_rp = ring->rp;
++
++	dev_dbg(gpii->gpi_dev->dev, "local_rp:0x%11llx, local_wp:0x%11llx\n",
++		local_rp, local_wp);
++
++	noop_mask = NOOP_TRE_MASK(1, 0, 0, 0, 1);
++	noop_tre = NOOP_TRE;
++
++	while (local_rp != local_wp) {
++		tre = (struct gpi_tre *)cntxt_rp;
++		dev_dbg(gpii->gpi_dev->dev, "TRE: %08x %08x %08x %08x\n",
++			tre->dword[0], tre->dword[1], tre->dword[2],
++			tre->dword[3]);
++		tre->dword[3] &= noop_mask;
++		tre->dword[3] |= noop_tre;
++		local_rp += ring->el_size;
++		cntxt_rp += ring->el_size;
++		if (cntxt_rp >= (ring->base + ring->len)) {
++			cntxt_rp = ring->base;
++			local_rp = to_physical(ring, ring->base);
++		}
++	}
++}
++
+ /* reset and restart transfer channel */
+ static int gpi_terminate_all(struct dma_chan *chan)
+ {
+@@ -1685,6 +1984,16 @@ static int gpi_terminate_all(struct dma_chan *chan)
+ 
+ 	mutex_lock(&gpii->ctrl_lock);
+ 
++	/* send sync trigger disable command */
++	if (gpii->premature_cancel) {
++		ret = gpi_send_cmd(gpii, gchan, GPI_CH_CMD_SYNC_TRIGGER_DIS);
++		if (ret) {
++			dev_err(gpii->gpi_dev->dev, "Error with cmd:%s ret:%d\n",
++				TO_GPI_CMD_STR(GPI_CH_CMD_SYNC_TRIGGER_DIS), ret);
++			goto terminate_exit;
++		}
++	}
++
+ 	/*
+ 	 * treat both channels as a group if its protocol is not UART
+ 	 * STOP, RESET, or START needs to be in lockstep
+@@ -1705,6 +2014,14 @@ static int gpi_terminate_all(struct dma_chan *chan)
+ 		ret = gpi_stop_chan(gchan);
+ 	}
+ 
++	if (gpii->premature_cancel) {
++		for (i = schid; i < echid; i++) {
++			gchan = &gpii->gchan[i];
++			gpi_noop_tre(gpii, gchan);
++		}
++		goto start_chan;
++	}
++
+ 	/* reset the channels (clears any pending tre) */
+ 	for (i = schid; i < echid; i++) {
+ 		gchan = &gpii->gchan[i];
+@@ -1725,6 +2042,7 @@ static int gpi_terminate_all(struct dma_chan *chan)
+ 		}
+ 	}
+ 
++start_chan:
+ 	/* restart the channels */
+ 	for (i = schid; i < echid; i++) {
+ 		gchan = &gpii->gchan[i];
+@@ -1737,7 +2055,18 @@ static int gpi_terminate_all(struct dma_chan *chan)
+ 		}
+ 	}
+ 
++	/* send sync trigger enable command */
++	if (gpii->premature_cancel) {
++		ret = gpi_send_cmd(gpii, gchan, GPI_CH_CMD_SYNC_TRIGGER_EN);
++		if (ret) {
++			dev_err(gpii->gpi_dev->dev, "Error with cmd:%s ret:%d\n",
++				TO_GPI_CMD_STR(GPI_CH_CMD_SYNC_TRIGGER_EN), ret);
++			return ret;
++		}
++	}
++
+ terminate_exit:
++	gpii->premature_cancel = false;
+ 	mutex_unlock(&gpii->ctrl_lock);
+ 	return ret;
+ }
+@@ -1877,7 +2206,8 @@ static int gpi_pause(struct dma_chan *chan)
+ 		}
+ 	}
+ 
+-	disable_irq(gpii->irq);
++	if (!gpii->gpi_dev->cfg.is_ccu_qup)
++		disable_irq(gpii->irq);
+ 
+ 	/* Wait for threads to complete out */
+ 	tasklet_kill(&gpii->ev_task);
+@@ -1906,7 +2236,8 @@ static int gpi_resume(struct dma_chan *chan)
+ 		return 0;
+ 	}
+ 
+-	enable_irq(gpii->irq);
++	if (!gpii->gpi_dev->cfg.is_ccu_qup)
++		enable_irq(gpii->irq);
+ 
+ 	if (gpi_ctrl && gpi_ctrl->cmd == QCOM_GPI_CHANNEL_CONFIGURE) {
+ 		ret = gpi_channels_configure(chan);
+@@ -1988,6 +2319,9 @@ static int gpi_create_i2c_tre(struct gchan *chan, struct gpi_desc *desc,
+ 		tre->dword[3] = u32_encode_bits(1, TRE_I2C_LOCK);
+ 		tre->dword[3] |= u32_encode_bits(0, TRE_MINOR_TYPE);
+ 		tre->dword[3] |= u32_encode_bits(3, TRE_MAJOR_TYPE);
++		tre->dword[3] |= u32_encode_bits(0, TRE_FLAGS_CCU_LAST);
++		tre->dword[3] |= u32_encode_bits(0, TRE_FLAGS_CH_LAST);
++		tre->dword[3] |= u32_encode_bits(0, TRE_FLAGS_NOP_LAST);
+ 	}
+ 
+ 	/* first create config tre if applicable */
+@@ -2001,12 +2335,16 @@ static int gpi_create_i2c_tre(struct gchan *chan, struct gpi_desc *desc,
+ 		tre->dword[0] |= u32_encode_bits(i2c->pack_enable, TRE_I2C_C0_TX_PACK);
+ 		tre->dword[0] |= u32_encode_bits(i2c->pack_enable, TRE_I2C_C0_RX_PACK);
+ 
+-		tre->dword[1] = 0;
++		tre->dword[1] |= u32_encode_bits(i2c->delay, TRE_I2C_C1_DELAY);
+ 
+ 		tre->dword[2] = u32_encode_bits(i2c->clk_div, TRE_C0_CLK_DIV);
++		tre->dword[2] |= u32_encode_bits(i2c->ccu_cfg.retry, TRE_C0_RETRY);
+ 
+ 		tre->dword[3] = u32_encode_bits(TRE_TYPE_CONFIG0, TRE_FLAGS_TYPE);
+ 		tre->dword[3] |= u32_encode_bits(1, TRE_FLAGS_CHAIN);
++		tre->dword[3] |= u32_encode_bits(0, TRE_FLAGS_CCU_LAST);
++		tre->dword[3] |= u32_encode_bits(0, TRE_FLAGS_CH_LAST);
++		tre->dword[3] |= u32_encode_bits(0, TRE_FLAGS_NOP_LAST);
+ 	}
+ 
+ 	/* create the GO tre for Tx */
+@@ -2020,12 +2358,18 @@ static int gpi_create_i2c_tre(struct gchan *chan, struct gpi_desc *desc,
+ 			tre->dword[0] = u32_encode_bits(i2c->op, TRE_I2C_GO_CMD);
+ 
+ 		tre->dword[0] |= u32_encode_bits(i2c->addr, TRE_I2C_GO_ADDR);
++		tre->dword[0] |= u32_encode_bits(i2c->addr, TRE_I2C_GO_RAND_WR);
+ 		tre->dword[0] |= u32_encode_bits(i2c->stretch, TRE_I2C_GO_STRETCH);
++		tre->dword[0] |= u32_encode_bits(i2c->pre_delay, TRE_I2C_GO_PRE_DELAY);
++		tre->dword[0] |= u32_encode_bits(i2c->post_delay, TRE_I2C_GO_POST_DELAY);
+ 
+ 		tre->dword[1] = 0;
+ 		tre->dword[2] = u32_encode_bits(i2c->rx_len, TRE_RX_LEN);
+ 
+ 		tre->dword[3] = u32_encode_bits(TRE_TYPE_GO, TRE_FLAGS_TYPE);
++		tre->dword[3] |= u32_encode_bits(0, TRE_FLAGS_CCU_LAST);
++		tre->dword[3] |= u32_encode_bits(0, TRE_FLAGS_CH_LAST);
++		tre->dword[3] |= u32_encode_bits(0, TRE_FLAGS_NOP_LAST);
+ 
+ 		if (i2c->multi_msg)
+ 			tre->dword[3] |= u32_encode_bits(1, TRE_FLAGS_LINK);
+@@ -2046,6 +2390,9 @@ static int gpi_create_i2c_tre(struct gchan *chan, struct gpi_desc *desc,
+ 
+ 		tre->dword[3] = u32_encode_bits(TRE_TYPE_DMA, TRE_FLAGS_TYPE);
+ 		tre->dword[3] |= u32_encode_bits(1, TRE_FLAGS_IEOT);
++		tre->dword[3] |= u32_encode_bits(i2c->ccu_cfg.ccu_last, TRE_FLAGS_CCU_LAST);
++		tre->dword[3] |= u32_encode_bits(i2c->ccu_cfg.ch_last, TRE_FLAGS_CH_LAST);
++		tre->dword[3] |= u32_encode_bits(i2c->ccu_cfg.nop_last, TRE_FLAGS_NOP_LAST);
+ 	}
+ 
+ 	/* Unlock tre for last transfer */
+@@ -2060,6 +2407,9 @@ static int gpi_create_i2c_tre(struct gchan *chan, struct gpi_desc *desc,
+ 		tre->dword[3] = u32_encode_bits(1, TRE_I2C_UNLOCK);
+ 		tre->dword[3] |= u32_encode_bits(1, TRE_MINOR_TYPE);
+ 		tre->dword[3] |= u32_encode_bits(3, TRE_MAJOR_TYPE);
++		tre->dword[3] |= u32_encode_bits(0, TRE_FLAGS_CCU_LAST);
++		tre->dword[3] |= u32_encode_bits(0, TRE_FLAGS_CH_LAST);
++		tre->dword[3] |= u32_encode_bits(0, TRE_FLAGS_NOP_LAST);
+ 	}
+ 
+ 	for (i = 0; i < tre_idx; i++)
+@@ -2459,6 +2809,14 @@ static int gpi_alloc_chan_resources(struct dma_chan *chan)
+ 	return ret;
+ }
+ 
++static int gpi_find_static_gpii(struct gpi_dev *gpi_dev, int gpii_no)
++{
++	if (gpi_dev->static_gpii_mask & (1 << gpii_no))
++		return gpii_no;
++
++	return -EINVAL;
++}
++
+ static int gpi_find_avail_gpii(struct gpi_dev *gpi_dev, u32 seid)
+ {
+ 	struct gchan *tx_chan, *rx_chan;
+@@ -2505,7 +2863,7 @@ static struct dma_chan *gpi_of_dma_xlate(struct of_phandle_args *args,
+ {
+ 	struct gpi_dev *gpi_dev = (struct gpi_dev *)of_dma->of_dma_data;
+ 	u32 seid, chid;
+-	int gpii;
++	int gpii, static_gpii_no;
+ 	struct gchan *gchan;
+ 
+ 	if (args->args_count < 3) {
+@@ -2524,8 +2882,19 @@ static struct dma_chan *gpi_of_dma_xlate(struct of_phandle_args *args,
+ 
+ 	seid = args->args[1];
+ 
+-	/* find next available gpii to use */
+-	gpii = gpi_find_avail_gpii(gpi_dev, seid);
++	static_gpii_no = (args->args[3] & STATIC_GPII_BMASK);
++	GPI_DBG_LOG(LOG_LVL_VERBOSE, gpi_dev->dev, "static gpii no:%d\n", args->args[3]);
++
++	if (static_gpii_no) {
++		gpii = gpi_find_static_gpii(gpi_dev, (static_gpii_no - 1));
++		GPI_DBG_LOG(LOG_LVL_VERBOSE, gpi_dev->dev, "Static GPII allocation req:%d Got:%d\n",
++			(static_gpii_no - 1), gpii);
++	} else {
++		/* find next available gpii to use */
++		gpii = gpi_find_avail_gpii(gpi_dev, seid);
++		GPI_DBG_LOG(LOG_LVL_VERBOSE, gpi_dev->dev, "Dynamic GPII allocation - Got:%d\n", gpii);
++	}
++
+ 	if (gpii < 0) {
+ 		GPI_ERR_LOG(LOG_LVL_ERROR, gpi_dev->dev,
+ 			    "no available gpii instances\n");
+@@ -2550,7 +2919,6 @@ static int gpi_probe(struct platform_device *pdev)
+ {
+ 	struct gpi_dev *gpi_dev;
+ 	unsigned int i;
+-	u32 ee_offset;
+ 	int ret;
+ 	const struct gpi_config *data;
+ 
+@@ -2584,17 +2952,16 @@ static int gpi_probe(struct platform_device *pdev)
+ 	if (!data)
+ 		return -EINVAL;
+ 
+-	gpi_dev->cfg = devm_kzalloc(gpi_dev->dev, sizeof(*gpi_dev->cfg),
+-				    GFP_KERNEL);
+-	if (!gpi_dev->cfg)
+-		return -ENOMEM;
+-
+ 	if (data->is_ccu_qup)
+-		gpi_dev->cfg = data;
++		gpi_dev->cfg = *data;
+ 
+ 	gpi_dev->ee_base = gpi_dev->ee_base - data->ee_offset;
+ 
+ 	gpi_dev->ev_factor = EV_FACTOR;
++	ret = of_property_read_u32(gpi_dev->dev->of_node, "static-gpii-mask",
++				   &gpi_dev->static_gpii_mask);
++	if (!ret)
++		dev_err(gpi_dev->dev, "Static GPII use case\n");
+ 
+ 	ret = dma_set_mask(gpi_dev->dev, DMA_BIT_MASK(64));
+ 	if (ret) {
+@@ -2614,25 +2981,29 @@ static int gpi_probe(struct platform_device *pdev)
+ 		struct gpii *gpii = &gpi_dev->gpiis[i];
+ 		int chan;
+ 
+-		if (!((1 << i) & gpi_dev->gpii_mask))
++		if (!(((1 << i) & gpi_dev->gpii_mask) ||
++		    ((1 << i) & gpi_dev->static_gpii_mask)))
+ 			continue;
+ 
+ 		/* set up ev cntxt register map */
+ 		gpii->ev_cntxt_base_reg = (gpi_dev->ee_base +
+-				(u64)(GPII_n_EV_CH_k_CNTXT_0_OFFS(i, 0, gpi_dev->cfg->offset)));
++				(GPII_n_EV_CH_k_CNTXT_0_OFFS(i, 0, gpi_dev->cfg.offset)));
+ 		gpii->ev_cntxt_db_reg = (gpi_dev->ee_base +
+-				(u64)(GPII_n_EV_CH_k_DOORBELL_0_OFFS(i, 0, gpi_dev->cfg->db_off)));
++				(GPII_n_EV_CH_k_DOORBELL_0_OFFS(i, 0, gpi_dev->cfg.db_off)));
+ 		gpii->ev_ring_rp_lsb_reg = gpii->ev_cntxt_base_reg + CNTXT_4_RING_RP_LSB;
+ 		gpii->ev_cmd_reg = (gpi_dev->ee_base +
+-				(u64)(GPII_n_EV_CH_CMD_OFFS(i, gpi_dev->cfg->offset)));
++				(GPII_n_EV_CH_CMD_OFFS(i, gpi_dev->cfg.offset)));
+ 		gpii->ieob_clr_reg = (gpi_dev->ee_base +
+-				(u64)(GPII_n_CNTXT_SRC_IEOB_IRQ_CLR_OFFS(i, gpi_dev->cfg->irq_off)));
+-
+-		/* set up irq */
+-		ret = platform_get_irq(pdev, i);
+-		if (ret < 0)
+-			return ret;
+-		gpii->irq = ret;
++				      (GPII_n_CNTXT_SRC_IEOB_IRQ_CLR_OFFS
++				      (i, gpi_dev->cfg.irq_off)));
++
++		/* set up irq for non CCU QUP*/
++		if (!gpi_dev->cfg.is_ccu_qup) {
++			ret = platform_get_irq(pdev, i);
++			if (ret < 0)
++				return ret;
++			gpii->irq = ret;
++		}
+ 
+ 		/* set up channel specific register info */
+ 		for (chan = 0; chan < MAX_CHANNELS_PER_GPII; chan++) {
+@@ -2640,11 +3011,11 @@ static int gpi_probe(struct platform_device *pdev)
+ 
+ 			/* set up ch cntxt register map */
+ 			gchan->ch_cntxt_base_reg = gpi_dev->ee_base +
+-				(u64)(GPII_n_CH_k_CNTXT_0_OFFS(i, chan, gpi_dev->cfg->is_ccu_qup));
++				(GPII_n_CH_k_CNTXT_0_OFFS(i, chan, gpi_dev->cfg.is_ccu_qup));
+ 			gchan->ch_cntxt_db_reg = gpi_dev->ee_base +
+-				(u64)(GPII_n_CH_k_DOORBELL_0_OFFS(i, chan, gpi_dev->cfg->db_off));
++				(GPII_n_CH_k_DOORBELL_0_OFFS(i, chan, gpi_dev->cfg.db_off));
+ 			gchan->ch_cmd_reg = gpi_dev->ee_base +
+-			(u64)(GPII_n_CH_CMD_OFFS(i, gpi_dev->cfg->is_ccu_qup));
++				(GPII_n_CH_CMD_OFFS(i, gpi_dev->cfg.is_ccu_qup));
+ 
+ 			/* vchan setup */
+ 			vchan_init(&gchan->vc, &gpi_dev->dma_device);
+@@ -2653,8 +3024,10 @@ static int gpi_probe(struct platform_device *pdev)
+ 			gchan->gpii = gpii;
+ 			gchan->dir = GPII_CHAN_DIR[chan];
+ 		}
++		/* */
+ 		mutex_init(&gpii->ctrl_lock);
+ 		rwlock_init(&gpii->pm_lock);
++
+ 		tasklet_init(&gpii->ev_task, gpi_ev_tasklet,
+ 			     (unsigned long)gpii);
+ 		init_completion(&gpii->cmd_completion);
+diff --git a/include/linux/dma/qcom-gpi-dma.h b/include/linux/dma/qcom-gpi-dma.h
+index f5b1ceea6966..b0ba2db0dde2 100644
+--- a/include/linux/dma/qcom-gpi-dma.h
++++ b/include/linux/dma/qcom-gpi-dma.h
+@@ -64,6 +64,24 @@ struct gpi_spi_config {
+ 	u8 flags;
+ };
+ 
++/**
++ * struct gpi_ccu_i2c_config - i2c config for CCU I2C peripheral
++ * @rand_wr: indicates the multiple Random Write enable
++ * @retry: indicates the re transmit count for Arb loss
++ *	   in Address phase
++ * @ccu_last: indicates end of transfer for single SYNC request
++ * @ch_last: This bit indicates last TRE of a channel (TX & RX)
++ *	     of a current FRAME
++ * @nop_last: This field is used only when SW wants to NOP the FRAME
++ */
++struct gpi_ccu_i2c_config {
++	bool rand_wr;
++	u8 retry;
++	bool ccu_last;
++	bool ch_last;
++	bool nop_last;
++};
++
+ enum i2c_op {
+ 	I2C_WRITE = 1,
+ 	I2C_READ,
+@@ -85,6 +103,10 @@ enum i2c_op {
+  * @muli-msg: is part of multi i2c r-w msgs
+  * @status: gpi event status
+  * @gi2c: pointer to qcom i2c structure
++ * ccu_cfg: pointer to ccu i2c config structure
++ * @delay: inter transfer delay
++ * @pre_delay: Insert predefined delay before I2C transaction
++ * @post_delay: Insert predefined delay after I2C transaction
+  */
+ struct gpi_i2c_config {
+ 	u8 set_config;
+@@ -103,6 +125,18 @@ struct gpi_i2c_config {
+ 	bool last_msg;
+ 	u32 status;
+ 	struct geni_i2c_dev *gi2c;
++	struct gpi_ccu_i2c_config ccu_cfg;
++	u32 delay;
++	bool pre_delay;
++	bool post_delay;
+ };
+ 
++void ccu_gpi_set_premature_cancel_flag(struct dma_chan *chan);
++
++void ccu_gpi_configure_mode(struct dma_chan *chan, int mode, int type);
++
++int ccu_gpi_prioritize_chan(struct dma_chan *chan);
++
++void ccu_gpi_handle_isr(void *dev, int idx);
++
+ #endif /* QCOM_GPI_DMA_H */
+diff --git a/include/linux/dmaengine.h b/include/linux/dmaengine.h
+index cff3dba65820..c7c65595a7a5 100644
+--- a/include/linux/dmaengine.h
++++ b/include/linux/dmaengine.h
+@@ -544,6 +544,7 @@ enum dmaengine_tx_result {
+ struct dmaengine_result {
+ 	enum dmaengine_tx_result result;
+ 	u32 residue;
++	u32 gpii_id;
+ };
+ 
+ typedef void (*dma_async_tx_callback_result)(void *dma_async_param,
+@@ -1091,6 +1092,29 @@ static inline int dmaengine_desc_set_metadata_len(
+ }
+ #endif /* CONFIG_DMA_ENGINE */
+ 
++/*
++ * dmaengine_free_chan_resources() - Release all channel resources
++ * @chan: The channel for which to release all resources
++ */
++static inline void dmaengine_free_chan_resources(struct dma_chan *chan)
++{
++	if (chan->device->device_free_chan_resources)
++		chan->device->device_free_chan_resources(chan);
++}
++
++/*
++ * dmaengine_alloc_chan_resources() - Allocate channel resources
++ * @chan: The channel for which to allocate all resources
++ *
++ */
++static inline int dmaengine_alloc_chan_resources(struct dma_chan *chan)
++{
++	if (chan->device->device_alloc_chan_resources)
++		return chan->device->device_alloc_chan_resources(chan);
++
++	return -ENOSYS;
++}
++
+ /**
+  * dmaengine_terminate_all() - Terminate all active DMA transfers
+  * @chan: The channel for which to terminate the transfers
+-- 
+2.34.1
+

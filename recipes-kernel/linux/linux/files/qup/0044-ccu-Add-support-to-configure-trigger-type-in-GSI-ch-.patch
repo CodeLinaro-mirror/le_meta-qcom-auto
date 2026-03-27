@@ -1,0 +1,272 @@
+From 6cb395a7a092c91fd97927f69d4bf5f846b61629 Mon Sep 17 00:00:00 2001
+From: Aniket Randive <arandive@qti.qualcomm.com>
+Date: Mon, 15 Dec 2025 14:52:51 +0530
+Subject: [PATCH] ccu: Add support to configure trigger type in GSI ch scratch
+ register
+
+Add support to configure trigger type inside the GSI channel scratch
+register to control sticky or non-sticky interrupt behavior for sync or
+CDM trigger modes as per camera client requirements. The client provides
+this trigger type during initial configuration of SE mode and channel
+type. By default, the trigger type is set to sticky.
+
+For non-sticky trigger type, if the client does not queue any packet on
+the sync channel and a sync/CDM trigger occurs, the hardware reports an
+error event with type I2C_CCU_SYNC_TRE_NOT_FOUND. Once this error event
+is generated, the driver sends a poll notification to the client, which
+should then read the event using the read API. The event includes QUP
+number, GPII number, and error code (0x37).
+
+This trigger type is applicable only for sync channels.
+
+Change-Id: I4e8e1c793dac0765d9df395eaba7437461c63d1b
+Signed-off-by: Aniket Randive <arandive@qti.qualcomm.com>
+---
+ drivers/dma/qcom/gpi.c                | 38 ++++++++++++++++-----------
+ drivers/i2c/busses/i2c-qcom-geni.c    | 15 +++++++----
+ drivers/soc/qcom/qcom_ccu_qup.c       |  6 ++---
+ include/linux/dma/qcom-gpi-dma.h      |  2 +-
+ include/linux/soc/qcom/qcom_ccu_qup.h |  3 ++-
+ include/uapi/linux/ccu_qup/ccu_qup.h  |  2 ++
+ 6 files changed, 40 insertions(+), 26 deletions(-)
+
+diff --git a/drivers/dma/qcom/gpi.c b/drivers/dma/qcom/gpi.c
+index 2450e9cca86d..701d6475a942 100644
+--- a/drivers/dma/qcom/gpi.c
++++ b/drivers/dma/qcom/gpi.c
+@@ -324,12 +324,14 @@ enum CNTXT_OFFS {
+ #define GPII_n_CH_k_SCRATCH_0_MODE		BIT(12)
+ #define GPII_n_CH_k_SCRATCH_0_TYPE		GENMASK(14, 13)
+ #define GPII_n_CH_k_SCRATCH_0_PAIR		GENMASK(20, 16)
+-#define GPII_n_CH_k_SCRATCH_0(pair, proto, mode, type, seid)		\
+-			     (FIELD_PREP(GPII_n_CH_k_SCRATCH_0_PAIR, pair)	| \
+-			      FIELD_PREP(GPII_n_CH_k_SCRATCH_0_PROTO, proto)	| \
+-			      FIELD_PREP(GPII_n_CH_k_SCRATCH_0_MODE, mode)	| \
+-			      FIELD_PREP(GPII_n_CH_k_SCRATCH_0_TYPE, type)	| \
+-			      FIELD_PREP(GPII_n_CH_k_SCRATCH_0_SEID, seid))
++#define GPII_n_CH_k_SCRATCH_0_TRIGGER_TYPE	BIT(21)
++#define GPII_n_CH_k_SCRATCH_0(trigger_type, pair, proto, mode, type, seid) \
++			      (FIELD_PREP(GPII_n_CH_k_SCRATCH_0_TRIGGER_TYPE, (trigger_type)) |\
++			      FIELD_PREP(GPII_n_CH_k_SCRATCH_0_PAIR, (pair))	| \
++			      FIELD_PREP(GPII_n_CH_k_SCRATCH_0_PROTO, (proto))	| \
++			      FIELD_PREP(GPII_n_CH_k_SCRATCH_0_MODE, (mode))	| \
++			      FIELD_PREP(GPII_n_CH_k_SCRATCH_0_TYPE, (type))	| \
++			      FIELD_PREP(GPII_n_CH_k_SCRATCH_0_SEID, (seid)))
+ #define GPII_n_CH_k_SCRATCH_1_OFFS(n, k, ccu)\
+ 	((ccu) ? (0x20064 + (0x1000 * (n)) + (0x80 * (k)))\
+ 	: (0x20064 + (0x4000 * (n)) + (0x80 * (k))))
+@@ -674,6 +676,7 @@ struct gchan {
+ 	u32 mode;
+ 	u32 ch_type;
+ 	u32 num_of_tres;
++	bool trigger_type;
+ };
+ 
+ struct gpii {
+@@ -825,22 +828,24 @@ EXPORT_SYMBOL(ccu_gpi_prioritize_chan);
+ 
+ /*
+  * ccu_gpi_configure_mode - This function used to update the channel CCU
+- * mode and type.
++ * mode and ch type.
+  *
+  * @chan : DMA transfer channel
+- * @ch_type: Channel type (0 – Regular, 1 – sync ch0, 2 – sync ch1)
+  * @mode: Represents SE mode (0 – sync trigger mode and 1 – CDM mode)
++ * @ch_type: Channel type (0 – Regular, 1 – sync ch0, 2 – sync ch1)
++ * @trigger_type: Represents Trigger type (0 - sticky, 1 - non-sticky mode)
+  *
+  * Return none.
+  */
+-void ccu_gpi_configure_mode(struct dma_chan *chan, int mode, int type)
++void ccu_gpi_configure_mode(struct dma_chan *chan, int mode, int ch_type, bool trigger_type)
+ {
+ 	struct gchan *gchan = to_gchan(chan);
+ 	struct gpii *gpii = gchan->gpii;
+ 	u32 enable = GPII_n_CNTXT_TYPE_COMP_IRQ_MSK_IEOB;
+ 
+ 	gchan->mode = mode;
+-	gchan->ch_type = type;
++	gchan->ch_type = ch_type;
++	gchan->trigger_type = trigger_type;
+ 	if (mode) {
+ 		/* Enable the Global & IEOB IRQ of GPII in CDM mode */
+ 		gpi_update_reg(gpii, GPII_n_CNTXT_TYPE_COMP_IRQ_MSK_OFFS(gpii->gpii_id,
+@@ -848,7 +853,8 @@ void ccu_gpi_configure_mode(struct dma_chan *chan, int mode, int type)
+ 					   GPII_n_CNTXT_TYPE_COMP_IRQ_MSK_BMSK, enable);
+ 	}
+ 	GPI_DBG_LOG(LOG_LVL_INFO, gpii->gpi_dev->dev,
+-		    "%s: mode:%d, type:%d\n", __func__, mode, type);
++		    "%s: mode:%d, ch_type:%d trigger_type:%d\n",
++		    __func__, mode, ch_type, trigger_type);
+ }
+ EXPORT_SYMBOL(ccu_gpi_configure_mode);
+ 
+@@ -1203,6 +1209,7 @@ static void process_gpi_irq(struct gpii *gpii)
+ 				    "processing IEOB interrupt for GPII:%d\n", gpii_id);
+ 			gpi_process_ieob(gpii);
+ 			type &= ~GPII_n_CNTXT_TYPE_IRQ_MSK_IEOB;
++			type &= ~GPII_n_CNTXT_TYPE_COMP_IRQ_MSK_IEOB;
+ 		}
+ 
+ 		/* event control irq */
+@@ -1297,7 +1304,6 @@ static void gpi_process_ccu_error_event(struct gchan *gchan,
+ 	struct dmaengine_result result;
+ 	struct gpi_desc *gpi_desc;
+ 	struct virt_dma_desc *vd;
+-	unsigned long flags;
+ 
+ 	if (error_event->code == MSM_GPI_TCE_UNEXP_ERR &&
+ 			error_event->type == CCU_ERROR_NOTIFICATION_EV_TYPE) {
+@@ -1717,12 +1723,12 @@ static int gpi_alloc_chan(struct gchan *chan, bool send_alloc_cmd)
+ 		      upper_32_bits(ring->phys_addr));
+ 	gpi_write_reg(gpii, gpii->regs + GPII_n_CH_k_SCRATCH_0_OFFS
+ 		      (id, chid, gpii->gpi_dev->cfg.is_ccu_qup),
+-		      GPII_n_CH_k_SCRATCH_0(pair_chid, chan->protocol, chan->mode,
+-					    chan->ch_type, chan->seid));
++		      GPII_n_CH_k_SCRATCH_0(chan->trigger_type, pair_chid, chan->protocol,
++					    chan->mode, chan->ch_type, chan->seid));
+ 	gpi_write_reg(gpii, gpii->regs + GPII_n_CH_k_SCRATCH_0_OFFS
+ 		      (id, chid, gpii->gpi_dev->cfg.is_ccu_qup),
+-		       GPII_n_CH_k_SCRATCH_0(pair_chid, chan->protocol, chan->mode,
+-					     chan->ch_type, chan->seid));
++		       GPII_n_CH_k_SCRATCH_0(chan->trigger_type, pair_chid, chan->protocol,
++					     chan->mode, chan->ch_type, chan->seid));
+ 	gpi_write_reg(gpii, gpii->regs + GPII_n_CH_k_SCRATCH_1_OFFS
+ 		      (id, chid, gpii->gpi_dev->cfg.is_ccu_qup), 0);
+ 	gpi_write_reg(gpii, gpii->regs + GPII_n_CH_k_SCRATCH_2_OFFS
+diff --git a/drivers/i2c/busses/i2c-qcom-geni.c b/drivers/i2c/busses/i2c-qcom-geni.c
+index f7657c9a1af6..1cb66f7b63ce 100644
+--- a/drivers/i2c/busses/i2c-qcom-geni.c
++++ b/drivers/i2c/busses/i2c-qcom-geni.c
+@@ -210,6 +210,7 @@ struct ccu_msg_config {
+  * @msg_cfg: contains data transfer configuration for the message
+  * @idx: indicates the index for gpii
+  * @mode: indicated CDM(1) or SYNC(0) mode
++ * @trigger_type: indicated the trigger type (0 - sticky, 1 - non-sticky)
+  * @inter_delay: inter transfer delay
+  * @gpii: handle for struct ccu_gpii_info
+  * @result: handle for struct ccu_xfer_result
+@@ -218,6 +219,7 @@ struct ccu_i2c_config {
+ 	struct ccu_msg_config msg_cfg;
+ 	u8 idx;
+ 	bool mode;
++	bool trigger_type;
+ 	u16 inter_delay;
+ 	struct ccu_gpii_info gpii[CCU_MAX_GPII];
+ 	struct ccu_xfer_result result;
+@@ -615,11 +617,12 @@ int geni_i2c_check_recover_ios_line(struct i2c_adapter *adap)
+  * @gpii_no: GPII number.
+  * @ch_type: Channel type for given GPII. (0 – Regular, 1 – sync ch 0, 2 – sync ch 1)
+  * @mode: Represents SE mode (0 – sync trigger mode and 1 – CDM mode)
++ * @trigger_type: Represents trigger type (0 - sticky and 1 - non-sticky mode)
+  *
+  * Return 0 on success and error on failure.
+  */
+ static int geni_i2c_configure_ccu_mode(struct i2c_adapter *adap, u8 gpii_no,
+-				       u8 ch_type, bool mode)
++				       u8 ch_type, bool mode, bool trigger_type)
+ {
+ 	struct geni_i2c_dev *gi2c;
+ 	int ret = 0;
+@@ -654,11 +657,13 @@ static int geni_i2c_configure_ccu_mode(struct i2c_adapter *adap, u8 gpii_no,
+ 		return -EINVAL;
+ 	}
+ 
+-	I2C_DBG_LOG(LOG_LVL_INFO, gi2c->se.dev, "Configure %d mode and ch_type:%d for GPII%d\n",
+-		    mode, ch_type, gpii_no);
++	I2C_DBG_LOG(LOG_LVL_INFO, gi2c->se.dev,
++		    "Configure %d mode, ch_type:%d and trigger_type:%d for GPII %d\n",
++		    mode, ch_type, trigger_type, gpii_no);
+ 
+ 	gi2c->ccu->mode = mode;
+ 	gi2c->ccu->gpii[idx].type = ch_type;
++	gi2c->ccu->trigger_type = trigger_type;
+ 
+ 	if (!gi2c->rx_c[idx] ||  !gi2c->tx_c[idx]) {
+ 		ret = setup_gpi_dma(gi2c, idx);
+@@ -669,8 +674,8 @@ static int geni_i2c_configure_ccu_mode(struct i2c_adapter *adap, u8 gpii_no,
+ 	}
+ 
+ 	if (gi2c->rx_c[idx] && gi2c->tx_c[idx]) {
+-		ccu_gpi_configure_mode(gi2c->tx_c[idx], mode, ch_type);
+-		ccu_gpi_configure_mode(gi2c->rx_c[idx], mode, ch_type);
++		ccu_gpi_configure_mode(gi2c->tx_c[idx], mode, ch_type, trigger_type);
++		ccu_gpi_configure_mode(gi2c->rx_c[idx], mode, ch_type, trigger_type);
+ 		dmaengine_terminate_sync(gi2c->tx_c[idx]);
+ 	}
+ 
+diff --git a/drivers/soc/qcom/qcom_ccu_qup.c b/drivers/soc/qcom/qcom_ccu_qup.c
+index bf706eb9ba14..ec10eaf343b7 100644
+--- a/drivers/soc/qcom/qcom_ccu_qup.c
++++ b/drivers/soc/qcom/qcom_ccu_qup.c
+@@ -557,7 +557,7 @@ int ccu_configure_mode(struct i2c_adapter *adap, struct ccu_qup_config *cfg)
+ 		return -EINVAL;
+ 
+ 	ret = ccu_cfg_mode(adap, cfg->gpii_no,
+-					  cfg->ch_type, cfg->ccu_mode);
++			   cfg->ch_type, cfg->ccu_mode, cfg->trigger_type);
+ 	if (ret) {
+ 		CCU_ERR_LOG(LOG_LVL_ERROR, ccud->dev,
+ 			    "Configuration of CCU Mode is failed for gpii-%d of i2c-%d\n",
+@@ -565,8 +565,8 @@ int ccu_configure_mode(struct i2c_adapter *adap, struct ccu_qup_config *cfg)
+ 		return ret;
+ 	}
+ 	CCU_DBG_LOG(LOG_LVL_INFO, ccud->dev,
+-		    "Configuration of CCU Mode is done for gpii-%d\n of i2c-%d\n",
+-		    cfg->gpii_no, adap->nr);
++		    "Configuration of CCU Mode is done for gpii-%d\n of i2c-%d with trigger_type:%d for mode:%d\n",
++		    cfg->gpii_no, adap->nr, cfg->trigger_type, cfg->ccu_mode);
+ 	return 0;
+ }
+ 
+diff --git a/include/linux/dma/qcom-gpi-dma.h b/include/linux/dma/qcom-gpi-dma.h
+index d94b7b3f67f9..b45be87849d3 100644
+--- a/include/linux/dma/qcom-gpi-dma.h
++++ b/include/linux/dma/qcom-gpi-dma.h
+@@ -135,7 +135,7 @@ struct gpi_i2c_config {
+ 
+ void ccu_gpi_set_premature_cancel_flag(struct dma_chan *chan);
+ 
+-void ccu_gpi_configure_mode(struct dma_chan *chan, int mode, int type);
++void ccu_gpi_configure_mode(struct dma_chan *chan, int mode, int ch_type, bool irq_type);
+ 
+ int ccu_gpi_prioritize_chan(struct dma_chan *chan);
+ 
+diff --git a/include/linux/soc/qcom/qcom_ccu_qup.h b/include/linux/soc/qcom/qcom_ccu_qup.h
+index 18425b0c9cd7..5edabfd1a63a 100644
+--- a/include/linux/soc/qcom/qcom_ccu_qup.h
++++ b/include/linux/soc/qcom/qcom_ccu_qup.h
+@@ -191,7 +191,8 @@ typedef int (*power_on_off_t) (struct i2c_adapter *adap, bool suspend);
+ 
+ typedef int (*recover_ios_line_t) (struct i2c_adapter *adap);
+ 
+-typedef int (*config_ccu_mode_t) (struct i2c_adapter *adap, u8 gpii_no, u8 ch_type, bool mode);
++typedef int (*config_ccu_mode_t) (struct i2c_adapter *adap, u8 gpii_no, u8 ch_type,
++				  bool mode, bool trigger_type);
+ 
+ typedef int (*gpii_reset_t) (struct i2c_adapter *adap, int gpii_no, bool premature_cancel);
+ 
+diff --git a/include/uapi/linux/ccu_qup/ccu_qup.h b/include/uapi/linux/ccu_qup/ccu_qup.h
+index 1953f8d80d82..77ef84fbe74b 100644
+--- a/include/uapi/linux/ccu_qup/ccu_qup.h
++++ b/include/uapi/linux/ccu_qup/ccu_qup.h
+@@ -115,6 +115,7 @@ struct sync_info {
+  * @ccu_mode: Represents CCU mode for GPII (0-> Sync trigger mode, 1-> CDM mode).
+  * @ch_type: Represents ch type for GPII (00-> Regular channel, 01 -> SYNC0 channel,
+  *           10 -> SYNC1 channel).
++ * @trigger_type: Represents behaviour of trigger (0-> sticky, 1 -> non-sticky).
+  * @delay: Delay in microseconds.
+  * @reserved[20]: Reserved for future purpose.
+  */
+@@ -127,6 +128,7 @@ struct ccu_qup_config {
+ 	_Bool premature_cancel;
+ 	__u8 ccu_mode;
+ 	__u8 ch_type;
++	_Bool trigger_type;
+ 	__u64 delay;
+ 	__u32 reserved[20];
+ };
+-- 
+2.34.1
+

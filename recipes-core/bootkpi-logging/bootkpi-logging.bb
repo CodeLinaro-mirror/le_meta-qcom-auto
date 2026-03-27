@@ -6,8 +6,13 @@ LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/${LICENSE};md5
 
 DEPENDS += "glibc systemd"
 
-SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/safelinux-system-cfg/bootkpi-logging/.git;protocol=${PROTO};destsuffix=/vendor/qcom/opensource/safelinux-system-cfg/bootkpi-logging;usehead=1"
-SRCREV = "${AUTOREV}"
+
+
+SRCPROJECT  = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/safelinux-system-cfg.git"
+SRCBRANCH  = "safe-services.lnx.1.0.r19-rel"
+SRCREV  = "ccb920c69536aec2b52b17b6880bcd4ac2660261"
+
+SRC_URI = "${SRCPROJECT};branch=${SRCBRANCH};protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/safelinux-system-cfg;"
 S = "${WORKDIR}/vendor/qcom/opensource/safelinux-system-cfg/bootkpi-logging"
 
 inherit pkgconfig cmake

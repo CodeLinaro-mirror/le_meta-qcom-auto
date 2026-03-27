@@ -9,8 +9,11 @@ DISPLAY_DIR = "${@bb.utils.contains_any('PREFERRED_PROVIDER_virtual/kernel', 'li
 DISPLAY_DIR:sa8775 = "display/display-hal"
 DISPLAY_DIR:sa7255 = "display/display-hal"
 
-SRC_URI = "${PATH_TO_REPO}/${DISPLAY_DIR}/.git;protocol=${PROTO};destsuffix=${DISPLAY_DIR};usehead=1"
-SRCREV = "${AUTOREV}"
+SRCPROJECT  = "${CLO_LA_GIT}/platform/vendor/opensource/display-core.git"
+SRCBRANCH  = "display.lnx.12.5.r10-rel"
+SRCREV  = "93a75503796a467ec1b1076abac871d4deb409c0"
+SRC_URI = "${SRCPROJECT};branch=${SRCBRANCH};protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/display-core;"
+
 S = "${WORKDIR}/${DISPLAY_DIR}"
 
 do_configure[noexec] = "1"

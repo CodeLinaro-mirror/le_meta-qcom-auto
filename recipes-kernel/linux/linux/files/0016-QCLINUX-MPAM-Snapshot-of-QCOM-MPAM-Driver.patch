@@ -1,0 +1,3623 @@
+From b37b703b649f6c2986404470c47d1c5acdf69953 Mon Sep 17 00:00:00 2001
+From: Kaisheng Yang <kaisheng@qti.qualcomm.com>
+Date: Tue, 21 Jan 2025 15:03:29 +0800
+Subject: [PATCH] QCLINUX: MPAM: Snapshot of QCOM MPAM Driver
+
+Introduces the QCOM MPAM (Memory Partitioning and Monitoring)
+driver, sourced from msm-kernel commit
+fad2ce2e160a("soc: qcom: mpam: Add support for L3 MPAM").
+
+The QCOM MPAM driver enables control over CPU MPAM, NOC, and
+SLC (System Level Cache) resources. It provides configfs interfaces
+for user-space applications to configure:
+- CPU MPAM parameters
+- NOC bandwidth
+- SLC cache allocation
+
+The driver communicates with CPUCP using the QCOM SCMI VENDOR PROTOCOL
+to write MPAM parameters.
+
+**CPU MPAM Features:**
+- Supports configuration of CMAX, CPBM, and PRIO into MPAM partitions
+- Uses `cpu_mpam_callback` to monitor CSU (Cache Status Unit) and MBWU
+(Memory Bandwidth Usage)
+
+**Platform MPAM Features:**
+- Exposes configfs entries for APPS/GPU/NPU NOC bandwidth control.
+
+Change-Id: Ib9ae01d6b2c7ffb3a6bdbf5ab09c6c2713bd9214
+Signed-off-by: Kaisheng Yang <kaisheng@qti.qualcomm.com>
+---
+ arch/arm64/include/asm/mmu_context.h  |   5 +
+ drivers/soc/qcom/Kconfig              |   1 +
+ drivers/soc/qcom/Makefile             |   1 +
+ drivers/soc/qcom/mpam/Kconfig         |  89 ++++
+ drivers/soc/qcom/mpam/Makefile        |   8 +
+ drivers/soc/qcom/mpam/cpu_mpam.c      | 718 ++++++++++++++++++++++++++
+ drivers/soc/qcom/mpam/mpam.c          | 191 +++++++
+ drivers/soc/qcom/mpam/mpam_hook.c     |  54 ++
+ drivers/soc/qcom/mpam/mpam_msc.c      | 374 ++++++++++++++
+ drivers/soc/qcom/mpam/mpam_msc_slc.c  | 715 +++++++++++++++++++++++++
+ drivers/soc/qcom/mpam/platform_mpam.c | 366 +++++++++++++
+ drivers/soc/qcom/mpam/slc_mpam.c      | 401 ++++++++++++++
+ include/soc/qcom/mpam.h               | 234 +++++++++
+ include/soc/qcom/mpam_msc.h           | 133 +++++
+ include/soc/qcom/mpam_slc.h           | 168 ++++++
+ 15 files changed, 3458 insertions(+)
+ create mode 100644 drivers/soc/qcom/mpam/Kconfig
+ create mode 100644 drivers/soc/qcom/mpam/Makefile
+ create mode 100644 drivers/soc/qcom/mpam/cpu_mpam.c
+ create mode 100644 drivers/soc/qcom/mpam/mpam.c
+ create mode 100644 drivers/soc/qcom/mpam/mpam_hook.c
+ create mode 100644 drivers/soc/qcom/mpam/mpam_msc.c
+ create mode 100644 drivers/soc/qcom/mpam/mpam_msc_slc.c
+ create mode 100644 drivers/soc/qcom/mpam/platform_mpam.c
+ create mode 100644 drivers/soc/qcom/mpam/slc_mpam.c
+ create mode 100644 include/soc/qcom/mpam.h
+ create mode 100644 include/soc/qcom/mpam_msc.h
+ create mode 100644 include/soc/qcom/mpam_slc.h
+
+diff --git a/arch/arm64/include/asm/mmu_context.h b/arch/arm64/include/asm/mmu_context.h
+index a6fb325424e7..d8d02ee9200c 100644
+--- a/arch/arm64/include/asm/mmu_context.h
++++ b/arch/arm64/include/asm/mmu_context.h
+@@ -27,6 +27,11 @@
+ 
+ extern bool rodata_full;
+ 
++#if IS_ENABLED(CONFIG_QTI_CPU_MPAM_HOOK)
++extern void cpu_mpam_callback(struct task_struct *task);
++#define prepare_arch_switch cpu_mpam_callback
++#endif
++
+ static inline void contextidr_thread_switch(struct task_struct *next)
+ {
+ 	if (!IS_ENABLED(CONFIG_PID_IN_CONTEXTIDR))
+diff --git a/drivers/soc/qcom/Kconfig b/drivers/soc/qcom/Kconfig
+index cc8cc0e8a475..9c18a9d129e8 100644
+--- a/drivers/soc/qcom/Kconfig
++++ b/drivers/soc/qcom/Kconfig
+@@ -456,4 +456,5 @@ config QCOM_MINIDUMP
+ 
+ 	  This has dependency on PSTORE RAM for collecting the ramoops region with
+ 	  APSS Minidump.
++source "drivers/soc/qcom/mpam/Kconfig"
+ endmenu
+diff --git a/drivers/soc/qcom/Makefile b/drivers/soc/qcom/Makefile
+index 8aa4935cee98..b32e31d15eb3 100644
+--- a/drivers/soc/qcom/Makefile
++++ b/drivers/soc/qcom/Makefile
+@@ -8,6 +8,7 @@ obj-$(CONFIG_QCOM_COMMAND_DB) += cmd-db.o
+ obj-$(CONFIG_QCOM_GSBI)	+=	qcom_gsbi.o
+ obj-$(CONFIG_QCOM_MDT_LOADER)	+= mdt_loader.o
+ obj-$(CONFIG_QCOM_MEMORY_DUMP_V2) += memory_dump_v2.o
++obj-$(CONFIG_QTI_MPAM)	+= mpam/
+ obj-$(CONFIG_QCOM_OCMEM)	+= ocmem.o
+ obj-$(CONFIG_QCOM_PANEL_EVENT_NOTIFIER)	+= panel_event_notifier.o
+ obj-$(CONFIG_QCOM_PDR_HELPERS)	+= pdr_interface.o
+diff --git a/drivers/soc/qcom/mpam/Kconfig b/drivers/soc/qcom/mpam/Kconfig
+new file mode 100644
+index 000000000000..752b3c60f62a
+--- /dev/null
++++ b/drivers/soc/qcom/mpam/Kconfig
+@@ -0,0 +1,89 @@
++# SPDX-License-Identifier: GPL-2.0-only
++#
++# QCOM MPAM drivers
++#
++
++config QTI_MPAM
++	bool "Qualcomm Technologies Inc. MPAM Interface Driver"
++	default n
++	help
++	  This configuration enables QCOM MPAM Driver support. QCOM MPAM
++	  Driver include CPU MPAM Driver, platform MPAM driver, SLC MPAM
++	  driver.
++	  If unsure, say N
++
++config QTI_MPAM_SCMI
++	tristate "Qualcomm Technologies Inc. MPAM SCMI Interface Driver"
++	depends on QTI_SCMI_VENDOR_PROTOCOL
++	default n
++	help
++	  This driver exports all the available APIs to config MPAM
++	  parameters. These APIs will relay the configurations to
++	  CPUCP via SCMI communication. It is intended to be used by
++	  clients familiar with modifying the MPAM configuration
++	  settings.
++
++config QTI_CPU_MPAM_HOOK
++	bool "QCOM CPU MPAM hook support"
++	default n
++	help
++	  This configuration enables CPU MPAM hook, MPAM hook provide a
++	  callback for CPU MPAM drivers to config MPAM at kernel thread
++	  switch. To use MPAM hook, CPU MPAM driver need first register
++	  a MPAM callback, then this callback will been call at kernel
++	  thread switch.
++
++config QTI_CPU_MPAM_INTERFACE
++	tristate "Enable QCOM CPU MPAM configfs support"
++	depends on QTI_MPAM && CONFIGFS_FS
++	select QTI_CPU_MPAM_HOOK
++	default n
++	help
++	  This enables QCOM CPU MPAM configfs interface support. User
++	  can config CPU MPAM feature inlcuding CMAX, CPBM, PRIO and
++	  tasks in a partition. Monitors inlcuding CSU and MBWU are
++	  also available. Configfs interface allows user to create and
++	  remove MPAM partition according to use cases.
++
++config QTI_PLATFORM_MPAM_INTERFACE
++	tristate "Enable QCOM Platform MPAM configfs support"
++	depends on QTI_MPAM && CONFIGFS_FS
++	default n
++	help
++	  This enables QCOM Platform MPAM configfs interface support.
++	  User can config Platform MPAM gear for NOC bandwidth control.
++	  Byte count monitors are also available to help to the
++	  setting.
++
++config QTI_MPAM_MSC
++	tristate "Enable QCOM MSC parent driver"
++	depends on QTI_MPAM
++	default n
++	help
++	MSC parent driver to support generic API for MPAM functionality
++	to configure Gears, monitor the allocations, read misses etc.
++	Also enable abstraction of different MSC device and can child
++	nodes can use the top layer API abstraction to implement MAPM
++	functionality.
++
++config QTI_MPAM_MSC_SLC
++	tristate "Enable QCOM MSC SLC driver"
++	depends on QTI_MPAM && QTI_MPAM_MSC
++	default n
++	help
++	MSC driver support for SLC MPAM functionality. Enables SLC
++	gear configuration support and configuration support for
++	generic SLC cache monitors like Capacity, read miss, etc.
++	Also module take care of getting device SLC gear config
++	capability from device by querying and take care of reset
++	the settings on module removal.
++
++config QTI_SLC_MPAM_INTERFACE
++	tristate "Enable QCOM SLC MPAM configfs support"
++	depends on QTI_MPAM_MSC_SLC && CONFIGFS_FS
++	default n
++	help
++	  This enables QCOM SLC MPAM configfs interface support.
++	  User can config SLC MPAM gear for SLC size control.
++	  Miss count and capacity monitors are also available to
++	  help to the setting.
+diff --git a/drivers/soc/qcom/mpam/Makefile b/drivers/soc/qcom/mpam/Makefile
+new file mode 100644
+index 000000000000..62fa553204a8
+--- /dev/null
++++ b/drivers/soc/qcom/mpam/Makefile
+@@ -0,0 +1,8 @@
++# SPDX-License-Identifier: GPL-2.0-only
++obj-$(CONFIG_QTI_MPAM_SCMI) += mpam.o
++obj-$(CONFIG_QTI_CPU_MPAM_INTERFACE) += cpu_mpam.o
++obj-$(CONFIG_QTI_CPU_MPAM_HOOK) += mpam_hook.o
++obj-$(CONFIG_QTI_PLATFORM_MPAM_INTERFACE) += platform_mpam.o
++obj-$(CONFIG_QTI_MPAM_MSC) += mpam_msc.o
++obj-$(CONFIG_QTI_MPAM_MSC_SLC) += mpam_msc_slc.o
++obj-$(CONFIG_QTI_SLC_MPAM_INTERFACE) += slc_mpam.o
+diff --git a/drivers/soc/qcom/mpam/cpu_mpam.c b/drivers/soc/qcom/mpam/cpu_mpam.c
+new file mode 100644
+index 000000000000..0e93d11fddaa
+--- /dev/null
++++ b/drivers/soc/qcom/mpam/cpu_mpam.c
+@@ -0,0 +1,718 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
++ *
++ */
++ #define pr_fmt(fmt) "cpu_mpam: " fmt
++
++#include <linux/io.h>
++#include <linux/of.h>
++#include <linux/configfs.h>
++#include <linux/string.h>
++#include <linux/bitmap.h>
++#include <soc/qcom/mpam.h>
++#include <linux/percpu.h>
++
++struct cpu_mpam_partition {
++	struct list_head list;
++	struct config_group group;
++	int part_id;
++	int monitor_id;
++	struct mpam_config_val *val;
++	int pid_num;
++	struct task_struct *task;
++};
++
++struct cpu_mpam_msc {
++	int msc_id;
++	const char *msc_name;
++};
++
++static unsigned long *part_id_free_bitmap;
++static unsigned long *monitor_free_bitmap;
++static struct mpam_config_val mpam_default_val[MSC_MAX];
++static struct monitors_value *mpam_mon_base;
++static struct cpu_mpam_msc *mpam_mscs;
++static int mpam_msc_cnt;
++static bool can_monitor;
++
++static LIST_HEAD(partition_head);
++
++static inline struct cpu_mpam_partition *to_partition(
++					   struct config_item *item)
++{
++	return container_of(to_config_group(item),
++				struct cpu_mpam_partition, group);
++}
++
++static inline int get_part_id(struct config_item *item)
++{
++	return to_partition(item)->part_id;
++}
++
++static inline int get_monitor_id(struct config_item *item)
++{
++	return to_partition(item)->monitor_id;
++}
++
++static inline void set_part_id(struct config_item *item,
++				int part_id)
++{
++	to_partition(item)->part_id = part_id;
++}
++
++static inline void set_monitor_id(struct config_item *item,
++				int monitor_id)
++{
++	to_partition(item)->monitor_id = monitor_id;
++}
++
++static void cpu_mpam_partition_transfer(struct config_item *item, int old, int new)
++{
++	struct cpu_mpam_partition *partition = to_partition(item);
++
++	if (old == new)
++		return;
++
++	rcu_read_lock();
++	partition->part_id = new;
++	rcu_read_unlock();
++}
++
++static ssize_t cpu_mpam_part_id_show(struct config_item *item, char *page)
++{
++	return scnprintf(page, PAGE_SIZE, "%d\n", get_part_id(item));
++}
++CONFIGFS_ATTR_RO(cpu_mpam_, part_id);
++
++static void cpu_mpam_set_param(struct config_item *item,
++		enum msc_id mscid, char *buf)
++{
++	int ret;
++	uint32_t input;
++	char temp[256];
++	bool bypass_cache = false;
++	char *token, *param_name, *param = temp;
++	struct mpam_set_cache_partition mpam_param;
++	struct cpu_mpam_partition *partition = to_partition(item);
++
++	mpam_param.msc_id = mscid;
++	mpam_param.part_id = get_part_id(item) + PARTID_RESERVED;
++	mpam_param.cache_capacity = partition->val[mscid].capacity;
++	mpam_param.cpbm_mask = partition->val[mscid].cpbm;
++	mpam_param.dspri = partition->val[mscid].dspri;
++	mpam_param.slc_partition_id = partition->val[mscid].slc_partition_id;
++	mpam_param.mpam_config_ctrl = SET_ALL_CPU_TUNABLE;
++
++	strscpy(temp, buf, sizeof(temp));
++	while ((token = strsep(&param, ",")) != NULL) {
++		param_name = strsep(&token, "=");
++		if (param_name == NULL || token == NULL)
++			continue;
++		if (kstrtouint(token, 0, &input) < 0) {
++			pr_err("invalid argument for %s\n", param_name);
++			continue;
++		}
++
++		if (!strcmp("cmax", param_name))
++			mpam_param.cache_capacity = input;
++		else if (!strcmp("cpbm", param_name))
++			mpam_param.cpbm_mask = input;
++		else if (!strcmp("prio", param_name))
++			mpam_param.dspri = input;
++		else if (!strcmp("slc_partid", param_name))
++			mpam_param.slc_partition_id = input;
++	}
++
++	/*
++	 * If cpbm_mask set from userspace is 0, it means the least allocation
++	 * for MPAM is needed. For the current hardware, the least allocation
++	 * is cpbm_mask==1, cache_capacity == 0. And when cpbm_mask == 0,
++	 * cache_capacity will always limit to 0.
++	 */
++	if (mpam_param.cpbm_mask == 0) {
++		bypass_cache = true;
++		mpam_param.cpbm_mask = 0x1;
++		mpam_param.cache_capacity = 0;
++	}
++
++	ret = qcom_mpam_set_cache_partition(&mpam_param);
++	if (!ret) {
++		partition->val[mscid].capacity = mpam_param.cache_capacity;
++		partition->val[mscid].dspri = mpam_param.dspri;
++		partition->val[mscid].slc_partition_id = mpam_param.slc_partition_id;
++		if (unlikely(bypass_cache))
++			partition->val[mscid].cpbm = 0;
++		else
++			partition->val[mscid].cpbm = mpam_param.cpbm_mask;
++	} else
++		pr_err("set msc mpam settings failed, ret = %d\n", ret);
++}
++
++static void cpu_mpam_set_by_schemata(struct config_item *item,
++		char *msc_name, char *param)
++{
++	int i;
++
++	/*
++	 * Go through all MSCs, set specific MSC if msc_name exists, or
++	 * set all MSCs if msc_name not exists.
++	 */
++	for (i = 0; i < mpam_msc_cnt; i++)
++		if ((msc_name == NULL) || (!strcmp(msc_name,
++				mpam_mscs[i].msc_name)))
++			cpu_mpam_set_param(item, mpam_mscs[i].msc_id, param);
++}
++
++static ssize_t cpu_mpam_schemata_show(struct config_item *item,
++		char *page)
++{
++	int i, ret = 0;
++	u32 msc_id;
++	struct mpam_config_val *mpam_val;
++	struct cpu_mpam_partition *partition = to_partition(item);
++
++	for (i = 0; i < mpam_msc_cnt; i++) {
++		msc_id = mpam_mscs[i].msc_id;
++		mpam_val = &partition->val[msc_id];
++		if (can_monitor)
++			ret += scnprintf(page + ret, PAGE_SIZE,
++				"%s:cmax=%d,cpbm=0x%x,prio=%d,slc_partid=%d\n",
++				mpam_mscs[i].msc_name, mpam_val->capacity,
++				mpam_val->cpbm, mpam_val->dspri, mpam_val->slc_partition_id);
++		else
++			ret += scnprintf(page + ret, PAGE_SIZE, "%s:cpbm=0x%x,slc_partid=%d\n",
++				mpam_mscs[i].msc_name, mpam_val->cpbm, mpam_val->slc_partition_id);
++	}
++
++	return ret;
++}
++
++/*
++ * Schemata supports setting multiple parameters for multiple MSCs
++ * simultaneously.
++ * Each basic parameter consists of a key-value pair separated by an
++ * equal sign, and multiple parameters are delimited by commas.
++ *
++ *     <key1>=<value1>,<key2>=<value2>
++ *
++ * Parameters by default will be applied to all available MSCs. If you
++ * only need to apply them to a specific MSC, add the MSC name followed
++ * by a colon at the beginning.
++ *
++ *     <MSC_name>:<parameters>
++ *
++ * Multiple parameter lines need to be separated by semicolon.
++ *
++ *     <parameters line>;<parameters line>
++ *
++ * Exceptions for incorrectly passed parameters will be ignored.
++ *
++ * Example:
++ *
++ *     cmax=60,cpbm=0xf;L2_0:cmax=40,prio=1;L2_1:prio=2
++ *
++ * In the example above, the initial configuration sets cmax=60 and
++ * cpbm=0xf for all MSCs. Subsequently, it adjusts the parameters to
++ * cmax=40 and prio=1 for L2_0, and prio=2 for L2_1.
++ */
++
++static ssize_t cpu_mpam_schemata_store(struct config_item *item,
++		const char *page, size_t count)
++{
++	char *token, *buf;
++
++	/* Separate multiple parameter lines */
++	while ((token = strsep((char **)&page, ";")) != NULL) {
++		buf = strsep(&token, ":");
++		if (token == NULL)
++			cpu_mpam_set_by_schemata(item, NULL, buf);
++		else
++			cpu_mpam_set_by_schemata(item, buf, token);
++	}
++
++	return count;
++}
++CONFIGFS_ATTR(cpu_mpam_, schemata);
++
++static ssize_t cpu_mpam_tasks_show(struct config_item *item, char *page)
++{
++	int part_id;
++	ssize_t len = 0;
++	struct cpu_mpam_partition *partition = to_partition(item);
++
++	part_id = get_part_id(item);
++	rcu_read_lock();
++	len += scnprintf(page + len, PAGE_SIZE - len, "%d ", partition->pid_num);
++	rcu_read_unlock();
++	len += scnprintf(page + len, PAGE_SIZE - len, "\n");
++
++	return len;
++}
++
++static ssize_t cpu_mpam_tasks_store(struct config_item *item,
++		const char *page, size_t count)
++{
++	int ret, part_id;
++	struct pid *pid;
++	struct task_struct *task;
++	pid_t pid_input;
++	char *kbuf, *token;
++	struct cpu_mpam_partition *partition = to_partition(item);
++
++	part_id = get_part_id(item);
++	kbuf = (char *)page;
++	while ((token = strsep(&kbuf, " ")) != NULL) {
++		ret = kstrtouint(token, 10, &pid_input);
++		if (ret < 0) {
++			pr_err("invalid argument\n");
++			goto err;
++		}
++
++		pid = find_vpid(pid_input);
++		if (IS_ERR_OR_NULL(pid)) {
++			pr_err("pid %d not exist\n", pid_input);
++			continue;
++		}
++
++		task = get_pid_task(pid, PIDTYPE_PID);
++		if (IS_ERR_OR_NULL(task)) {
++			pr_err("task %d not exist\n", pid_input);
++			continue;
++		}
++
++		partition->pid_num = pid_input;
++		partition->task = task;
++	}
++
++err:
++	return count;
++}
++CONFIGFS_ATTR(cpu_mpam_, tasks);
++
++static void cpu_mpam_enable_monitor(int monitor_id, int part_id,
++		enum mpam_monitor_type type)
++{
++	int i;
++	struct mpam_monitor_configuration monitor_param;
++
++	monitor_param.part_id = part_id + PARTID_RESERVED;
++	monitor_param.mon_instance = monitor_id;
++	monitor_param.mon_type = type;
++	monitor_param.mpam_config_ctrl = 1;
++
++
++	for (i = 0; i < mpam_msc_cnt; i++) {
++		monitor_param.msc_id = mpam_mscs[i].msc_id;
++		qcom_mpam_config_monitor(&monitor_param);
++	}
++}
++
++static void cpu_mpam_disable_monitor(int monitor_id,
++		enum mpam_monitor_type type)
++{
++	int i;
++	struct mpam_monitor_configuration monitor_param;
++
++	monitor_param.mon_instance = monitor_id;
++	monitor_param.mon_type = type;
++	monitor_param.mpam_config_ctrl = 0;
++
++	for (i = 0; i < mpam_msc_cnt; i++) {
++		monitor_param.msc_id = mpam_mscs[i].msc_id;
++		qcom_mpam_config_monitor(&monitor_param);
++	}
++}
++
++static ssize_t cpu_mpam_enable_monitor_show(struct config_item *item,
++		char *page)
++{
++	int monitor_id;
++
++	monitor_id = get_monitor_id(item);
++	return scnprintf(page, PAGE_SIZE, "%s\n", (monitor_id == INT_MAX) ?
++		"disabled" : "enabled");
++}
++
++static ssize_t cpu_mpam_enable_monitor_store(struct config_item *item,
++		const char *page, size_t count)
++{
++	int ret, monitor_id, part_id;
++	bool input;
++
++	part_id = get_part_id(item);
++	monitor_id = get_monitor_id(item);
++
++	ret = kstrtobool(page, &input);
++	if (ret) {
++		pr_err("invalid param\n");
++		goto exit;
++	}
++
++	if (!input && monitor_id != INT_MAX) {
++		bitmap_clear(monitor_free_bitmap, monitor_id, 1);
++		set_monitor_id(item, INT_MAX);
++		cpu_mpam_disable_monitor(monitor_id, MPAM_TYPE_CSU_MONITOR);
++		cpu_mpam_disable_monitor(monitor_id, MPAM_TYPE_MBW_MONITOR);
++	} else if (input && monitor_id == INT_MAX) {
++		monitor_id = bitmap_find_next_zero_area(monitor_free_bitmap,
++				MONITOR_MAX, 0, 1, 0);
++		if (monitor_id > MONITOR_MAX) {
++			pr_err("no available monitor\n");
++			goto exit;
++		}
++
++		bitmap_set(monitor_free_bitmap, monitor_id, 1);
++		set_monitor_id(item, monitor_id);
++		cpu_mpam_enable_monitor(monitor_id, part_id,
++				MPAM_TYPE_CSU_MONITOR);
++		cpu_mpam_enable_monitor(monitor_id, part_id,
++				MPAM_TYPE_MBW_MONITOR);
++	}
++
++exit:
++	return count;
++}
++CONFIGFS_ATTR(cpu_mpam_, enable_monitor);
++
++static ssize_t cpu_mpam_monitor_data_show(struct config_item *item,
++		char *page)
++{
++	int i, monitor_id, retry_cnt = 0;
++	ssize_t len = 0;
++	uint32_t csu_value, mscid;
++	uint64_t mbw_value, timestamp, capture_status;
++	struct monitors_value *mpam_mon_data;
++
++	monitor_id = get_monitor_id(item);
++	if (monitor_id != INT_MAX) {
++		for (i = 0; i < mpam_msc_cnt; i++) {
++			mscid = mpam_mscs[i].msc_id;
++			mpam_mon_data = &mpam_mon_base[mscid];
++			do {
++				while (unlikely((capture_status =
++						mpam_mon_data->capture_status) % 2) &&
++						(retry_cnt < MPAM_MAX_RETRY))
++					retry_cnt++;
++				timestamp = mpam_mon_data->last_capture_time;
++				csu_value = mpam_mon_data->csu_mon_value[monitor_id];
++				mbw_value = mpam_mon_data->mbw_mon_value[monitor_id];
++			} while (capture_status != mpam_mon_data->capture_status);
++			len += scnprintf(page + len, PAGE_SIZE - len,
++				"%s:timestamp=%llu,csu=%u,mbwu=%llu\n",
++				mpam_mscs[i]. msc_name, timestamp,
++				csu_value, mbw_value);
++		}
++		return len;
++	} else
++		return scnprintf(page, PAGE_SIZE, "monitor not enabled\n");
++}
++CONFIGFS_ATTR_RO(cpu_mpam_, monitor_data);
++
++static struct configfs_attribute *cpu_mpam_attrs[] = {
++	&cpu_mpam_attr_part_id,
++	&cpu_mpam_attr_schemata,
++	&cpu_mpam_attr_tasks,
++	&cpu_mpam_attr_enable_monitor,
++	&cpu_mpam_attr_monitor_data,
++	NULL,
++};
++
++static struct configfs_attribute *cpu_mpam_attrs_legacy[] = {
++	&cpu_mpam_attr_part_id,
++	&cpu_mpam_attr_schemata,
++	&cpu_mpam_attr_tasks,
++	NULL,
++};
++
++static void cpu_mpam_reset_param(int part_id)
++{
++	int i;
++	struct mpam_set_cache_partition mpam_param;
++
++	for (i = 0; i < mpam_msc_cnt; i++) {
++		mpam_param.part_id = part_id + PARTID_RESERVED;
++		mpam_param.dspri = mpam_default_val[i].dspri;
++		mpam_param.cpbm_mask = mpam_default_val[i].cpbm;
++		mpam_param.cache_capacity = mpam_default_val[i].capacity;
++		mpam_param.slc_partition_id = mpam_default_val[i].slc_partition_id;
++		mpam_param.mpam_config_ctrl = SET_ALL_CPU_TUNABLE;
++		mpam_param.msc_id = mpam_mscs[i].msc_id;
++		qcom_mpam_set_cache_partition(&mpam_param);
++	}
++}
++
++static void cpu_mpam_drop_item(struct config_group *group,
++		struct config_item *item)
++{
++	int part_id, monitor_id;
++	struct cpu_mpam_partition *partition = to_partition(item);
++
++	part_id = get_part_id(item);
++	monitor_id = get_monitor_id(item);
++
++	list_del(&partition->list);
++
++	cpu_mpam_partition_transfer(item, part_id, PARTID_DEFAULT);
++	bitmap_clear(part_id_free_bitmap, part_id, 1);
++	if (monitor_id != INT_MAX) {
++		bitmap_clear(monitor_free_bitmap, monitor_id, 1);
++		cpu_mpam_disable_monitor(monitor_id, MPAM_TYPE_CSU_MONITOR);
++		cpu_mpam_disable_monitor(monitor_id, MPAM_TYPE_MBW_MONITOR);
++	}
++	cpu_mpam_reset_param(part_id);
++
++	kfree(to_partition(item)->val);
++	kfree(to_partition(item));
++}
++
++static const struct config_item_type cpu_mpam_item_type = {
++	.ct_attrs	= cpu_mpam_attrs,
++};
++
++static const struct config_item_type cpu_mpam_item_type_legacy = {
++	.ct_attrs	= cpu_mpam_attrs_legacy,
++};
++
++static struct config_group *cpu_mpam_make_group(
++		struct config_group *group, const char *name)
++{
++	int i, part_id;
++	struct cpu_mpam_partition *partition;
++
++	part_id = bitmap_find_next_zero_area(part_id_free_bitmap,
++				   PARTID_AVAILABLE, 0, 1, 0);
++
++	if (part_id > PARTID_AVAILABLE)
++		return ERR_PTR(-ENOMEM);
++
++	partition = kzalloc(sizeof(struct cpu_mpam_partition), GFP_KERNEL);
++	if (!partition)
++		return ERR_PTR(-ENOMEM);
++
++	bitmap_set(part_id_free_bitmap, part_id, 1);
++	partition->part_id = part_id;
++	partition->monitor_id = INT_MAX;
++
++	partition->val = kcalloc(mpam_msc_cnt, sizeof(struct mpam_config_val), GFP_KERNEL);
++	if (!partition->val)
++		return ERR_PTR(-ENOMEM);
++
++	list_add_tail(&partition->list, &partition_head);
++
++	for (i = 0; i < mpam_msc_cnt; i++)
++		memcpy(&(partition->val[i]), &mpam_default_val[i], sizeof(struct mpam_config_val));
++
++	cpu_mpam_reset_param(part_id);
++
++	if (can_monitor)
++		config_group_init_type_name(&partition->group, name,
++				   &cpu_mpam_item_type);
++	else
++		config_group_init_type_name(&partition->group, name,
++			&cpu_mpam_item_type_legacy);
++
++	return &partition->group;
++}
++
++static struct configfs_group_operations cpu_mpam_group_ops = {
++	.make_group	= cpu_mpam_make_group,
++	.drop_item	= cpu_mpam_drop_item,
++};
++
++static const struct config_item_type cpu_mpam_subsys_type = {
++	.ct_group_ops	= &cpu_mpam_group_ops,
++	.ct_owner	= THIS_MODULE,
++};
++
++static struct configfs_subsystem cpu_mpam_subsys = {
++	.su_group = {
++		.cg_item = {
++			.ci_namebuf = "qcom_mpam",
++			.ci_type = &cpu_mpam_subsys_type,
++		},
++	},
++};
++
++static DEFINE_PER_CPU(u8, active_partid);
++
++static void cpu_mpam_write_partid(u8 part_id)
++{
++	u64 reg;
++	static u8 old_part_id;
++
++	old_part_id = this_cpu_read(active_partid);
++
++	if (old_part_id == part_id)
++		return;
++
++	this_cpu_write(active_partid, part_id);
++	part_id += PARTID_RESERVED;
++	reg = (part_id << PARTID_I_SHIFT) | (part_id << PARTID_D_SHIFT);
++
++	write_sysreg_s(reg, SYS_MPAM0_EL1);
++	write_sysreg_s(reg, SYS_MPAM1_EL1);
++}
++
++static void cpu_mpam_switch_task(struct task_struct *task)
++{
++	struct cpu_mpam_partition *node, *tmp;
++	struct cpu_mpam_partition *default_partition;
++	u8 part_id = 0;
++
++	default_partition = list_first_entry(&partition_head,
++		   struct cpu_mpam_partition, list);
++	if (default_partition)
++		part_id = default_partition->part_id;
++
++	list_for_each_entry_safe(node, tmp, &partition_head, list) {
++		if (node->task && node->task == task) {
++			part_id = node->part_id;
++			break;
++		}
++	}
++
++	cpu_mpam_write_partid(part_id);
++}
++
++static int cpu_mpam_configfs_init(void)
++{
++	int ret;
++	struct config_group *default_group;
++
++	part_id_free_bitmap = bitmap_zalloc(PARTID_AVAILABLE, GFP_KERNEL);
++	monitor_free_bitmap = bitmap_zalloc(MONITOR_MAX, GFP_KERNEL);
++	if (!part_id_free_bitmap) {
++		pr_err("Error alloc bitmap\n");
++		return -ENOMEM;
++	}
++
++	config_group_init(&cpu_mpam_subsys.su_group);
++	mutex_init(&cpu_mpam_subsys.su_mutex);
++
++	default_group = cpu_mpam_make_group(NULL, "default");
++	if (IS_ERR(default_group)) {
++		pr_err("Error create group\n");
++		return PTR_ERR(default_group);
++	}
++	configfs_add_default_group(default_group, &cpu_mpam_subsys.su_group);
++
++	ret = configfs_register_subsystem(&cpu_mpam_subsys);
++	if (ret) {
++		mutex_destroy(&cpu_mpam_subsys.su_mutex);
++		pr_err("Error while registering subsystem %d\n", ret);
++		return ret;
++	}
++
++	cpu_mpam_callback_register(cpu_mpam_switch_task);
++
++	return 0;
++}
++
++static void cpu_mpam_configfs_remove(void)
++{
++	cpu_mpam_callback_unregister(cpu_mpam_switch_task);
++	configfs_unregister_subsystem(&cpu_mpam_subsys);
++}
++
++static int cpu_mpam_probe(struct platform_device *pdev)
++{
++	int i = 0, ret = 0;
++	uint32_t mscid;
++	struct resource *res;
++	struct device_node *node;
++	const char *msc_name_dt;
++	struct mpam_ver_ret mpam_version;
++	struct mpam_read_cache_portion mpam_param;
++
++	ret = qcom_mpam_get_version(&mpam_version);
++	if (ret || mpam_version.version < 0x10000) {
++		dev_err(&pdev->dev, "CPU MPAM is not available\n");
++		return -ENODEV;
++	}
++
++	mpam_msc_cnt = of_get_child_count(pdev->dev.of_node);
++	if (!mpam_msc_cnt) {
++		dev_err(&pdev->dev, "No MSC found\n");
++		return -ENODEV;
++	}
++
++	mpam_mscs = devm_kcalloc(&pdev->dev, mpam_msc_cnt,
++		sizeof(struct cpu_mpam_msc), GFP_KERNEL);
++	if (!mpam_mscs)
++		return -ENOMEM;
++
++	for_each_child_of_node(pdev->dev.of_node, node) {
++		ret = of_property_read_u32(node, "qcom,msc-id", &mscid);
++		of_property_read_string(node, "qcom,msc-name", &msc_name_dt);
++		if (ret || mscid >= MSC_MAX || IS_ERR_OR_NULL(msc_name_dt))
++			continue;
++		mpam_mscs[i].msc_id = mscid;
++		mpam_mscs[i].msc_name = msc_name_dt;
++		i++;
++	}
++	mpam_msc_cnt = i;
++
++	for (i = 0; i < mpam_msc_cnt; i++) {
++		mpam_param.msc_id = i;
++		mpam_param.part_id = PARTID_MAX - 1;
++		ret = qcom_mpam_get_cache_partition(&mpam_param, &mpam_default_val[i]);
++		if (ret) {
++			dev_err(&pdev->dev, "Error getting default value %d\n", ret);
++			mpam_default_val[i].cpbm = UINT_MAX;
++		}
++	}
++
++	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "mon-base");
++	if (!res) {
++		dev_err(&pdev->dev, "cpu mpam does not have monitoring support\n");
++		can_monitor = false;
++	} else {
++		mpam_mon_base = devm_ioremap_resource(&pdev->dev, res);
++		if (IS_ERR_OR_NULL(mpam_mon_base)) {
++			dev_err(&pdev->dev, "Error ioremap mpam_mon_base\n");
++			return -ENODEV;
++		}
++		can_monitor = true;
++	}
++	if (can_monitor) {
++		for (i = 0; i < mpam_msc_cnt; i++) {
++			mpam_default_val[i].capacity = 100;
++			mpam_default_val[i].dspri = 0;
++		}
++	}
++
++	ret = cpu_mpam_configfs_init();
++	if (ret)
++		dev_err(&pdev->dev, "Error creating configfs %d\n", ret);
++
++	return ret;
++}
++
++static int cpu_mpam_remove(struct platform_device *pdev)
++{
++	cpu_mpam_configfs_remove();
++	return 0;
++}
++
++static const struct of_device_id cpu_mpam_table[] = {
++	{ .compatible = "qcom,cpu-mpam" },
++	{}
++};
++MODULE_DEVICE_TABLE(of, cpu_mpam_table);
++
++static struct platform_driver cpu_mpam_driver = {
++	.driver = {
++		.name = "cpu-mpam",
++		.of_match_table = cpu_mpam_table,
++		.suppress_bind_attrs = true,
++	},
++	.probe = cpu_mpam_probe,
++	.remove = cpu_mpam_remove,
++};
++
++module_platform_driver(cpu_mpam_driver);
++
++MODULE_SOFTDEP("pre: mpam");
++MODULE_DESCRIPTION("QCOM CPU MPAM driver");
++MODULE_LICENSE("GPL");
+diff --git a/drivers/soc/qcom/mpam/mpam.c b/drivers/soc/qcom/mpam/mpam.c
+new file mode 100644
+index 000000000000..20ef51b0e91b
+--- /dev/null
++++ b/drivers/soc/qcom/mpam/mpam.c
+@@ -0,0 +1,191 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
++ */
++ #define pr_fmt(fmt) "qcom_mpam: " fmt
++
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/of.h>
++#include <linux/of_platform.h>
++#include <linux/qcom_scmi_vendor.h>
++#include <linux/scmi_protocol.h>
++#include <soc/qcom/mpam.h>
++
++#define MAX(a,b)		((a) > (b) ? (a) : (b))
++#define MPAM_ALGO_STR	0x4D50414D4558544E  /* "MPAMEXTN" */
++#define CONFIG_VAL_LEN	MAX(sizeof(struct mpam_read_cache_portion), \
++							sizeof(struct mpam_config_val))
++#define BW_CTRL_LEN		MAX(sizeof(struct platform_mpam_read_bw_ctrl), \
++							sizeof(struct platform_mpam_bw_ctrl_config))
++
++
++/* Parameter IDs for SET */
++enum mpam_set_param_ids {
++	/* CPU MPAM ID - L2 CACHE */
++	PARAM_SET_CACHE_PARTITION = 1,
++	PARAM_SET_CONFIG_MONITOR = 2,
++	PARAM_SET_CAPTURE_ALL_MONITOR = 3,
++	/*PLATFORM MPAM ID - NOC */
++	PARAM_SET_PLATFORM_BW_CTRL = 4,
++	PARAM_SET_PLATFORM_BW_MONITOR = 5
++};
++
++/* Parameter IDs for GET */
++enum mpam_get_param_ids {
++	PARAM_GET_MPAM_VERSION = 1,
++	PARAM_GET_CACHE_PARTITION = 2,
++	PARAM_GET_PLATFORM_BW_CTRL_CONFIG = 3
++};
++
++static struct scmi_protocol_handle *ph;
++static const struct qcom_scmi_vendor_ops *ops;
++static struct scmi_device *sdev;
++
++int qcom_mpam_set_cache_partition(struct mpam_set_cache_partition *param)
++{
++	if (!ops)
++		return -EPERM;
++
++	return ops->set_param(ph, param, MPAM_ALGO_STR,
++			PARAM_SET_CACHE_PARTITION,
++			sizeof(struct mpam_set_cache_partition));
++}
++EXPORT_SYMBOL_GPL(qcom_mpam_set_cache_partition);
++
++int qcom_mpam_get_version(struct mpam_ver_ret *ver)
++{
++	if (!ops)
++		return -EPERM;
++
++	return ops->get_param(ph, ver, MPAM_ALGO_STR,
++			PARAM_GET_MPAM_VERSION, 0,
++			sizeof(struct mpam_ver_ret));
++}
++EXPORT_SYMBOL_GPL(qcom_mpam_get_version);
++
++int qcom_mpam_get_cache_partition(struct mpam_read_cache_portion *param,
++						struct mpam_config_val *val)
++{
++	int ret;
++	uint8_t buf[CONFIG_VAL_LEN] = {0};
++
++	if (!ops)
++		return -EPERM;
++
++	memcpy(buf, param, sizeof(struct mpam_read_cache_portion));
++	ret = ops->get_param(ph, buf, MPAM_ALGO_STR,
++			PARAM_GET_CACHE_PARTITION,
++			sizeof(struct mpam_read_cache_portion),
++			sizeof(struct mpam_config_val));
++
++	if (!ret)
++		memcpy(val, buf, sizeof(struct mpam_config_val));
++
++	return ret;
++}
++EXPORT_SYMBOL_GPL(qcom_mpam_get_cache_partition);
++
++int qcom_mpam_config_monitor(struct mpam_monitor_configuration *param)
++{
++	if (!ops)
++		return -EPERM;
++
++	return ops->set_param(ph, param, MPAM_ALGO_STR,
++			PARAM_SET_CONFIG_MONITOR,
++			sizeof(struct mpam_monitor_configuration));
++}
++EXPORT_SYMBOL_GPL(qcom_mpam_config_monitor);
++
++int qcom_mpam_set_platform_bw_ctrl(struct platform_mpam_bw_ctrl_cfg *param)
++{
++	if (!ops)
++		return -EPERM;
++
++	return ops->set_param(ph, param, MPAM_ALGO_STR,
++			PARAM_SET_PLATFORM_BW_CTRL,
++			sizeof(struct platform_mpam_bw_ctrl_cfg));
++}
++EXPORT_SYMBOL_GPL(qcom_mpam_set_platform_bw_ctrl);
++
++int qcom_mpam_get_platform_bw_ctrl(struct platform_mpam_read_bw_ctrl *param,
++						struct platform_mpam_bw_ctrl_config *val)
++{
++	int ret;
++	uint8_t buf[BW_CTRL_LEN] = {0};
++
++	if (!ops)
++		return -EPERM;
++
++	memcpy(buf, param, sizeof(struct platform_mpam_read_bw_ctrl));
++	ret = ops->get_param(ph, buf, MPAM_ALGO_STR,
++			PARAM_GET_PLATFORM_BW_CTRL_CONFIG,
++			sizeof(struct platform_mpam_read_bw_ctrl),
++			sizeof(struct platform_mpam_bw_ctrl_config));
++
++	if (!ret)
++		memcpy(val, buf, sizeof(struct platform_mpam_bw_ctrl_config));
++
++	return ret;
++}
++EXPORT_SYMBOL_GPL(qcom_mpam_get_platform_bw_ctrl);
++
++int qcom_mpam_set_platform_bw_monitor(struct platform_mpam_bw_monitor_cfg *param)
++{
++	if (!ops)
++		return -EPERM;
++
++	return ops->set_param(ph, param, MPAM_ALGO_STR,
++			PARAM_SET_PLATFORM_BW_MONITOR,
++			sizeof(struct platform_mpam_bw_monitor_cfg));
++}
++EXPORT_SYMBOL_GPL(qcom_mpam_set_platform_bw_monitor);
++
++static int qcom_mpam_probe(struct platform_device *pdev)
++{
++	int ret;
++
++	sdev = get_qcom_scmi_device();
++	if (IS_ERR(sdev)) {
++		ret = PTR_ERR(sdev);
++		if (ret != -EPROBE_DEFER)
++			dev_err(&pdev->dev, "Error getting scmi_dev ret=%d\n", ret);
++		return ret;
++	}
++	ops = sdev->handle->devm_protocol_get(sdev, QCOM_SCMI_VENDOR_PROTOCOL, &ph);
++	if (IS_ERR(ops)) {
++		ret = PTR_ERR(ops);
++		ops = NULL;
++		dev_err(&pdev->dev, "Error getting vendor protocol ops: %d\n", ret);
++		return ret;
++	}
++
++	return 0;
++}
++
++static int qcom_mpam_remove(struct platform_device *pdev)
++{
++	return 0;
++}
++
++static const struct of_device_id qcom_mpam_table[] = {
++	{ .compatible = "qcom,mpam" },
++	{}
++};
++MODULE_DEVICE_TABLE(of, qcom_mpam_table);
++
++static struct platform_driver qcom_mpam_driver = {
++	.driver = {
++		.name = "qcom-mpam",
++		.of_match_table = qcom_mpam_table,
++		.suppress_bind_attrs = true,
++	},
++	.probe = qcom_mpam_probe,
++	.remove = qcom_mpam_remove,
++};
++
++module_platform_driver(qcom_mpam_driver);
++
++MODULE_SOFTDEP("pre: qcom_scmi_client");
++MODULE_DESCRIPTION("QCOM MPAM driver");
++MODULE_LICENSE("GPL");
+diff --git a/drivers/soc/qcom/mpam/mpam_hook.c b/drivers/soc/qcom/mpam/mpam_hook.c
+new file mode 100644
+index 000000000000..8bca950d4578
+--- /dev/null
++++ b/drivers/soc/qcom/mpam/mpam_hook.c
+@@ -0,0 +1,54 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
++ */
++
++#include <linux/io.h>
++#include <linux/string.h>
++#include <linux/bitmap.h>
++#include <soc/qcom/mpam.h>
++#include <linux/mmu_context.h>
++
++struct mpam_callback {
++	struct list_head list;
++	mpam_schedule_func_t *func;
++};
++
++static LIST_HEAD(callback_head);
++
++void cpu_mpam_callback(struct task_struct *task)
++{
++	struct mpam_callback *node, *tmp;
++
++	list_for_each_entry_safe(node, tmp, &callback_head, list)
++		node->func(task);
++}
++
++int cpu_mpam_callback_register(mpam_schedule_func_t *func)
++{
++	struct mpam_callback *node;
++
++	node = kzalloc(sizeof(struct mpam_callback), GFP_KERNEL);
++	if (!node)
++		return -ENOMEM;
++
++	node->func = func;
++
++	list_add_tail(&node->list, &callback_head);
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(cpu_mpam_callback_register);
++
++int cpu_mpam_callback_unregister(mpam_schedule_func_t *func)
++{
++	struct mpam_callback *node, *tmp;
++
++	list_for_each_entry_safe(node, tmp, &callback_head, list) {
++		if (node->func == func)
++			list_del(&node->list);
++	}
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(cpu_mpam_callback_unregister);
+diff --git a/drivers/soc/qcom/mpam/mpam_msc.c b/drivers/soc/qcom/mpam/mpam_msc.c
+new file mode 100644
+index 000000000000..598acdf747cd
+--- /dev/null
++++ b/drivers/soc/qcom/mpam/mpam_msc.c
+@@ -0,0 +1,374 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
++ */
++
++#define pr_fmt(fmt) "mpam_msc: " fmt
++
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/io.h>
++#include <linux/of.h>
++#include <linux/of_platform.h>
++#include <linux/string.h>
++#include <linux/qcom_scmi_vendor.h>
++#include <linux/scmi_protocol.h>
++#include <soc/qcom/mpam_msc.h>
++#include <soc/qcom/mpam_slc.h>
++
++static LIST_HEAD(qcom_mpam_list);
++
++struct qcom_mpam_msc *qcom_msc_lookup(uint32_t msc_id)
++{
++	struct qcom_mpam_msc *mpam_msc;
++
++	list_for_each_entry(mpam_msc, &qcom_mpam_list, node) {
++		if (mpam_msc->msc_id == msc_id)
++			return mpam_msc;
++	}
++
++	return NULL;
++}
++EXPORT_SYMBOL_GPL(qcom_msc_lookup);
++
++static struct qcom_mpam_msc *msc_param_verification(uint32_t msc_id, struct msc_query *query)
++{
++	struct qcom_mpam_msc *qcom_msc;
++
++	qcom_msc = qcom_msc_lookup(msc_id);
++	if (qcom_msc == NULL) {
++		pr_err("msc_id is not correct %d\n", msc_id);
++		return NULL;
++	}
++
++	if ((qcom_msc->mpam_available & MPAM_AVAILABLE) != MPAM_AVAILABLE) {
++		pr_err("qcom MSC %d is not available!\n", msc_id);
++		return NULL;
++	}
++
++	if (qcom_msc->qcom_msc_id.qcom_msc_type != query->qcom_msc_id.qcom_msc_type) {
++		pr_err("Request data not matching!\n");
++		return NULL;
++	}
++
++	return qcom_msc;
++}
++
++int msc_system_get_partition(uint32_t msc_id, void *arg1, void *arg2)
++{
++	int ret = -EINVAL;
++	uint8_t qcom_msc_type;
++	struct qcom_mpam_msc *qcom_msc;
++	struct msc_query *query;
++
++	query = (struct msc_query *) arg1;
++	if (query == NULL)
++		return -EINVAL;
++
++	qcom_msc = msc_param_verification(msc_id, query);
++	if (qcom_msc == NULL)
++		return ret;
++
++	qcom_msc_type = qcom_msc->qcom_msc_id.qcom_msc_type;
++	switch (qcom_msc_type) {
++	case SLC:
++		if (qcom_msc->ops->get_cache_partition)
++			ret = qcom_msc->ops->get_cache_partition(qcom_msc->dev, arg1, arg2);
++		break;
++	default:
++		break;
++	}
++
++	return ret;
++}
++EXPORT_SYMBOL_GPL(msc_system_get_partition);
++
++int msc_system_get_device_capability(uint32_t msc_id, void *arg1, void *arg2)
++{
++	int ret = -EINVAL;
++	uint8_t qcom_msc_type;
++	struct qcom_mpam_msc *qcom_msc;
++	struct msc_query *query;
++
++	query = (struct msc_query *) arg1;
++	if (query == NULL)
++		return -EINVAL;
++
++	qcom_msc = msc_param_verification(msc_id, query);
++	if (qcom_msc == NULL)
++		return ret;
++
++	qcom_msc_type = qcom_msc->qcom_msc_id.qcom_msc_type;
++	switch (qcom_msc_type) {
++	case SLC:
++		if (qcom_msc->ops->get_cache_partition_capability)
++			ret = qcom_msc->ops->get_cache_partition_capability(qcom_msc->dev,
++					arg1, arg2);
++		break;
++	default:
++		break;
++	}
++
++	return ret;
++}
++EXPORT_SYMBOL_GPL(msc_system_get_device_capability);
++
++int msc_system_set_partition(uint32_t msc_id, void *arg1, void *arg2)
++{
++	int ret = -EINVAL;
++	uint8_t qcom_msc_type;
++	struct qcom_mpam_msc *qcom_msc;
++	struct msc_query *query;
++
++	query = (struct msc_query *) arg1;
++	if (query == NULL)
++		return -EINVAL;
++
++	qcom_msc = msc_param_verification(msc_id, query);
++	if (qcom_msc == NULL)
++		return ret;
++
++	qcom_msc_type = qcom_msc->qcom_msc_id.qcom_msc_type;
++	switch (qcom_msc_type) {
++	case SLC:
++		if (qcom_msc->ops->set_cache_partition)
++			ret = qcom_msc->ops->set_cache_partition(qcom_msc->dev, arg1, arg2);
++		break;
++	default:
++		break;
++	}
++
++	return ret;
++}
++EXPORT_SYMBOL_GPL(msc_system_set_partition);
++
++int msc_system_mon_config(uint32_t msc_id, void *arg1, void *arg2)
++{
++	int ret = -EINVAL;
++	uint8_t qcom_msc_type;
++	struct qcom_mpam_msc *qcom_msc;
++	struct msc_query *query;
++
++	query = (struct msc_query *) arg1;
++	if (query == NULL)
++		return -EINVAL;
++
++	qcom_msc = msc_param_verification(msc_id, query);
++	if (qcom_msc == NULL)
++		return ret;
++
++	qcom_msc_type = qcom_msc->qcom_msc_id.qcom_msc_type;
++	switch (qcom_msc_type) {
++	case SLC:
++		if (qcom_msc->ops->mon_config)
++			ret = qcom_msc->ops->mon_config(qcom_msc->dev, arg1, arg2);
++		break;
++	default:
++		break;
++	}
++
++	return ret;
++}
++EXPORT_SYMBOL_GPL(msc_system_mon_config);
++
++int msc_system_reset_partition(uint32_t msc_id, void *arg1, void *arg2)
++{
++	int ret = -EINVAL;
++	uint8_t qcom_msc_type;
++	struct qcom_mpam_msc *qcom_msc;
++	struct msc_query *query;
++
++	query = (struct msc_query *) arg1;
++	if (query == NULL)
++		return -EINVAL;
++
++	qcom_msc = msc_param_verification(msc_id, query);
++	if (qcom_msc == NULL)
++		return ret;
++
++	qcom_msc_type = qcom_msc->qcom_msc_id.qcom_msc_type;
++	switch (qcom_msc_type) {
++	case SLC:
++		if (qcom_msc->ops->reset_cache_partition)
++			ret = qcom_msc->ops->reset_cache_partition(qcom_msc->dev, arg1, arg2);
++		break;
++	default:
++		break;
++	}
++
++	return ret;
++}
++EXPORT_SYMBOL_GPL(msc_system_reset_partition);
++
++int msc_system_mon_alloc_info(uint32_t msc_id, void *arg1, void *arg2)
++{
++	int part_id;
++	uint8_t qcom_msc_type;
++	struct qcom_mpam_msc *qcom_msc;
++	int ret = -EINVAL;
++	struct qcom_msc_slc_mon_val val = {0};
++	struct msc_query *query;
++	union mon_values *mon_data;
++	struct qcom_slc_mon_data_val *data;
++
++
++	query = (struct msc_query *) arg1;
++	if (query == NULL)
++		return -EINVAL;
++
++	mon_data = (union mon_values *) arg2;
++	if (mon_data == NULL)
++		return -EINVAL;
++
++	qcom_msc = msc_param_verification(msc_id, query);
++	if (qcom_msc == NULL)
++		return ret;
++
++	qcom_msc_type = qcom_msc->qcom_msc_id.qcom_msc_type;
++	switch (qcom_msc_type) {
++	case SLC:
++		if (qcom_msc->ops->mon_stats_read)
++			ret = qcom_msc->ops->mon_stats_read(qcom_msc->dev, arg1, &val);
++		break;
++	default:
++		break;
++	}
++
++	if (ret)
++		return ret;
++
++	for (part_id = 0; part_id < SLC_NUM_PARTIDS; part_id++) {
++		data = &(val.data[part_id]);
++		if ((query->client_id == data->part_info.client_id) &&
++				(query->part_id == data->part_info.part_id)) {
++			mon_data->capacity.num_cache_lines = data->num_cache_lines;
++			break;
++		}
++	}
++
++	mon_data->capacity.last_capture_time = val.last_capture_time;
++
++	return ret;
++}
++EXPORT_SYMBOL_GPL(msc_system_mon_alloc_info);
++
++int msc_system_mon_read_miss_info(uint32_t msc_id, void *arg1, void *arg2)
++{
++	int part_id;
++	uint8_t qcom_msc_type;
++	struct qcom_mpam_msc *qcom_msc;
++	int ret = -EINVAL;
++	struct qcom_msc_slc_mon_val val = {0};
++	struct msc_query *query;
++	union mon_values *mon_data;
++	struct qcom_slc_mon_data_val *data;
++
++	query = (struct msc_query *) arg1;
++	if (query == NULL)
++		return -EINVAL;
++
++	mon_data = (union mon_values *) arg2;
++	if (mon_data == NULL)
++		return -EINVAL;
++
++	qcom_msc = msc_param_verification(msc_id, query);
++	if (qcom_msc == NULL)
++		return ret;
++
++	qcom_msc_type = qcom_msc->qcom_msc_id.qcom_msc_type;
++	switch (qcom_msc_type) {
++	case SLC:
++		if (qcom_msc->ops->mon_stats_read)
++			ret = qcom_msc->ops->mon_stats_read(qcom_msc->dev, arg1, &val);
++		break;
++	default:
++		break;
++	}
++
++	if (ret)
++		return ret;
++
++	for (part_id = 0; part_id < SLC_NUM_PARTIDS; part_id++) {
++		data = &(val.data[part_id]);
++		if ((query->client_id == data->part_info.client_id) &&
++				(query->part_id == data->part_info.part_id)) {
++			mon_data->misses.num_rd_misses = data->rd_misses;
++			break;
++		}
++	}
++
++	mon_data->misses.last_capture_time = val.last_capture_time;
++	return ret;
++}
++EXPORT_SYMBOL_GPL(msc_system_mon_read_miss_info);
++
++int attach_mpam_msc(struct device *dev, struct qcom_mpam_msc *qcom_msc,
++		uint32_t msc_type)
++{
++	int ret = -EINVAL;
++
++	if (qcom_msc == NULL)
++		return ret;
++
++	switch (msc_type) {
++	case SLC:
++		break;
++	default:
++		return ret;
++	}
++
++
++	list_add_tail(&qcom_msc->node, &qcom_mpam_list);
++	return 0;
++}
++EXPORT_SYMBOL_GPL(attach_mpam_msc);
++
++void detach_mpam_msc(struct device *dev, struct qcom_mpam_msc *qcom_msc, uint32_t msc_type)
++{
++	if (qcom_msc == NULL)
++		return;
++
++	switch (msc_type) {
++	case SLC:
++		break;
++	default:
++		return;
++	}
++
++	list_del(&qcom_msc->node);
++}
++EXPORT_SYMBOL_GPL(detach_mpam_msc);
++
++static int mpam_msc_probe(struct platform_device *pdev)
++{
++	if (of_platform_populate(pdev->dev.of_node, NULL, NULL, &pdev->dev) < 0)
++		dev_err(&pdev->dev, "Mpam driver probe failed.!\n");
++
++	return 0;
++}
++
++int mpam_msc_remove(struct platform_device *pdev)
++{
++	return 0;
++}
++static const struct of_device_id mpam_msc_table[] = {
++	{ .compatible = "qcom,mpam-msc" },
++	{}
++};
++
++MODULE_DEVICE_TABLE(of, mpam_msc_table);
++
++static struct platform_driver mpam_msc_driver = {
++	.driver = {
++		.name = "mpam-msc",
++		.of_match_table = mpam_msc_table,
++		.suppress_bind_attrs = true,
++	},
++	.probe = mpam_msc_probe,
++	.remove = mpam_msc_remove,
++};
++
++module_platform_driver(mpam_msc_driver);
++
++MODULE_DESCRIPTION("QCOM MPAM MSC driver");
++MODULE_LICENSE("GPL");
+diff --git a/drivers/soc/qcom/mpam/mpam_msc_slc.c b/drivers/soc/qcom/mpam/mpam_msc_slc.c
+new file mode 100644
+index 000000000000..800093c6fd2b
+--- /dev/null
++++ b/drivers/soc/qcom/mpam/mpam_msc_slc.c
+@@ -0,0 +1,715 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
++ */
++
++#define pr_fmt(fmt) "qcom_mpam_slc: " fmt
++
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/of.h>
++#include <linux/io.h>
++#include <linux/of_platform.h>
++#include <linux/string.h>
++#include <linux/delay.h>
++#include <linux/qcom_scmi_vendor.h>
++#include <linux/scmi_protocol.h>
++#include <soc/qcom/mpam_msc.h>
++#include <soc/qcom/mpam_slc.h>
++
++#define QCOM_SLC_MPAM_SCMI_STR	0x534c434d50414d /* SLCMPAM */
++#define SCMI_GET_PARAM_LEN	32
++
++enum mpam_slc_set_param_ids {
++	PARAM_SET_CACHE_PARTITION_MSC = 1,
++	PARAM_RESET_CACHE_PARTITION_MSC = 2,
++	PARAM_SET_CONFIG_MON_MSC = 3,
++	PARAM_SET_CONFIG_SLC_MPAM_START_STOP = 4,
++};
++
++enum mpam_slc_get_param_ids {
++	PARAM_GET_CLIENT_INFO_MSC = 1,
++	PARAM_GET_CACHE_CAPABILITY_MSC = 2,
++	PARAM_GET_CACHE_PARTITION_MSC = 3,
++};
++
++static uint16_t slc_client_id[] = {
++	APPS,
++	GPU,
++	NSP,
++	SLC_CLIENT_MAX,
++};
++
++static int mpam_msc_slc_set_params(struct device *dev, void *param, int param_len,
++		uint32_t param_id)
++{
++	struct qcom_mpam_msc *qcom_msc;
++
++	qcom_msc = (struct qcom_mpam_msc *)dev_get_drvdata(dev);
++	if (qcom_msc == NULL)
++		return -EINVAL;
++
++	return qcom_msc->scmi_ops->set_param(qcom_msc->ph, param, QCOM_SLC_MPAM_SCMI_STR,
++				param_id, param_len);
++}
++
++static int mpam_msc_slc_get_params(struct device *dev, void *param_in, int param_in_len,
++		void *param_out, int param_out_len, uint32_t param_id)
++{
++	int ret = -EPERM;
++	uint8_t buf[SCMI_GET_PARAM_LEN];
++	struct qcom_mpam_msc *qcom_msc;
++
++	qcom_msc = (struct qcom_mpam_msc *)dev_get_drvdata(dev);
++	if (qcom_msc == NULL)
++		return ret;
++
++	if (param_in_len && param_in_len <= SCMI_GET_PARAM_LEN) {
++		memcpy(buf, param_in, param_in_len);
++		ret = qcom_msc->scmi_ops->get_param(qcom_msc->ph, buf,
++			QCOM_SLC_MPAM_SCMI_STR, param_id, param_in_len, param_out_len);
++	}
++
++	if (!ret)
++		memcpy(param_out, buf, param_out_len);
++
++	return ret;
++}
++
++static struct qcom_mpam_msc *slc_capability_check(struct device *dev, struct msc_query *query)
++{
++	struct qcom_mpam_msc *qcom_msc;
++	struct qcom_slc_capability *slc_capability;
++	struct slc_client_capability *slc_client_cap;
++	int client_idx, partid_idx;
++
++	client_idx = query->client_id;
++	partid_idx = query->part_id;
++
++	if (client_idx >= SLC_CLIENT_MAX) {
++		dev_err(dev, "Invalid Client ID %d\n", client_idx);
++		return NULL;
++	}
++
++	qcom_msc = (struct qcom_mpam_msc *)dev_get_drvdata(dev);
++	if (qcom_msc == NULL)
++		return NULL;
++
++	slc_capability = (struct qcom_slc_capability *)qcom_msc->msc_capability;
++	slc_client_cap = &(slc_capability->slc_client_cap[client_idx]);
++
++	if (slc_client_cap->enabled == false) {
++		dev_err(dev, "Client not enabled for configuration %d\n", client_idx);
++		return NULL;
++	}
++
++	if (partid_idx >= slc_client_cap->client_info.num_part_id) {
++		dev_err(dev, "Invalid PART id %d\n", partid_idx);
++		return NULL;
++	}
++
++	return qcom_msc;
++}
++
++static int slc_set_cache_partition(struct device *dev, void *msc_partid, void *msc_partconfig)
++{
++	struct qcom_mpam_msc *qcom_msc;
++	struct slc_partid_config slc_part_config;
++	struct qcom_slc_capability *slc_capability;
++	struct slc_client_capability *slc_client_cap;
++	struct slc_partid_capability *slc_partid_cap;
++	int client_idx, partid_idx, gear_idx;
++
++	memcpy(&slc_part_config.query, msc_partid, sizeof(struct msc_query));
++	memcpy(&slc_part_config.gear_config, msc_partconfig, sizeof(struct qcom_slc_gear_val));
++
++	qcom_msc = slc_capability_check(dev, &slc_part_config.query);
++	if (qcom_msc == NULL)
++		return -EINVAL;
++
++	client_idx = slc_part_config.query.client_id;
++	partid_idx = slc_part_config.query.part_id;
++	slc_capability = (struct qcom_slc_capability *)qcom_msc->msc_capability;
++	slc_client_cap = &(slc_capability->slc_client_cap[client_idx]);
++	slc_partid_cap = &(slc_client_cap->slc_partid_cap[partid_idx]);
++
++	for (gear_idx = 0; gear_idx < slc_partid_cap->num_gears; gear_idx++) {
++		if (slc_partid_cap->part_id_gears[gear_idx] == slc_part_config.gear_config.gear_val)
++			break;
++	}
++
++	if (gear_idx == slc_partid_cap->num_gears) {
++		dev_err(dev, "GEAR config not valid!\n");
++		return -EINVAL;
++	}
++
++	return mpam_msc_slc_set_params(dev, &slc_part_config, sizeof(struct slc_partid_config),
++			PARAM_SET_CACHE_PARTITION_MSC);
++}
++
++static int slc_reset_cache_partition(struct device *dev, void *msc_partid, void *msc_partconfig)
++{
++	struct qcom_mpam_msc *qcom_msc;
++	struct slc_partid_config slc_part_config = {0};
++
++	memcpy(&slc_part_config.query, msc_partid, sizeof(struct msc_query));
++	memcpy(&slc_part_config.gear_config, msc_partconfig, sizeof(struct qcom_slc_gear_val));
++
++	qcom_msc = slc_capability_check(dev, &slc_part_config.query);
++	if (qcom_msc == NULL)
++		return -EINVAL;
++
++	return mpam_msc_slc_set_params(dev, &slc_part_config, sizeof(struct slc_partid_config),
++			PARAM_RESET_CACHE_PARTITION_MSC);
++}
++
++static int slc_client_query(struct device *dev, void *msc_partid, void *msc_partconfig)
++{
++	struct qcom_mpam_msc *qcom_msc;
++	struct msc_query *query;
++	struct slc_client_info *client_info;
++
++	query = (struct msc_query *)msc_partid;
++	client_info = (struct slc_client_info *) msc_partconfig;
++
++	qcom_msc = (struct qcom_mpam_msc *)dev_get_drvdata(dev);
++	if (qcom_msc == NULL)
++		return -EINVAL;
++
++	return mpam_msc_slc_get_params(dev, query, sizeof(struct msc_query), client_info,
++			sizeof(struct slc_client_info), PARAM_GET_CLIENT_INFO_MSC);
++}
++
++static int slc_get_cache_partition(struct device *dev, void *msc_partid, void *msc_partconfig)
++{
++	struct qcom_mpam_msc *qcom_msc;
++	struct msc_query *query;
++	struct qcom_slc_capability *qcom_slc_capability;
++	struct slc_client_capability *slc_client_cap;
++	struct qcom_slc_gear_val *gear_config;
++
++	query = (struct msc_query *) msc_partid;
++	qcom_msc = slc_capability_check(dev, query);
++	if (qcom_msc == NULL)
++		return -EINVAL;
++
++	gear_config = (struct qcom_slc_gear_val *)msc_partconfig;
++	qcom_slc_capability = (struct qcom_slc_capability *)qcom_msc->msc_capability;
++	slc_client_cap = &qcom_slc_capability->slc_client_cap[query->client_id];
++	if (slc_client_cap->enabled == false)
++		return -EINVAL;
++
++	return mpam_msc_slc_get_params(dev, query, sizeof(struct msc_query), gear_config,
++			sizeof(struct qcom_slc_gear_val), PARAM_GET_CACHE_PARTITION_MSC);
++}
++
++static int slc_get_cache_partition_capability(struct device *dev, void *msc_partid,
++		void *msc_partconfig)
++{
++	struct qcom_mpam_msc *qcom_msc;
++	struct msc_query *query;
++	struct qcom_slc_capability *qcom_slc_capability;
++	struct slc_partid_capability *slc_partid_capability;
++	struct slc_client_capability *slc_client_cap;
++
++	query = (struct msc_query *) msc_partid;
++	qcom_msc = slc_capability_check(dev, query);
++	if (qcom_msc == NULL)
++		return -EINVAL;
++
++	slc_partid_capability = (struct slc_partid_capability *) msc_partconfig;
++	qcom_slc_capability = (struct qcom_slc_capability *)qcom_msc->msc_capability;
++	slc_client_cap = &qcom_slc_capability->slc_client_cap[query->client_id];
++	if (slc_client_cap->enabled == false)
++		return -EINVAL;
++
++	return mpam_msc_slc_get_params(dev, query, sizeof(struct msc_query), slc_partid_capability,
++			sizeof(struct slc_partid_capability), PARAM_GET_CACHE_CAPABILITY_MSC);
++}
++
++static int mon_idx_lookup(void __iomem *mem, int client_id, int part_id)
++{
++	int mon_idx;
++	struct qcom_slc_mon_mem *mon_mem = (struct qcom_slc_mon_mem *)mem;
++	struct slc_partid_info *part_info;
++
++	for (mon_idx = 0; mon_idx < SLC_NUM_PARTIDS; mon_idx++) {
++		part_info = &mon_mem->data[mon_idx].part_info;
++		if ((client_id ==  part_info->client_id) &&
++				(part_id ==  part_info->part_id))
++			break;
++	}
++
++	if (mon_idx == SLC_NUM_PARTIDS)
++		return -EINVAL;
++
++	return mon_idx;
++}
++
++static struct qcom_mpam_msc *slc_config_request_check(struct device *dev, struct msc_query *query,
++		struct slc_mon_config_val *mon_cfg)
++{
++	struct qcom_mpam_msc *qcom_msc;
++	struct qcom_slc_capability *slc_capability;
++	int client_idx, partid_idx, mon_idx;
++	void __iomem *mon_base;
++
++	qcom_msc = slc_capability_check(dev, query);
++	if (qcom_msc == NULL)
++		return NULL;
++
++	mon_base = (void __iomem *)qcom_msc->mon_base;
++	if (mon_base == NULL)
++		return NULL;
++
++	client_idx = query->client_id;
++	partid_idx = query->part_id;
++	slc_capability =  (struct qcom_slc_capability *)qcom_msc->msc_capability;
++
++	mon_idx = mon_idx_lookup(mon_base, client_idx, partid_idx);
++	if ((mon_idx < 0) && mon_idx >= SLC_NUM_PARTIDS)
++		return NULL;
++
++	switch (mon_cfg->slc_mon_function) {
++	default:
++		break;
++
++	case CACHE_CAPACITY_CONFIG:
++		switch (mon_cfg->enable) {
++		default:
++			break;
++
++		case 0:
++			if (slc_capability->slc_mon_configured.capacity_configured <= 0)
++				return NULL;
++			break;
++
++		case 1:
++			if (slc_capability->slc_mon_configured.capacity_configured >=
++					slc_capability->slc_mon_list.capacity_config_available)
++				return NULL;
++			break;
++		}
++		break;
++
++	case CACHE_READ_MISS_CONFIG:
++		switch (mon_cfg->enable) {
++		default:
++			break;
++
++		case 0:
++			if (slc_capability->slc_mon_configured.read_miss_configured <= 0)
++				return NULL;
++			break;
++
++		case 1:
++			if (slc_capability->slc_mon_configured.read_miss_configured >=
++					slc_capability->slc_mon_list.read_miss_config_available)
++				return NULL;
++			break;
++		}
++		break;
++	}
++
++	return qcom_msc;
++
++}
++
++static int update_mon_stats(struct device *dev, struct msc_query *query,
++		struct slc_mon_config_val *mon_cfg)
++{
++	struct qcom_mpam_msc *qcom_msc;
++	struct qcom_slc_capability *slc_capability;
++	int client_idx, partid_idx, mon_idx;
++	void __iomem *mon_base;
++
++	qcom_msc = slc_capability_check(dev, query);
++	if (qcom_msc == NULL)
++		return -EINVAL;
++
++	mon_base = (void __iomem *)qcom_msc->mon_base;
++	if (mon_base == NULL)
++		return -EINVAL;
++
++	client_idx = query->client_id;
++	partid_idx = query->part_id;
++	slc_capability =  (struct qcom_slc_capability *)qcom_msc->msc_capability;
++
++	mon_idx = mon_idx_lookup(mon_base, client_idx, partid_idx);
++	if ((mon_idx < 0) && mon_idx >= SLC_NUM_PARTIDS)
++		return -EINVAL;
++
++	switch (mon_cfg->slc_mon_function) {
++	default:
++		break;
++
++	case CACHE_CAPACITY_CONFIG:
++		switch (mon_cfg->enable) {
++		default:
++			break;
++
++		case 0:
++			slc_capability->slc_mon_configured.capacity_configured--;
++			break;
++
++		case 1:
++			slc_capability->slc_mon_configured.capacity_configured++;
++			break;
++
++		}
++		break;
++
++	case CACHE_READ_MISS_CONFIG:
++		switch (mon_cfg->enable) {
++		default:
++			break;
++
++		case 0:
++			slc_capability->slc_mon_configured.read_miss_configured--;
++			break;
++
++		case 1:
++			slc_capability->slc_mon_configured.read_miss_configured++;
++			break;
++
++		}
++		break;
++	}
++
++	return 0;
++}
++
++static int slc_mon_config(struct device *dev, void *msc_partid, void *msc_partconfig)
++{
++	struct qcom_mpam_msc *qcom_msc;
++	struct msc_query *query;
++	struct slc_mon_config_val *mon_cfg_val;
++	struct slc_mon_config mon_cfg = {0};
++	int ret = -EINVAL;
++
++	query = (struct msc_query *)msc_partid;
++	mon_cfg_val = (struct slc_mon_config_val *)msc_partconfig;
++
++	qcom_msc = slc_config_request_check(dev, query, mon_cfg_val);
++	if (qcom_msc == NULL)
++		return ret;
++
++	memcpy(&mon_cfg.query, msc_partid, sizeof(struct msc_query));
++	memcpy(&mon_cfg.config, msc_partconfig, sizeof(struct slc_mon_config_val));
++	ret = mpam_msc_slc_set_params(dev, &mon_cfg, sizeof(struct  slc_mon_config),
++			PARAM_SET_CONFIG_MON_MSC);
++	if (ret)
++		pr_err("Failed to Config SLC Mon\n");
++	else
++		update_mon_stats(dev, query, mon_cfg_val);
++
++	return ret;
++};
++
++#define MAX_SHARED_MEM_RETRY_CNT	5000
++#define MAX_SHARED_MATCH_SEQ_CNT	10
++
++static int slc_mon_shared_memread(void __iomem *mem,  struct qcom_msc_slc_mon_val *mon_buf)
++{
++	int part_id, retry_cnt = 0, match_seq_cnt = 0;
++	uint64_t timestamp;
++	uint32_t match_seq;
++	struct qcom_slc_mon_mem *mon_mem = (struct qcom_slc_mon_mem *)mem;
++	struct qcom_slc_mon_data *data_mem;
++	struct qcom_slc_mon_data_val *data_buf;
++
++	do {
++		while (unlikely((match_seq = mon_mem->match_seq) % 2) &&
++				(retry_cnt++ < MAX_SHARED_MEM_RETRY_CNT))
++			;
++
++		if (retry_cnt >= MAX_SHARED_MEM_RETRY_CNT)
++			return -EINVAL;
++
++		for (part_id = 0; part_id < SLC_NUM_PARTIDS; part_id++) {
++			data_buf = &(mon_buf->data[part_id]);
++			data_mem = &(mon_mem->data[part_id]);
++			data_buf->part_info.client_id = data_mem->part_info.client_id;
++			data_buf->part_info.part_id = data_mem->part_info.part_id;
++
++			if (data_mem->cap_stats.cap_enabled)
++				data_buf->num_cache_lines = data_mem->cap_stats.num_cache_lines;
++
++			if (data_mem->rd_miss_stats.miss_enabled)
++				data_buf->rd_misses = data_mem->rd_miss_stats.rd_misses;
++		}
++
++		timestamp = mon_mem->last_capture_time;
++	} while ((match_seq != mon_mem->match_seq) &&
++			(match_seq_cnt++ < MAX_SHARED_MATCH_SEQ_CNT));
++
++	if (match_seq_cnt == MAX_SHARED_MATCH_SEQ_CNT)
++		return -EINVAL;
++
++	mon_buf->last_capture_time = timestamp;
++	return 0;
++}
++
++static int slc_mon_stats_read(struct device *dev, void *msc_partid, void *mon_val)
++{
++	struct qcom_mpam_msc *qcom_msc;
++	void __iomem *mon_base;
++	struct qcom_msc_slc_mon_val *mon_buf;
++
++	mon_buf = (struct qcom_msc_slc_mon_val *)mon_val;
++	if (mon_buf == NULL)
++		return -EINVAL;
++
++	qcom_msc = (struct qcom_mpam_msc *)dev_get_drvdata(dev);
++	if (qcom_msc == NULL)
++		return -EINVAL;
++
++	mon_base = (void __iomem *)qcom_msc->mon_base;
++
++	slc_mon_shared_memread(mon_base, mon_buf);
++
++	return 0;
++};
++
++static struct mpam_msc_ops slc_msc_ops = {
++	.set_cache_partition = slc_set_cache_partition,
++	.get_cache_partition = slc_get_cache_partition,
++	.get_cache_partition_capability = slc_get_cache_partition_capability,
++	.reset_cache_partition = slc_reset_cache_partition,
++	.mon_config = slc_mon_config,
++	.mon_stats_read = slc_mon_stats_read,
++};
++
++static int slc_client_info_read(struct device *dev, struct device_node *node)
++{
++	int client_idx, partid_idx, ret = -EINVAL;
++	struct msc_query query;
++	struct qcom_mpam_msc *qcom_msc;
++	struct slc_client_capability *slc_client_cap;
++	struct qcom_slc_capability *qcom_slc_capability;
++
++	qcom_msc = (struct qcom_mpam_msc *)dev_get_drvdata(dev);
++	if (qcom_msc->qcom_msc_id.qcom_msc_type != SLC)
++		return -EINVAL;
++
++	qcom_slc_capability = (struct qcom_slc_capability *)qcom_msc->msc_capability;
++	query.qcom_msc_id.qcom_msc_type = qcom_msc->qcom_msc_id.qcom_msc_type;
++	query.qcom_msc_id.qcom_msc_class = qcom_msc->qcom_msc_id.qcom_msc_class;
++	query.qcom_msc_id.idx = qcom_msc->qcom_msc_id.idx;
++	for (client_idx = 0; client_idx < qcom_slc_capability->num_clients; client_idx++) {
++		slc_client_cap = &(qcom_slc_capability->slc_client_cap[client_idx]);
++		query.client_id = slc_client_id[client_idx];
++		slc_client_cap->client_info.client_id = slc_client_id[client_idx];
++		ret = of_property_read_string_index(node, "qcom,slc-clients", client_idx,
++							&slc_client_cap->client_name);
++		slc_client_cap->enabled = false;
++		if (slc_client_query(dev, &query, &(slc_client_cap->client_info)))
++			continue;
++
++		if ((slc_client_cap->client_info.num_part_id == 0) ||
++				(slc_client_cap->client_info.num_part_id == SLC_INVALID_PARTID))
++			continue;
++
++		slc_client_cap->enabled = true;
++		slc_client_cap->slc_partid_cap = devm_kcalloc(dev,
++				slc_client_cap->client_info.num_part_id,
++				sizeof(struct slc_partid_capability), GFP_KERNEL);
++		if (slc_client_cap->slc_partid_cap == NULL) {
++			ret = -ENOMEM;
++			break;
++		}
++
++		for (partid_idx = 0; partid_idx < slc_client_cap->client_info.num_part_id;
++				partid_idx++) {
++			query.part_id = partid_idx;
++			ret = msc_system_get_device_capability(qcom_msc->msc_id, &query,
++					&(slc_client_cap->slc_partid_cap[partid_idx]));
++			if (ret)
++				continue;
++		}
++	}
++
++	return ret;
++}
++
++static int slc_mpam_enable_disable(struct device *dev, void *msc_partid, void *msc_partconfig)
++{
++	struct qcom_slc_mpam_enable_cfg mon_cfg = {0};
++
++	memcpy(&mon_cfg.query, msc_partid, sizeof(struct msc_query));
++	memcpy(&mon_cfg.enable, msc_partconfig, sizeof(struct mpam_enable));
++
++	return mpam_msc_slc_set_params(dev, &mon_cfg, sizeof(struct qcom_slc_mpam_enable_cfg),
++			PARAM_SET_CONFIG_SLC_MPAM_START_STOP);
++}
++
++static int slc_mpam_start_stop(struct device *dev, bool start)
++{
++	struct qcom_mpam_msc *qcom_msc;
++	struct msc_query query = {0};
++	struct mpam_enable enable = {0};
++
++	qcom_msc = (struct qcom_mpam_msc *)dev_get_drvdata(dev);
++	if (qcom_msc == NULL)
++		return -EINVAL;
++
++	query.qcom_msc_id.qcom_msc_type = qcom_msc->qcom_msc_id.qcom_msc_type;
++	query.qcom_msc_id.qcom_msc_class = qcom_msc->qcom_msc_id.qcom_msc_class;
++	query.qcom_msc_id.idx = qcom_msc->qcom_msc_id.idx;
++	query.client_id = 0;
++	query.part_id = 0;
++	enable.value = start;
++	return slc_mpam_enable_disable(dev, &query, &enable);
++}
++
++static int mpam_msc_slc_probe(struct platform_device *pdev)
++{
++	int ret = -EINVAL;
++	uint32_t val;
++	struct device_node *node;
++	struct qcom_mpam_msc *qcom_msc;
++	struct qcom_slc_capability *qcom_slc_capability;
++	struct qcom_slc_mon_mem *mon_mem;
++	struct resource *res;
++
++	qcom_msc = devm_kzalloc(&pdev->dev, sizeof(struct qcom_mpam_msc), GFP_KERNEL);
++	if (qcom_msc == NULL)
++		return -ENOMEM;
++
++	qcom_msc->mpam_available = MPAM_UNINITIALIZAED;
++	qcom_msc->sdev = get_qcom_scmi_device();
++	if (IS_ERR(qcom_msc->sdev))
++		return PTR_ERR(qcom_msc->sdev);
++
++	qcom_msc->scmi_ops = qcom_msc->sdev->handle->devm_protocol_get(qcom_msc->sdev,
++			QCOM_SCMI_VENDOR_PROTOCOL, &qcom_msc->ph);
++	if (IS_ERR(qcom_msc->scmi_ops))
++		return dev_err_probe(&pdev->dev, PTR_ERR(qcom_msc->scmi_ops),
++				"Error getting vendor protocol ops\n");
++
++	qcom_msc->qcom_msc_id.qcom_msc_type = SLC;
++	qcom_msc->qcom_msc_id.qcom_msc_class = CACHE_TYPE;
++	qcom_msc->ops = &slc_msc_ops;
++	qcom_msc->dev = &pdev->dev;
++
++	node = pdev->dev.of_node;
++	ret = of_property_read_u32(node, "qcom,dev-index", &val);
++	if (ret)
++		return dev_err_probe(&pdev->dev, ret, "qcom,dev-index Node failed!\n");
++
++	if (val > 255)
++		return dev_err_probe(&pdev->dev, -EINVAL, "dev-index wrong value failed!\n");
++
++	qcom_msc->qcom_msc_id.idx = val;
++	ret = of_property_read_string(node, "qcom,msc-name", &qcom_msc->msc_name);
++	if (ret)
++		return dev_err_probe(&pdev->dev, ret, "qcom,msc-name Node failed!\n");
++
++	ret = of_property_read_u32(node, "qcom,msc-id", &qcom_msc->msc_id);
++	if (ret)
++		return dev_err_probe(&pdev->dev, ret, "qcom,msc-id Node failed!\n");
++
++	platform_set_drvdata(pdev, qcom_msc);
++	if (slc_mpam_start_stop(&pdev->dev, true))
++		return dev_err_probe(&pdev->dev, -EINVAL, "MAPM SCMI failure!\n");
++
++	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "mon-base");
++	qcom_msc->mon_base = devm_ioremap_resource(&pdev->dev, res);
++
++	if (IS_ERR_OR_NULL(qcom_msc->mon_base))
++		return dev_err_probe(&pdev->dev, PTR_ERR(qcom_msc->mon_base),
++				"ioremap slc mpam_mon_base failed!\n");
++
++	mon_mem = (struct qcom_slc_mon_mem *) qcom_msc->mon_base;
++	if (mon_mem->msc_id != qcom_msc->msc_id)
++		return dev_err_probe(&pdev->dev, -EINVAL, "IMEM Init failure!\n");
++
++	ret = attach_mpam_msc(&pdev->dev, qcom_msc, SLC);
++	if (ret)
++		return dev_err_probe(&pdev->dev, ret, "MPAM MSC attach failed!\n");
++
++	qcom_msc->msc_capability = devm_kzalloc(&pdev->dev, sizeof(struct qcom_slc_capability),
++			GFP_KERNEL);
++	if (qcom_msc->msc_capability == NULL) {
++		ret = -ENOMEM;
++		goto err_detach;
++	}
++
++	qcom_slc_capability = (struct qcom_slc_capability *)qcom_msc->msc_capability;
++	qcom_slc_capability->num_clients = of_property_count_strings(node, "qcom,slc-clients");
++	qcom_slc_capability->slc_client_cap = devm_kcalloc(&pdev->dev,
++			qcom_slc_capability->num_clients, sizeof(struct  slc_client_capability),
++			GFP_KERNEL);
++	if (qcom_slc_capability->slc_client_cap == NULL) {
++		ret = -ENOMEM;
++		goto err_detach;
++	}
++
++	ret = of_property_read_u32(node, "qcom,num-read-miss-cfg", &val);
++	if (ret)
++		goto err_detach;
++
++	qcom_slc_capability->slc_mon_list.read_miss_config_available = val;
++	ret = of_property_read_u32(node, "qcom,num-cap-cfg", &val);
++	if (ret)
++		goto err_detach;
++
++	qcom_slc_capability->slc_mon_list.capacity_config_available = val;
++
++	qcom_slc_capability->slc_mon_configured.read_miss_configured = 0;
++	qcom_slc_capability->slc_mon_configured.capacity_configured = 0;
++
++	qcom_msc->mpam_available = MPAM_AVAILABLE;
++	if (slc_client_info_read(&pdev->dev, node)) {
++		dev_err(&pdev->dev, "Failed to detect SLC device\n");
++		goto err_detach;
++	}
++
++	qcom_msc->mpam_available = MPAM_MONITRS_AVAILABLE;
++	return 0;
++
++err_detach:
++	detach_mpam_msc(&pdev->dev, qcom_msc, SLC);
++	return dev_err_probe(&pdev->dev, PTR_ERR(qcom_msc->mon_base),
++			"MPAM SLC driver probe failed!\n");
++}
++
++static int mpam_msc_slc_remove(struct platform_device *pdev)
++{
++	struct qcom_mpam_msc *qcom_msc;
++
++	qcom_msc = (struct qcom_mpam_msc *)platform_get_drvdata(pdev);
++	qcom_msc->mpam_available = MPAM_AVAILABLE;
++	if (qcom_msc != NULL) {
++		if (slc_mpam_start_stop(&pdev->dev, false))
++			dev_err(&pdev->dev, "Failed to stop SLC Monitor thread\n");
++
++		detach_mpam_msc(&pdev->dev, qcom_msc, SLC);
++	}
++
++	qcom_msc->mpam_available = MPAM_UNINITIALIZAED;
++	platform_set_drvdata(pdev, NULL);
++	return 0;
++}
++static const struct of_device_id mpam_msc_slc_table[] = {
++	{ .compatible = "qcom,slc-mpam" },
++	{}
++};
++MODULE_DEVICE_TABLE(of, mpam_msc_slc_table);
++
++static struct platform_driver mpam_msc_slc_driver = {
++	.driver = {
++		.name = "mpam-msc-slc",
++		.of_match_table = mpam_msc_slc_table,
++		.suppress_bind_attrs = true,
++	},
++	.probe = mpam_msc_slc_probe,
++	.remove = mpam_msc_slc_remove,
++};
++
++module_platform_driver(mpam_msc_slc_driver);
++
++MODULE_SOFTDEP("pre: llcc_qcom");
++MODULE_SOFTDEP("pre: qcom_scmi_client");
++MODULE_DESCRIPTION("QCOM MPAM MSC SLC driver");
++MODULE_LICENSE("GPL");
+diff --git a/drivers/soc/qcom/mpam/platform_mpam.c b/drivers/soc/qcom/mpam/platform_mpam.c
+new file mode 100644
+index 000000000000..2349bcc48fb8
+--- /dev/null
++++ b/drivers/soc/qcom/mpam/platform_mpam.c
+@@ -0,0 +1,366 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
++ */
++ #define pr_fmt(fmt) "platform_mpam: " fmt
++
++#include <linux/io.h>
++#include <linux/of.h>
++#include <linux/configfs.h>
++#include <linux/string.h>
++#include <soc/qcom/mpam.h>
++
++#define platform_mpam_get(ptr, member) ({	\
++	(mpam_version.version >= 0x10002) ?	\
++	ptr->V2.member : ptr->V1.member; })
++
++struct platform_mpam_item {
++	struct config_group group;
++	int msc_id;
++	int client_id;
++	int monitor_index;
++	bool monitor_enabled;
++	struct platform_mpam_bw_ctrl_config *cfg;
++};
++
++struct platform_mpam_gear {
++	int gear_id;
++	const char *gear_name;
++};
++
++static int support_gear_cnt;
++static struct mpam_ver_ret mpam_version;
++static struct config_group *root_group;
++static struct platform_mpam_gear *support_gears;
++static void *mpam_mon_base;
++
++static inline struct platform_mpam_item *get_pm_item(
++					   struct config_item *item)
++{
++	return container_of(to_config_group(item),
++				struct platform_mpam_item, group);
++}
++
++static ssize_t platform_mpam_schemata_show(struct config_item *item,
++		char *page)
++{
++	return scnprintf(page, PAGE_SIZE, "gear=%d\n",
++		get_pm_item(item)->cfg->platform_mpam_gear);
++}
++
++static ssize_t platform_mpam_schemata_store(struct config_item *item,
++		const char *page, size_t count)
++{
++	int ret, input;
++	char *token, *param_name;
++	struct platform_mpam_bw_ctrl_cfg cfg;
++	struct platform_mpam_item *pm_item = get_pm_item(item);
++
++	cfg.msc_id = pm_item->msc_id;
++	cfg.client_id = pm_item->client_id;
++	cfg.config_ctrl = 0;
++
++	while ((token = strsep((char **)&page, ",")) != NULL) {
++		param_name = strsep(&token, "=");
++		if (param_name == NULL || token == NULL)
++			continue;
++		if (kstrtouint(token, 0, &input) < 0) {
++			pr_err("invalid argument for %s\n", param_name);
++			continue;
++		}
++
++		if (!strcmp("gear", param_name))
++			cfg.platform_mpam_gear = input;
++	}
++
++	ret = qcom_mpam_set_platform_bw_ctrl(&cfg);
++	if (!ret)
++		pm_item->cfg->platform_mpam_gear = cfg.platform_mpam_gear;
++	else
++		pr_err("set platform bw ctrl failed, ret=%d\n", ret);
++
++	return count;
++}
++CONFIGFS_ATTR(platform_mpam_, schemata);
++
++static ssize_t platform_mpam_enable_monitor_show(struct config_item *item,
++		char *page)
++{
++	return scnprintf(page, PAGE_SIZE, "%s\n",
++		(get_pm_item(item)->monitor_enabled) ? "enabled" : "disabled");
++}
++
++static ssize_t platform_mpam_enable_monitor_store(struct config_item *item,
++		const char *page, size_t count)
++{
++	int ret;
++	bool input;
++	struct platform_mpam_bw_monitor_cfg monitor_param;
++	struct platform_mpam_item *pm_item = get_pm_item(item);
++
++	monitor_param.msc_id = pm_item->msc_id;
++	monitor_param.client_id = pm_item->client_id;
++
++	ret = kstrtobool(page, &input);
++	if (ret) {
++		pr_err("invalid argument\n");
++		goto exit;
++	}
++
++	if (!input && pm_item->monitor_enabled)
++		monitor_param.config_ctrl = 0;
++	else if (input && !pm_item->monitor_enabled)
++		monitor_param.config_ctrl = 1;
++	else
++		goto exit;
++
++	ret = qcom_mpam_set_platform_bw_monitor(&monitor_param);
++	if (ret) {
++		pr_err("monitor %s failed %d\n",
++			(input) ? "enable" : "disable", ret);
++		goto exit;
++	}
++	pm_item->monitor_enabled = input;
++
++exit:
++	return count;
++}
++CONFIGFS_ATTR(platform_mpam_, enable_monitor);
++
++static ssize_t platform_mpam_monitor_data_show(struct config_item *item,
++		char *page)
++{
++	int index, retry_cnt = 0, match_seq_cnt = 0;
++	uint64_t byte_cnt, timestamp, capture_status;
++	union platform_monitor_value data, *pdata;
++
++	if (get_pm_item(item)->monitor_enabled) {
++		index = get_pm_item(item)->monitor_index;
++		pdata = mpam_mon_base + index * ((mpam_version.version >= 0x10002) ?
++				sizeof(data.V2) : sizeof(data.V1));
++		do {
++			while (unlikely((capture_status = platform_mpam_get(
++					pdata, capture_status)) % 2) &&
++					(retry_cnt < MPAM_MAX_RETRY))
++				retry_cnt++;
++			timestamp = platform_mpam_get(
++				pdata, last_capture_time);
++			byte_cnt = platform_mpam_get(
++				pdata, bwmon_byte_count);
++		} while ((capture_status !=
++			platform_mpam_get(pdata, capture_status)) &&
++			(match_seq_cnt++ < MPAM_MAX_MATCH_SEQ_RETRY));
++
++		if (match_seq_cnt == MPAM_MAX_MATCH_SEQ_RETRY)
++			return scnprintf(page, PAGE_SIZE, "get monitor data failed\n");
++
++		return scnprintf(page, PAGE_SIZE, "timestamp=%llu,byte_cnt=%llu\n",
++			timestamp, byte_cnt);
++	} else
++		return scnprintf(page, PAGE_SIZE, "monitor not enabled\n");
++}
++CONFIGFS_ATTR_RO(platform_mpam_, monitor_data);
++
++static ssize_t platform_mpam_available_gear_show(struct config_item *item,
++		char *page)
++{
++	int i;
++	size_t len = 0;
++
++	for (i = 0; i < support_gear_cnt; i++) {
++		len += scnprintf(page + len, PAGE_SIZE - len,
++			"%d - %s\n", support_gears[i].gear_id,
++			support_gears[i].gear_name);
++	}
++
++	return len;
++}
++CONFIGFS_ATTR_RO(platform_mpam_, available_gear);
++
++static struct configfs_attribute *platform_mpam_attrs[] = {
++	&platform_mpam_attr_schemata,
++	&platform_mpam_attr_enable_monitor,
++	&platform_mpam_attr_monitor_data,
++	&platform_mpam_attr_available_gear,
++	NULL,
++};
++
++static const struct config_item_type platform_mpam_item_type = {
++	.ct_attrs	= platform_mpam_attrs,
++};
++
++static struct platform_mpam_item *platform_mpam_make_group(
++		struct device *dev, const char *name)
++{
++	struct platform_mpam_item *item;
++
++	item = devm_kzalloc(dev,
++		sizeof(struct platform_mpam_item), GFP_KERNEL);
++	if (!item)
++		return ERR_PTR(-ENOMEM);
++
++	item->cfg = devm_kzalloc(dev,
++		sizeof(struct platform_mpam_bw_ctrl_config), GFP_KERNEL);
++	if (!item->cfg)
++		return ERR_PTR(-ENOMEM);
++
++	config_group_init_type_name(&item->group, name,
++				   &platform_mpam_item_type);
++
++	return item;
++}
++
++static const struct config_item_type platform_mpam_base_type = {
++	.ct_owner	= THIS_MODULE,
++};
++
++static struct configfs_subsystem platform_mpam_subsys = {
++	.su_group = {
++		.cg_item = {
++			.ci_namebuf = "platform_mpam",
++			.ci_type = &platform_mpam_base_type,
++		},
++	},
++};
++
++static int platform_mpam_probe(struct platform_device *pdev)
++{
++	int i, ret, mscid, clientid;
++	int client_cnt;
++	const char *msc_name_dt;
++	struct resource *res;
++	struct device_node *node;
++	struct config_group *p_group;
++	struct platform_mpam_item *new_item;
++	struct platform_mpam_read_bw_ctrl bw_ctrl_param;
++	struct device_node *np = pdev->dev.of_node;
++
++	ret = qcom_mpam_get_version(&mpam_version);
++	if (ret || mpam_version.version < 0x10000) {
++		dev_err(&pdev->dev, "Platform MPAM is not available\n");
++		return -ENODEV;
++	}
++
++	config_group_init(&platform_mpam_subsys.su_group);
++	mutex_init(&platform_mpam_subsys.su_mutex);
++
++	ret = configfs_register_subsystem(&platform_mpam_subsys);
++	if (ret) {
++		mutex_destroy(&platform_mpam_subsys.su_mutex);
++		pr_err("Error while registering subsystem %d\n", ret);
++		return ret;
++	}
++
++	client_cnt = of_get_child_count(np);
++	if (!client_cnt) {
++		dev_err(&pdev->dev, "No client found\n");
++		return -ENODEV;
++	}
++
++	support_gear_cnt = of_property_count_strings(np, "qcom,gears");
++	if (!support_gear_cnt) {
++		dev_err(&pdev->dev, "No available gears found\n");
++		return -ENODEV;
++	}
++
++	support_gears = devm_kcalloc(&pdev->dev, support_gear_cnt,
++		sizeof(struct platform_mpam_gear), GFP_KERNEL);
++	if (!support_gears)
++		return -ENOMEM;
++
++	for (i = 0; i < support_gear_cnt; i++) {
++		of_property_read_string_index(np, "qcom,gears", i,
++				&support_gears[i].gear_name);
++		of_property_read_u32_index(np, "qcom,gear-id", i,
++				&support_gears[i].gear_id);
++	}
++
++	ret = of_property_read_u32(np, "qcom,msc-id", &mscid);
++	of_property_read_string(np, "qcom,msc-name", &msc_name_dt);
++	if (ret || mscid >= MSC_MAX || IS_ERR_OR_NULL(msc_name_dt))
++		return -ENODEV;
++
++	root_group = &platform_mpam_subsys.su_group;
++	p_group = configfs_register_default_group(root_group,
++		msc_name_dt, &platform_mpam_base_type);
++	if (IS_ERR(p_group)) {
++		dev_err(&pdev->dev, "Error register group %s\n", msc_name_dt);
++		return PTR_ERR(p_group);
++	}
++
++	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "mon-base");
++	mpam_mon_base = devm_ioremap_resource(&pdev->dev, res);
++	if (IS_ERR_OR_NULL(mpam_mon_base)) {
++		dev_err(&pdev->dev, "Error ioremap mpam_mon_base\n");
++		return -ENODEV;
++	}
++
++	i = 0;
++	for_each_child_of_node(np, node) {
++		ret = of_property_read_u32(node, "qcom,client-id", &clientid);
++		of_property_read_string(node, "qcom,client-name", &msc_name_dt);
++		if (ret || IS_ERR_OR_NULL(msc_name_dt))
++			continue;
++
++		new_item = platform_mpam_make_group(&pdev->dev, msc_name_dt);
++		if (IS_ERR(new_item)) {
++			pr_err("Error create group %s\n", msc_name_dt);
++			continue;
++		}
++		new_item->monitor_index = i;
++		new_item->msc_id = mscid;
++		new_item->client_id = clientid;
++
++		bw_ctrl_param.msc_id = mscid;
++		bw_ctrl_param.client_id = clientid;
++		ret = qcom_mpam_get_platform_bw_ctrl(&bw_ctrl_param, new_item->cfg);
++		if (ret) {
++			pr_err("Error get bw_ctrl\n");
++			continue;
++		}
++
++		ret = configfs_register_group(p_group, &new_item->group);
++		if (ret) {
++			pr_err("Error register group %s\n", msc_name_dt);
++			continue;
++		}
++
++		i++;
++	}
++
++	return 0;
++}
++
++static int platform_mpam_remove(struct platform_device *pdev)
++{
++	configfs_unregister_subsystem(&platform_mpam_subsys);
++	return 0;
++}
++
++struct config_group *platform_mpam_get_root_group(void)
++{
++	return root_group;
++}
++EXPORT_SYMBOL_GPL(platform_mpam_get_root_group);
++
++static const struct of_device_id platform_mpam_table[] = {
++	{ .compatible = "qcom,platform-mpam" },
++	{}
++};
++MODULE_DEVICE_TABLE(of, platform_mpam_table);
++
++static struct platform_driver platform_mpam_driver = {
++	.driver = {
++		.name = "platform-mpam",
++		.of_match_table = platform_mpam_table,
++		.suppress_bind_attrs = true,
++	},
++	.probe = platform_mpam_probe,
++	.remove = platform_mpam_remove,
++};
++
++module_platform_driver(platform_mpam_driver);
++
++MODULE_SOFTDEP("pre: mpam");
++MODULE_DESCRIPTION("QCOM Platform MPAM driver");
++MODULE_LICENSE("GPL");
+diff --git a/drivers/soc/qcom/mpam/slc_mpam.c b/drivers/soc/qcom/mpam/slc_mpam.c
+new file mode 100644
+index 000000000000..b284aa5fb7a8
+--- /dev/null
++++ b/drivers/soc/qcom/mpam/slc_mpam.c
+@@ -0,0 +1,401 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
++ */
++ #define pr_fmt(fmt) "mpam_slc: " fmt
++
++#include <linux/io.h>
++#include <linux/of.h>
++#include <linux/configfs.h>
++#include <linux/string.h>
++#include <soc/qcom/mpam.h>
++#include <soc/qcom/mpam_msc.h>
++#include <soc/qcom/mpam_slc.h>
++
++struct slc_mpam_item {
++	struct config_group group;
++	int part_id;
++	int client_id;
++	bool cap_mon_enabled;
++	bool miss_mon_enabled;
++};
++
++static struct config_group *root_group;
++
++static inline struct slc_mpam_item *get_pm_item(
++					   struct config_item *item)
++{
++	return container_of(to_config_group(item),
++				struct slc_mpam_item, group);
++}
++
++static inline int set_msc_query(struct msc_query *query,
++					   struct slc_mpam_item *pm_item)
++{
++	struct qcom_mpam_msc *qcom_mpam_msc;
++
++	qcom_mpam_msc = qcom_msc_lookup(SLC);
++	if (!qcom_mpam_msc)
++		return -ENODEV;
++
++	query->qcom_msc_id.qcom_msc_type =
++		qcom_mpam_msc->qcom_msc_id.qcom_msc_type;
++	query->qcom_msc_id.qcom_msc_class =
++		qcom_mpam_msc->qcom_msc_id.qcom_msc_class;
++	query->qcom_msc_id.idx =
++		qcom_mpam_msc->qcom_msc_id.idx;
++
++	query->client_id = pm_item->client_id;
++	query->part_id = pm_item->part_id;
++
++	return 0;
++}
++
++static ssize_t slc_mpam_schemata_show(struct config_item *item,
++		char *page)
++{
++	int ret;
++	struct msc_query query;
++	struct qcom_slc_gear_val gear_config;
++
++	set_msc_query(&query, get_pm_item(item));
++
++	ret = msc_system_get_partition(SLC, &query, &gear_config);
++	if (ret)
++		return scnprintf(page, PAGE_SIZE,
++			"failed to get schemata %d\n", ret);
++
++	return scnprintf(page, PAGE_SIZE, "gear=%d\n",
++		gear_config.gear_val);
++}
++
++static ssize_t slc_mpam_schemata_store(struct config_item *item,
++		const char *page, size_t count)
++{
++	int ret, input;
++	char *token, *param_name;
++	struct msc_query query;
++	struct qcom_slc_gear_val gear_config;
++
++	set_msc_query(&query, get_pm_item(item));
++
++	while ((token = strsep((char **)&page, ",")) != NULL) {
++		param_name = strsep(&token, "=");
++		if (param_name == NULL || token == NULL)
++			continue;
++		if (kstrtouint(token, 0, &input) < 0) {
++			pr_err("invalid argument for %s\n", param_name);
++			return -EINVAL;
++		}
++
++		if (!strcmp("gear", param_name))
++			gear_config.gear_val = input;
++	}
++
++	ret = msc_system_set_partition(SLC, &query, &gear_config);
++	if (ret) {
++		pr_err("set slc cache partition failed, ret=%d\n", ret);
++		return -EBUSY;
++	}
++
++	return count;
++}
++CONFIGFS_ATTR(slc_mpam_, schemata);
++
++static ssize_t slc_mpam_enable_cap_monitor_show(struct config_item *item,
++		char *page)
++{
++	return scnprintf(page, PAGE_SIZE, "%s\n",
++		(get_pm_item(item)->cap_mon_enabled) ? "enabled" : "disabled");
++}
++
++static ssize_t slc_mpam_enable_cap_monitor_store(struct config_item *item,
++		const char *page, size_t count)
++{
++	int ret;
++	bool input;
++	struct msc_query query;
++	struct slc_mon_config_val mon_cfg_val;
++	struct slc_mpam_item *pm_item = get_pm_item(item);
++
++	set_msc_query(&query, pm_item);
++
++	ret = kstrtobool(page, &input);
++	if (ret) {
++		pr_err("invalid argument\n");
++		return -EINVAL;
++	}
++
++	if (!input && pm_item->cap_mon_enabled)
++		mon_cfg_val.enable = 0;
++	else if (input && !pm_item->cap_mon_enabled)
++		mon_cfg_val.enable = 1;
++	else
++		goto exit;
++
++	mon_cfg_val.slc_mon_function = CACHE_CAPACITY_CONFIG;
++	ret = msc_system_mon_config(SLC, &query, &mon_cfg_val);
++	if (ret) {
++		pr_err("monitor %s failed %d\n",
++			(input) ? "enable" : "disable", ret);
++		return -EBUSY;
++	}
++	pm_item->cap_mon_enabled = input;
++
++exit:
++	return count;
++}
++CONFIGFS_ATTR(slc_mpam_, enable_cap_monitor);
++
++static ssize_t slc_mpam_cap_monitor_data_show(struct config_item *item,
++		char *page)
++{
++	struct msc_query query;
++	union mon_values mon_data;
++
++	if (!get_pm_item(item)->cap_mon_enabled)
++		return scnprintf(page, PAGE_SIZE, "monitor not enabled\n");
++
++	set_msc_query(&query, get_pm_item(item));
++
++	msc_system_mon_alloc_info(SLC, &query, &mon_data);
++
++	return scnprintf(page, PAGE_SIZE, "timestamp=%llu,cap_cnt=%u\n",
++			mon_data.capacity.last_capture_time,
++			mon_data.capacity.num_cache_lines);
++}
++CONFIGFS_ATTR_RO(slc_mpam_, cap_monitor_data);
++
++static ssize_t slc_mpam_enable_miss_monitor_show(struct config_item *item,
++		char *page)
++{
++	return scnprintf(page, PAGE_SIZE, "%s\n",
++		(get_pm_item(item)->miss_mon_enabled) ? "enabled" : "disabled");
++}
++
++static ssize_t slc_mpam_enable_miss_monitor_store(struct config_item *item,
++		const char *page, size_t count)
++{
++	int ret;
++	bool input;
++	struct msc_query query;
++	struct slc_mon_config_val mon_cfg_val;
++	struct slc_mpam_item *pm_item = get_pm_item(item);
++
++	set_msc_query(&query, pm_item);
++
++	ret = kstrtobool(page, &input);
++	if (ret) {
++		pr_err("invalid argument\n");
++		return -EINVAL;
++	}
++
++	if (!input && pm_item->miss_mon_enabled)
++		mon_cfg_val.enable = 0;
++	else if (input && !pm_item->miss_mon_enabled)
++		mon_cfg_val.enable = 1;
++	else
++		goto exit;
++
++	mon_cfg_val.slc_mon_function = CACHE_READ_MISS_CONFIG;
++	ret = msc_system_mon_config(SLC, &query, &mon_cfg_val);
++	if (ret) {
++		pr_err("monitor %s failed %d\n",
++			(input) ? "enable" : "disable", ret);
++		return -EBUSY;
++	}
++	pm_item->miss_mon_enabled = input;
++
++exit:
++	return count;
++}
++CONFIGFS_ATTR(slc_mpam_, enable_miss_monitor);
++
++static ssize_t slc_mpam_miss_monitor_data_show(struct config_item *item,
++		char *page)
++{
++	struct msc_query query;
++	union mon_values mon_data;
++
++	if (!get_pm_item(item)->miss_mon_enabled)
++		return scnprintf(page, PAGE_SIZE, "monitor not enabled\n");
++
++	set_msc_query(&query, get_pm_item(item));
++
++	msc_system_mon_read_miss_info(SLC, &query, &mon_data);
++
++	return scnprintf(page, PAGE_SIZE, "timestamp=%llu,miss_cnt=%llu\n",
++			mon_data.misses.last_capture_time, mon_data.misses.num_rd_misses);
++}
++CONFIGFS_ATTR_RO(slc_mpam_, miss_monitor_data);
++
++static ssize_t slc_mpam_available_gear_show(struct config_item *item,
++		char *page)
++{
++	int i, ret, gear_num;
++	ssize_t len = 0;
++	struct msc_query query;
++	struct slc_partid_capability slc_partid_cap;
++
++	set_msc_query(&query, get_pm_item(item));
++
++	ret = msc_system_get_device_capability(SLC, &query, &slc_partid_cap);
++	if (ret)
++		return scnprintf(page, PAGE_SIZE,
++			"failed to get available gear %d\n", ret);
++
++	for (i = 0; i < slc_partid_cap.num_gears; i++) {
++		gear_num = slc_partid_cap.part_id_gears[i];
++		len += scnprintf(page + len, PAGE_SIZE - len,
++			"%d - %s\n", gear_num, gear_index[gear_num]);
++	}
++
++	return len;
++}
++CONFIGFS_ATTR_RO(slc_mpam_, available_gear);
++
++static struct configfs_attribute *slc_mpam_attrs[] = {
++	&slc_mpam_attr_schemata,
++	&slc_mpam_attr_enable_cap_monitor,
++	&slc_mpam_attr_cap_monitor_data,
++	&slc_mpam_attr_enable_miss_monitor,
++	&slc_mpam_attr_miss_monitor_data,
++	&slc_mpam_attr_available_gear,
++	NULL,
++};
++
++static const struct config_item_type slc_mpam_item_type = {
++	.ct_attrs	= slc_mpam_attrs,
++};
++
++static struct slc_mpam_item *slc_mpam_make_group(
++		struct device *dev, const char *name)
++{
++	struct slc_mpam_item *item;
++
++	item = devm_kzalloc(dev, sizeof(struct slc_mpam_item), GFP_KERNEL);
++	if (!item)
++		return ERR_PTR(-ENOMEM);
++
++	config_group_init_type_name(&item->group, name,
++				   &slc_mpam_item_type);
++
++	return item;
++}
++
++static const struct config_item_type slc_mpam_base_type = {
++	.ct_owner	= THIS_MODULE,
++};
++
++static int create_config_node(const char *name,
++		struct device *dev,
++		int client_id, int part_id,
++		struct config_group *parent_group)
++{
++	int ret;
++	struct slc_mpam_item *new_item;
++
++	new_item = slc_mpam_make_group(dev, name);
++	if (IS_ERR(new_item)) {
++		pr_err("Error create group %s\n", name);
++		return PTR_ERR(new_item);
++	}
++	new_item->client_id = client_id;
++	new_item->part_id = part_id;
++
++	ret = configfs_register_group(parent_group, &new_item->group);
++	if (ret) {
++		pr_err("Error register group %s\n", name);
++		return ret;
++	}
++
++	return 0;
++}
++
++static int slc_mpam_probe(struct platform_device *pdev)
++{
++	int ret, clientid, partid;
++	char buf[CONFIGFS_ITEM_NAME_LEN];
++	int client_cnt;
++	const char *msc_name_dt;
++	struct qcom_mpam_msc *qcom_mpam_msc;
++	struct device_node *node, *sub_node;
++	struct config_group *p_group, *sub_group;
++	struct device_node *np = pdev->dev.of_node;
++
++	qcom_mpam_msc = qcom_msc_lookup(SLC);
++	if (!qcom_mpam_msc ||
++		qcom_mpam_msc->mpam_available != MPAM_MONITRS_AVAILABLE)
++		return -EPROBE_DEFER;
++
++	p_group = platform_mpam_get_root_group();
++	if (!p_group)
++		return -EPROBE_DEFER;
++
++	client_cnt = of_get_child_count(np);
++	if (!client_cnt) {
++		dev_err(&pdev->dev, "No client found\n");
++		return -ENODEV;
++	}
++
++	of_property_read_string(np, "qcom,msc-name", &msc_name_dt);
++	root_group = configfs_register_default_group(p_group,
++		msc_name_dt, &slc_mpam_base_type);
++	if (IS_ERR(root_group)) {
++		dev_err(&pdev->dev, "Error register group %s\n", msc_name_dt);
++		return PTR_ERR(root_group);
++	}
++
++	for_each_child_of_node(np, node) {
++		ret = of_property_read_u32(node, "qcom,client-id", &clientid);
++		of_property_read_string(node, "qcom,client-name", &msc_name_dt);
++		if (ret || IS_ERR_OR_NULL(msc_name_dt))
++			continue;
++
++		if (of_get_child_count(node) > 0) {
++			sub_group = configfs_register_default_group(root_group,
++				msc_name_dt, &slc_mpam_base_type);
++			for_each_child_of_node(node, sub_node) {
++				ret = of_property_read_u32(sub_node, "qcom,part-id", &partid);
++				snprintf(buf, sizeof(buf), "partid%d", partid);
++				if (create_config_node(buf, &pdev->dev, clientid,
++						partid, sub_group))
++					continue;
++			}
++		} else
++			if (create_config_node(msc_name_dt, &pdev->dev,
++					clientid, 0, root_group))
++				continue;
++	}
++
++	return 0;
++}
++
++int slc_mpam_remove(struct platform_device *pdev)
++{
++	configfs_unregister_group(root_group);
++	kfree(root_group);
++	return 0;
++}
++
++static const struct of_device_id slc_mpam_table[] = {
++	{ .compatible = "qcom,mpam-slc" },
++	{}
++};
++MODULE_DEVICE_TABLE(of, slc_mpam_table);
++
++static struct platform_driver slc_mpam_driver = {
++	.driver = {
++		.name = "mpam-slc",
++		.of_match_table = slc_mpam_table,
++		.suppress_bind_attrs = true,
++	},
++	.probe = slc_mpam_probe,
++	.remove = slc_mpam_remove,
++};
++
++module_platform_driver(slc_mpam_driver);
++
++MODULE_SOFTDEP("pre: mpam");
++MODULE_DESCRIPTION("QCOM SLC MPAM driver");
++MODULE_LICENSE("GPL");
+diff --git a/include/soc/qcom/mpam.h b/include/soc/qcom/mpam.h
+new file mode 100644
+index 000000000000..0713c9df36e7
+--- /dev/null
++++ b/include/soc/qcom/mpam.h
+@@ -0,0 +1,234 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++/*
++ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
++ */
++
++#ifndef _QCOM_MPAM_H
++#define _QCOM_MPAM_H
++
++#include <linux/types.h>
++#include <linux/platform_device.h>
++
++#define SYS_MPAM0_EL1		sys_reg(3, 0, 10, 5, 1)
++#define SYS_MPAM1_EL1		sys_reg(3, 0, 10, 5, 0)
++
++#define PARTID_BITS		16
++#define PARTID_I_SHIFT		0
++#define PARTID_D_SHIFT		(PARTID_I_SHIFT + PARTID_BITS)
++
++#define PARTID_DEFAULT		0
++#define PARTID_RESERVED		16
++#define PARTID_MAX		64
++#define PARTID_AVAILABLE	(PARTID_MAX - PARTID_RESERVED)
++
++#define MSMON_CFG_MON_SEL	0x0800
++#define MSMON_CFG_CSU_FLT	0x0810
++#define MSMON_CFG_CSU_CTL	0x0818
++#define MSMON_CFG_MBWU_FLT	0x0820
++#define MSMON_CFG_MBWU_CTL	0x0828
++#define MSMON_CSU		0x0840
++#define MSMON_MBWU		0x0860
++#define MSMON_MBWU_L		0x0880
++
++#define MAX_MONITOR_INSTANCES		16 /* Reserved 12:15 */
++#define MAX_MONITOR_INSTANCES_SHARED	12
++#define MONITOR_MAX		MAX_MONITOR_INSTANCES_SHARED
++
++#define MPAM_MAX_RETRY			5000
++#define MPAM_MAX_MATCH_SEQ_RETRY	10
++
++enum msc_id {
++	MSC_0 = 0,
++	MSC_1,
++	MSC_2,
++	MSC_3,
++	MSC_MAX,
++};
++
++/* Supported Mode */
++enum mpam_config_mode {
++	SET_CACHE_CAPACITY = 0,
++	SET_CPBM,
++	SET_DSPRI,
++	SET_CACHE_CAPICITY_AND_CPBM,
++	SET_CACHE_CAPACITY_AND_CPBM_AND_DSPRI,
++	SET_SLC,
++	SET_ALL_CPU_TUNABLE,
++	MAX_MODE
++};
++
++/* Monitor type */
++enum mpam_monitor_type {
++	MPAM_INVALID_MONITOR = 0,
++	MPAM_TYPE_MBW_MONITOR = 1,
++	MPAM_TYPE_CSU_MONITOR = 2,
++	MAX_MON_TYPE_SUPPORTED = 3
++};
++
++/* PARAM_SET_CACHE_PARTITION */
++struct mpam_set_cache_partition {
++	uint32_t part_id;
++	uint32_t cache_capacity;
++	uint32_t cpbm_mask;
++	uint32_t dspri;
++	/*
++	 * [0:7] - mode
++	 * --[0x00] : set cache_capicity
++	 * --[0x01] : set cpbm
++	 * --[0x02] : set dspri
++	 * --[0x03] : set cache_capicity & cpbm
++	 * --[0x04] : set cache_capicity & cpbm & dspri
++	 * --[0x05] : set slc_gear
++	 * --[0x06] : set all cpu tunable
++	 * [8:63] - Reserved
++	 */
++	uint64_t mpam_config_ctrl;
++	uint32_t msc_id;
++	uint32_t slc_partition_id;
++} __packed;
++
++/* Part ID and monitor Parameters */
++struct mpam_monitor_configuration {
++	uint32_t msc_id;
++	uint32_t part_id;
++	uint32_t mon_instance;
++	uint32_t mon_type;
++	/* Filter and control bits */
++	uint64_t mpam_config_ctrl;
++} __packed;
++
++/* PARAM_GET_VERSION */
++struct mpam_ver_ret {
++	uint32_t version;
++};
++
++/* PARAM_GET_CACHE_PARTITION */
++struct mpam_read_cache_portion {
++	uint32_t msc_id;
++	uint32_t part_id;
++} __packed;
++
++struct mpam_config_val {
++	uint32_t cpbm;
++	uint32_t capacity;
++	uint32_t dspri;
++	uint32_t slc_partition_id;
++} __packed;
++
++struct monitors_value {
++	uint32_t capture_status;
++	uint32_t msc_id;
++	uint32_t csu_mon_enable_map[MAX_MONITOR_INSTANCES];
++	uint32_t csu_mon_value[MAX_MONITOR_INSTANCES];
++	uint32_t mbw_mon_enable_map[MAX_MONITOR_INSTANCES];
++	uint64_t mbw_mon_value[MAX_MONITOR_INSTANCES];
++	uint64_t last_capture_time;
++} __packed;
++
++/* PARAM_SET_PLATFORM_BW_CTRL */
++struct platform_mpam_bw_ctrl_cfg {
++	uint32_t msc_id;
++	uint32_t client_id;
++	uint32_t platform_mpam_gear;
++	uint64_t config_ctrl;
++} __packed;
++
++/* PARAM_SET_PLATFORM_BW_MONITOR */
++struct platform_mpam_bw_monitor_cfg {
++	uint32_t msc_id;
++	uint32_t client_id;
++	uint32_t mon_instance;
++	uint32_t mon_type;
++	/*
++	 * [0:1] - control
++	 * --[0x0] : disable
++	 * --[0x1] : enable
++	 * [2:63] - Reserved
++	 */
++	uint64_t config_ctrl;
++} __packed;
++
++/* PARAM_GET_PLATFORM_BW_CTRL_CONFIG */
++struct platform_mpam_read_bw_ctrl {
++	uint32_t msc_id;
++	uint32_t client_id;
++} __packed;
++
++struct platform_mpam_bw_ctrl_config {
++	uint32_t platform_mpam_gear;
++} __packed;
++
++/* NOC Monitor structure in shared memory */
++union platform_monitor_value {
++	struct {
++		uint32_t capture_status;
++		uint32_t msc_id;
++		uint32_t client_id;
++		uint32_t bwmon_byte_count;
++		uint64_t last_capture_time;
++	} V1 __packed;
++
++	struct {
++		uint32_t capture_status;
++		uint32_t msc_id;
++		uint32_t client_id;
++		uint64_t bwmon_byte_count __aligned(8);
++		uint64_t last_capture_time;
++	} V2 __packed;
++};
++
++typedef void mpam_schedule_func_t(struct task_struct *task);
++int cpu_mpam_callback_register(mpam_schedule_func_t *func);
++int cpu_mpam_callback_unregister(mpam_schedule_func_t *func);
++
++#if IS_ENABLED(CONFIG_QTI_MPAM)
++int qcom_mpam_set_cache_partition(struct mpam_set_cache_partition *param);
++int qcom_mpam_get_version(struct mpam_ver_ret *ver);
++int qcom_mpam_get_cache_partition(struct mpam_read_cache_portion *param,
++						struct mpam_config_val *val);
++int qcom_mpam_config_monitor(struct mpam_monitor_configuration *param);
++int qcom_mpam_set_platform_bw_ctrl(struct platform_mpam_bw_ctrl_cfg *param);
++int qcom_mpam_get_platform_bw_ctrl(struct platform_mpam_read_bw_ctrl *param,
++						struct platform_mpam_bw_ctrl_config *val);
++int qcom_mpam_set_platform_bw_monitor(struct platform_mpam_bw_monitor_cfg *param);
++#else
++static inline int qcom_mpam_set_cache_partition(struct mpam_set_cache_partition *param)
++{
++	return 0;
++}
++
++static inline int qcom_mpam_get_version(struct mpam_ver_ret *ver)
++{
++	return 0;
++}
++
++static inline int qcom_mpam_get_cache_partition(struct mpam_read_cache_portion *param,
++						struct mpam_config_val *val)
++{
++	return 0;
++}
++
++static inline int qcom_mpam_config_monitor(struct mpam_monitor_configuration *param)
++{
++	return 0;
++}
++
++static inline int qcom_mpam_set_platform_bw_ctrl(struct platform_mpam_bw_ctrl_cfg *param)
++{
++	return 0;
++}
++
++static inline int qcom_mpam_get_platform_bw_ctrl(struct platform_mpam_read_bw_ctrl *param,
++						struct platform_mpam_bw_ctrl_config *val)
++{
++	return 0;
++}
++
++static inline int qcom_mpam_set_platform_bw_monitor(struct platform_mpam_bw_monitor_cfg *param)
++{
++	return 0;
++}
++#endif
++struct config_group *platform_mpam_get_root_group(void);
++
++#endif /* _QCOM_MPAM_H */
+diff --git a/include/soc/qcom/mpam_msc.h b/include/soc/qcom/mpam_msc.h
+new file mode 100644
+index 000000000000..356a6c817985
+--- /dev/null
++++ b/include/soc/qcom/mpam_msc.h
+@@ -0,0 +1,133 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++/*
++ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
++ */
++
++#ifndef _QCOM_MPAM_MSC_H
++#define _QCOM_MPAM_MSC_H
++
++#include <linux/qcom_scmi_vendor.h>
++#include <linux/scmi_protocol.h>
++
++enum msc_qcom_id {
++	L2,
++	L3,
++	SLC = 2,
++	QCOM_MSC_MAX,
++};
++
++enum msc_class_type {
++	CACHE_TYPE,
++	MAX_TYPE,
++};
++
++struct qcom_msc_id {
++	uint8_t idx;
++	uint8_t qcom_msc_class;
++	uint16_t qcom_msc_type;
++} __packed;
++
++struct msc_query {
++	struct qcom_msc_id qcom_msc_id;
++	uint16_t part_id;
++	uint16_t client_id;
++} __packed;
++
++enum mpam_state {
++	MPAM_UNINITIALIZAED = 1,
++	MPAM_AVAILABLE = 2,
++	MPAM_MONITRS_AVAILABLE = 6,
++};
++
++struct qcom_mpam_msc {
++	uint32_t msc_id;
++	const char *msc_name;
++	struct qcom_msc_id qcom_msc_id;
++	void *msc_capability;
++	struct mpam_msc_ops *ops;
++	struct scmi_device *sdev;
++	const struct qcom_scmi_vendor_ops *scmi_ops;
++	struct scmi_protocol_handle *ph;
++	struct device *dev;
++	void __iomem *mon_base;
++	struct list_head node;
++	uint32_t mpam_available;
++} __packed;
++
++struct mpam_msc_ops {
++	int (*set_cache_partition)(struct device *dev, void *msc_partid, void *msc_partconfig);
++	int (*get_cache_partition)(struct device *dev, void *msc_partid, void *msc_partconfig);
++	int (*get_cache_partition_capability)(struct device *dev, void *msc_partid,
++			void *msc_partconfig);
++	int (*reset_cache_partition)(struct device *dev, void *msc_partid, void *msc_partconfig);
++	int (*mon_config)(struct device *dev, void *msc_partid, void *msc_partconfig);
++	int (*mon_stats_read)(struct device *dev, void *msc_partid, void *mon_val);
++};
++
++#if IS_ENABLED(CONFIG_QTI_MPAM_MSC)
++struct qcom_mpam_msc *qcom_msc_lookup(uint32_t msc_id);
++int msc_system_get_device_capability(uint32_t msc_id, void *arg1, void *arg2);
++int msc_system_get_partition(uint32_t msc_id, void *arg1, void *arg2);
++int msc_system_set_partition(uint32_t msc_id, void *arg1, void *arg2);
++int msc_system_reset_partition(uint32_t msc_id, void *arg1, void *arg2);
++int msc_system_mon_read_miss_info(uint32_t msc_id, void *arg1, void *arg2);
++int msc_system_mon_alloc_info(uint32_t msc_id, void *arg1, void *arg2);
++int msc_system_mon_config(uint32_t msc_id, void *arg1, void *arg2);
++int attach_mpam_msc(struct device *dev, struct qcom_mpam_msc *qcom_msc, uint32_t msc_type);
++void detach_mpam_msc(struct device *dev, struct qcom_mpam_msc *qcom_msc, uint32_t msc_type);
++#else
++
++static inline struct qcom_mpam_msc *qcom_msc_lookup(uint32_t msc_id)
++{
++	return NULL;
++}
++
++static inline int msc_system_get_device_capability(uint32_t msc_id, void *arg1, void *arg2)
++{
++	return -EINVAL;
++}
++
++static inline int msc_system_get_partition(uint32_t msc_id, void *arg1, void *arg2);
++{
++	return -EINVAL;
++}
++
++static inline int msc_system_set_partition(uint32_t msc_id, void *arg1, void *arg2);
++{
++	return -EINVAL;
++}
++
++static inline int msc_system_reset_partition(uint32_t msc_id, void *arg1, void *arg2);
++{
++	return -EINVAL;
++}
++
++static inline int msc_system_mon_read_miss_info(uint32_t msc_id, void *arg1, void *arg2);
++{
++	return -EINVAL;
++}
++
++static inline int msc_system_mon_alloc_info(uint32_t msc_id, void *arg1, void *arg2);
++{
++	return -EINVAL;
++}
++
++static inline int msc_system_mon_config(uint32_t msc_id, void *arg1, void *arg2);
++{
++	return -EINVAL;
++}
++
++static inline int attach_mpam_msc(struct device *dev, struct qcom_mpam_msc *qcom_msc,
++		uint32_t msc_type);
++{
++	return -EINVAL;
++}
++
++static inline void detach_mpam_msc(struct device *dev, struct qcom_mpam_msc *qcom_msc,
++		uint32_t msc_type);
++{
++}
++
++#endif
++
++#endif /* _QCOM_MPAM_MSC_H */
+diff --git a/include/soc/qcom/mpam_slc.h b/include/soc/qcom/mpam_slc.h
+new file mode 100644
+index 000000000000..e78d4e38a3d4
+--- /dev/null
++++ b/include/soc/qcom/mpam_slc.h
+@@ -0,0 +1,168 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++/*
++ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
++ */
++
++#ifndef _QCOM_MPAM_SLC_H
++#define _QCOM_MPAM_SLC_H
++
++#define MAX_NUM_GEARS		3
++#define MAX_PART_ID		10
++#define SLC_INVALID_PARTID      ((1 << 16) - 1)
++#define SLC_NUM_PARTIDS		5
++
++/* slc Monitor capability */
++struct slc_mon_capability {
++	uint32_t read_miss_config_available;
++	uint32_t capacity_config_available;
++};
++
++struct slc_mon_configured {
++	uint32_t read_miss_configured;
++	uint32_t capacity_configured;
++};
++
++/* slc device capability */
++
++struct slc_partid_capability {
++	uint8_t part_id;
++	uint8_t num_gears;
++	uint8_t part_id_gears[MAX_NUM_GEARS];
++} __packed;
++
++struct slc_client_info {
++	uint16_t client_id;
++	uint16_t num_part_id;
++} __packed;
++
++struct slc_client_capability {
++	struct slc_client_info client_info;
++	struct slc_partid_capability *slc_partid_cap;
++	uint8_t enabled;
++	const char *client_name;
++} __packed;
++
++struct qcom_slc_capability {
++	uint32_t num_clients;
++	struct slc_client_capability *slc_client_cap;
++	struct slc_mon_capability slc_mon_list;
++	struct slc_mon_configured slc_mon_configured;
++} __packed;
++
++/* slc slice configuration */
++
++struct qcom_slc_gear_val {
++	uint32_t gear_val;
++} __packed;
++
++struct slc_partid_config {
++	struct msc_query query;
++	struct qcom_slc_gear_val gear_config;
++} __packed;
++
++/* slc mon configuration */
++
++enum slc_mon_function {
++	CACHE_CAPACITY_CONFIG,
++	CACHE_READ_MISS_CONFIG,
++};
++
++struct slc_mon_config_val {
++	uint32_t slc_mon_function;
++	uint32_t enable;
++} __packed;
++
++struct slc_mon_config {
++	struct msc_query query;
++	struct slc_mon_config_val config;
++} __packed;
++
++/* PARAM_SET_CONFIG_SLC_MPAM_START_STOP */
++struct mpam_enable {
++	uint32_t value;
++} __packed;
++
++struct qcom_slc_mpam_enable_cfg {
++	struct msc_query query;
++	struct mpam_enable enable;
++} __packed;
++
++/* slc monitor shared memory */
++struct slc_capacity {
++	uint32_t num_cache_lines;
++	uint32_t cap_enabled;
++} __packed;
++
++struct slc_read_miss_cntr {
++	uint64_t rd_misses;
++	uint32_t cntr_index;
++	uint32_t miss_enabled;
++} __packed;
++
++struct slc_partid_info {
++	uint32_t client_id;
++	uint32_t part_id;
++} __packed;
++
++struct qcom_slc_mon_data {
++	struct slc_partid_info part_info;
++	struct slc_capacity cap_stats;
++	struct slc_read_miss_cntr rd_miss_stats;
++} __packed;
++
++struct qcom_slc_mon_mem {
++	uint32_t match_seq;
++	uint16_t msc_id;
++	uint16_t num_active_mon;
++	struct qcom_slc_mon_data data[SLC_NUM_PARTIDS];
++	uint64_t last_capture_time;
++} __packed;
++
++struct capacity_info  {
++	uint32_t num_cache_lines;
++	uint64_t last_capture_time;
++} __packed;
++
++struct miss_info  {
++	uint64_t num_rd_misses;
++	uint64_t last_capture_time;
++} __packed;
++
++union mon_values {
++	struct capacity_info capacity;
++	struct miss_info misses;
++};
++
++struct qcom_slc_mon_data_val {
++	struct slc_partid_info part_info;
++	uint32_t num_cache_lines;
++	uint64_t rd_misses;
++} __packed;
++
++struct qcom_msc_slc_mon_val {
++	struct qcom_slc_mon_data_val data[SLC_NUM_PARTIDS];
++	uint64_t last_capture_time;
++} __packed;
++
++enum slc_clients_id {
++	APPS,
++	GPU,
++	NSP,
++	SLC_CLIENT_MAX,
++};
++
++enum gear_val {
++	GEAR_HIGH,
++	GEAR_LOW,
++	GEAR_BYPASS,
++	GEAR_MAX,
++};
++
++static char gear_index[][25] = {
++	"SLC_GEAR_HIGH",
++	"SLC_GEAR_LOW",
++	"SLC_GEAR_BYPASS",
++	"",
++};
++
++#endif /* _QCOM_MPAM_SLC_H */
+-- 
+2.43.0
+

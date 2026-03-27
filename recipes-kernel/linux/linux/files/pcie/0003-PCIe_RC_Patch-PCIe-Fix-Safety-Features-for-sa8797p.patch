@@ -1,0 +1,103 @@
+From cf2698e13e4433c731bcbd7b20a39809813d6de2 Mon Sep 17 00:00:00 2001
+From: Nitesh Gupta <nitegupt@qti.qualcomm.com>
+Date: Tue, 22 Jul 2025 14:18:51 +0530
+Subject: [PATCH 1/1] PCIe: Fix Safety Features for sa8797p
+
+Change to fix safety features in pcie ecam driver for sa8797p.
+
+Change-Id: I25ba0a7a67676b5375bee53788870504a1e14952
+Signed-off-by: Nitesh Gupta <nitegupt@qti.qualcomm.com>
+---
+ drivers/pci/controller/pcie-qcom-ecam.c | 36 +++++++++++++++++--------
+ 1 file changed, 25 insertions(+), 11 deletions(-)
+
+diff --git a/drivers/pci/controller/pcie-qcom-ecam.c b/drivers/pci/controller/pcie-qcom-ecam.c
+index baad9aa7c590..2d1085d4e9ec 100644
+--- a/drivers/pci/controller/pcie-qcom-ecam.c
++++ b/drivers/pci/controller/pcie-qcom-ecam.c
+@@ -47,12 +47,12 @@
+ #define PARF_INT_ALL_STATUS			0x224
+ #define PARF_INT_ALL_CLEAR			0x228
+ #define PARF_INT_CLEAR				0x21c
+-#define PARF_INT_STATUS			0x220
++#define PARF_INT_STATUS				0x220
+ #define PARF_INT_ALL_MASK			0x22c
+ #define PARF_INT_ALL_2_CLEAR			0x504
+ #define PARF_INT_ALL_2_STATUS			0x500
+-#define PARF_INT_ALL_3_CLEAR			0x2e14
+-#define PARF_INT_ALL_3_STATUS			0x2e10
++#define PARF_INT_ALL_3_CLEAR			0x2d90
++#define PARF_INT_ALL_3_STATUS			0x2d88
+ #define PARF_INT_ALL_4_CLEAR			0x2dd8
+ #define PARF_INT_ALL_4_STATUS			0x2dd0
+ #define PARF_INT_ALL_5_CLEAR			0x2ddc
+@@ -134,9 +134,8 @@
+ #define DBI_ROOT_ERR_CMD_OFF			0x12c
+ 
+ /*
+- * RAS-DP register
++ * RAS-DP Mask
+  */
+-#define PCIE_RASDP_ERROR_MODE_EN_REG		0x3B4
+ #define RASDP_ERROR_MODE_EN			BIT(0)
+ 
+ /*
+@@ -277,6 +276,7 @@ struct qcom_pcie {
+ 	u32 pcie_fault_total;
+ 	struct qcom_msi *msi;
+ 	struct dentry *debugfs;
++	u32 rasdp_off;
+ };
+ 
+ static void qcom_msi_handler(struct irq_desc *desc)
+@@ -702,9 +702,11 @@ static void qcom_pcie_enable_error_reporting(struct qcom_pcie *pcie)
+ 	writel(val, pcie->dbi_base + PCIE_MISC_CONTROL_1_OFF);
+ 
+ 	/* Enable RAS-DP Error Mode */
+-	val = readl(pcie->dbi_base + PCIE_RASDP_ERROR_MODE_EN_REG);
+-	val |= RASDP_ERROR_MODE_EN;
+-	writel(val, pcie->dbi_base + PCIE_RASDP_ERROR_MODE_EN_REG);
++	if (pcie->rasdp_off) {
++		val = readl(pcie->dbi_base + pcie->rasdp_off);
++		val |= RASDP_ERROR_MODE_EN;
++		writel(val, pcie->dbi_base + pcie->rasdp_off);
++	}
+ 
+ 	/* Enable CDM Check */
+ 	val = readl(pcie->dbi_base + PCIE_PL_CHK_REG_CONTROL_STATUS);
+@@ -1029,8 +1031,20 @@ static int qcom_pcie_ecam_probe(struct platform_device *pdev)
+ 	pcie->msi = msi;
+ 	platform_set_drvdata(pdev, pcie);
+ 
+-	if (of_find_property(dev->of_node, "safety-supported", NULL)) {
+-		sysfs_create_group(&pdev->dev.kobj, &qcom_pcie_attribute_group);
++	if (of_find_property(dev->of_node, "safety-supported", NULL) &&
++	    !(IS_ERR(pcie->parf)) &&
++	    (pcie->global_irq > 0)) {
++		ret = of_property_read_u32(dev->of_node, "rasdp-off", &pcie->rasdp_off);
++		if (ret < 0) {
++			dev_err(dev, "Failed to read RASDP Offset from DT\n");
++			return ret;
++		}
++
++		ret = sysfs_create_group(&pdev->dev.kobj, &qcom_pcie_attribute_group);
++		if (ret < 0) {
++			dev_err(dev, "Failed to create sysfs group\n");
++			return ret;
++		}
+ 
+ 		qcom_pcie_enable_error_reporting(pcie);
+ 
+@@ -1039,9 +1053,9 @@ static int qcom_pcie_ecam_probe(struct platform_device *pdev)
+ 						NULL,
+ 						IRQF_TRIGGER_RISING | IRQF_ONESHOT,
+ 						"global_irq", pcie);
+-
+ 		if (ret) {
+ 			dev_err(dev, "Failed to request Global IRQ\n");
++			sysfs_remove_group(&pdev->dev.kobj, &qcom_pcie_attribute_group);
+ 			return ret;
+ 		}
+ 	}
+-- 
+

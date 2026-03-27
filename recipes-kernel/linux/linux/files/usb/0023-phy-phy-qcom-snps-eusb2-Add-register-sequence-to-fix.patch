@@ -1,0 +1,59 @@
+From eb28e487f80eb8ec972b3429bb597913534c58a9 Mon Sep 17 00:00:00 2001
+From: Hiren Gohel <vhiren@qti.qualcomm.com>
+Date: Fri, 2 Jan 2026 11:41:20 +0530
+Subject: [PATCH] phy: phy-qcom-snps-eusb2: Add register sequence to fix CV9
+ issue
+
+Add register sequence as SW WA for CV9 compliance failure.
+
+Signed-off-by: Hiren Gohel <vhiren@qti.qualcomm.com>
+---
+ drivers/phy/qualcomm/phy-qcom-snps-eusb2.c | 28 ++++++++++++++++++++++
+ 1 file changed, 28 insertions(+)
+
+diff --git a/drivers/phy/qualcomm/phy-qcom-snps-eusb2.c b/drivers/phy/qualcomm/phy-qcom-snps-eusb2.c
+index 147b109a4310..237603824ef5 100644
+--- a/drivers/phy/qualcomm/phy-qcom-snps-eusb2.c
++++ b/drivers/phy/qualcomm/phy-qcom-snps-eusb2.c
+@@ -454,10 +454,38 @@ static int qcom_snps_eusb2_hsphy_exit(struct phy *p)
+ 	return 0;
+ }
+ 
++
++static int qcom_snps_eusb2_hsphy_calibrate(struct phy *p)
++{
++
++	struct qcom_snps_eusb2_hsphy *phy = phy_get_drvdata(p);
++
++	qcom_snps_eusb2_hsphy_write_mask(phy->base, USB_PHY_APB_ADDRESS,
++					 0xff, 0x00);
++	qcom_snps_eusb2_hsphy_write_mask(phy->base, USB_PHY_APB_ADDRESS,
++					 RW_ACCESS | APB_LOGIC_RESET, RW_ACCESS | APB_LOGIC_RESET );
++	qcom_snps_eusb2_hsphy_write_mask(phy->base, USB_PHY_APB_WRDATA_LSB,
++					 0xff, 0xc0);
++	qcom_snps_eusb2_hsphy_write_mask(phy->base, USB_PHY_APB_ACCESS_CMD,
++					 0xff, 0x3);
++	udelay(2);
++	qcom_snps_eusb2_hsphy_write_mask(phy->base, USB_PHY_APB_ACCESS_CMD,
++					 0xff, 0x0);
++	qcom_snps_eusb2_hsphy_write_mask(phy->base, USB_PHY_APB_WRDATA_LSB,
++					 0xff, 0x0);
++	qcom_snps_eusb2_hsphy_write_mask(phy->base, USB_PHY_APB_ACCESS_CMD,
++					 0xff, 0x3);
++	udelay(2);
++	qcom_snps_eusb2_hsphy_write_mask(phy->base, USB_PHY_APB_ACCESS_CMD,
++					 0xff, 0x0);
++	return 0;
++}
++
+ static const struct phy_ops qcom_snps_eusb2_hsphy_ops = {
+ 	.init		= qcom_snps_eusb2_hsphy_init,
+ 	.exit		= qcom_snps_eusb2_hsphy_exit,
+ 	.set_mode	= qcom_snps_eusb2_hsphy_set_mode,
++	.calibrate	= qcom_snps_eusb2_hsphy_calibrate,
+ 	.owner		= THIS_MODULE,
+ };
+ 
+-- 
+2.34.1
+

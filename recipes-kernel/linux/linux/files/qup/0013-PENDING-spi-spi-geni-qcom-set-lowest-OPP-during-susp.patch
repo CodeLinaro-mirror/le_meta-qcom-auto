@@ -1,0 +1,39 @@
+From a7f2f5bbd6b95cf655a698902767b63c20dda014 Mon Sep 17 00:00:00 2001
+From: Praveen Talari <ptalari@qti.qualcomm.com>
+Date: Tue, 13 May 2025 09:43:25 +0530
+Subject: [PATCH 1/2] PENDING: spi: spi-geni-qcom: set lowest OPP during
+ suspend to ensure proper resume
+
+When a port is suspended, the current OPP is retained, which can
+cause the OPP framework to skip reapplying the same OPP upon resume.
+This can cause hardware misconfigurations, such as incorrect SPI
+clock rates(frequency), due to missing perf level request to
+the firmware.
+
+To address this, explicitly set the lowest OPP during suspend,
+ensuring that the OPP framework correctly reapplies the desired
+same OPP (perf level) upon resume.
+
+Change-Id: I1fdc3de513c992c6a56c5d0432f23d2f8af1311e
+Signed-off-by: Praveen Talari <ptalari@qti.qualcomm.com>
+---
+ drivers/spi/spi-geni-qcom.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/drivers/spi/spi-geni-qcom.c b/drivers/spi/spi-geni-qcom.c
+index 24e93ec31c95..7be08c9c41e2 100644
+--- a/drivers/spi/spi-geni-qcom.c
++++ b/drivers/spi/spi-geni-qcom.c
+@@ -1162,6 +1162,9 @@ static int geni_spi_transition_d3d0(struct device *dev, bool state)
+ 	struct spi_controller *spi = dev_get_drvdata(dev);
+ 	struct spi_geni_master *mas = spi_controller_get_devdata(spi);
+ 
++	if (!state)
++		mas->dev_data->geni_se_set_rate(mas->se.dev, 1000);
++
+ 	return geni_se_transition_d3d0(&mas->se, state);
+ }
+ 
+-- 
+2.34.1
+

@@ -6,10 +6,15 @@ LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/${LICENSE};md5
 
 DEPENDS += "bison-native oot-dtbo virtual/kernel-headers"
 
+
+
+SRCPROJECT  = "${CLO_LA_GIT}/platform/vendor/qcom-opensource/audiolite.git"
+SRCBRANCH  = "audiolite.lnx.1.0.r31-rel"
+SRCREV  = "2d9231ecbc70a833627d2d31f251b767acafa0cc"
+
 SRC_URI = "\
-    ${PATH_TO_REPO}/vendor/qcom/opensource/audiolite/devicetree/.git;protocol=${PROTO};usehead=1 \
+    ${SRCPROJECT};branch=${SRCBRANCH};protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/audiolite; \
 "
-SRCREV = "${AUTOREV}"
 
 S = "${WORKDIR}/vendor/qcom/opensource/audiolite/devicetree"
 

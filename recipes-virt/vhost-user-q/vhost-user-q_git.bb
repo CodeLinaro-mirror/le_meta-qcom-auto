@@ -80,8 +80,13 @@ DEPENDS += "${@bb.utils.contains("MACHINE_FEATURES", "qti-umd", "msmhab", "", d)
 DEPENDS += "systemd"
 DEPENDS += "compute-resmgr"
 
-SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/vhost-user/.git;protocol=${PROTO};destsuffix=vhost-user-q;usehead=1"
-SRCREV = "${AUTOREV}"
+
+
+SRCPROJECT  = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/vhost-user.git"
+SRCBRANCH  = "vhost-user.lnx.2.0.r14-rel"
+SRCREV  = "41dad1151fae6232fd301eb8e65a19883e187e0b"
+
+SRC_URI = "${SRCPROJECT};branch=${SRCBRANCH};protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/vhost-user;"
 
 S = "${WORKDIR}/vendor/qcom/opensource/vhost-user"
 

@@ -12,10 +12,15 @@ DEPENDS += "\
     ${@bb.utils.contains('MACHINE_FEATURES', 'qti-umd', 'power-utils', '', d)} \
 "
 
+
+
+SRCPROJECT  = "${CLO_LA_GIT}/platform/external/Open-AVB.git"
+SRCBRANCH  = "vnw-gptp.lnx.2.0.r57-rel"
+SRCREV  = "f5895552db665ae91f4f78f5f0ae93b71a84699f"
+
 SRC_URI = "\
-    ${PATH_TO_REPO}/external/open-avb/.git;protocol=${PROTO};destsuffix=external/open-avb;usehead=1 \
+    ${SRCPROJECT};branch=${SRCBRANCH};protocol=${OSS_PROTO};destsuffix=external/open-avb; \
 "
-SRCREV = "${AUTOREV}"
 
 S = "${WORKDIR}/external/open-avb"
 

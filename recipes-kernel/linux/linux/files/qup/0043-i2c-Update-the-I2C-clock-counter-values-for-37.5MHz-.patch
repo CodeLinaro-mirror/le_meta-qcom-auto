@@ -1,0 +1,113 @@
+From 29f378ea05705448bf9122631a27e505e0b37c13 Mon Sep 17 00:00:00 2001
+From: Aniket Randive <arandive@qti.qualcomm.com>
+Date: Mon, 29 Sep 2025 16:10:16 +0530
+Subject: [PATCH] i2c: Update the I2C clock counter values for 37.5MHz source
+ clock
+
+Update the I2C clock counter values for 37.5MHz serial engine
+clock for CCU QUP and add a support to provide clock source
+using config TRE.
+
+Change-Id: Ib1f7670262aa18f773f9961d495054165463883c
+Signed-off-by: Aniket Randive <arandive@qti.qualcomm.com>
+---
+ drivers/dma/qcom/gpi.c             |  1 +
+ drivers/i2c/busses/i2c-qcom-geni.c | 26 +++++++++-----------------
+ include/linux/dma/qcom-gpi-dma.h   |  2 ++
+ 3 files changed, 12 insertions(+), 17 deletions(-)
+
+diff --git a/drivers/dma/qcom/gpi.c b/drivers/dma/qcom/gpi.c
+index 2450e9cca86d..c281e07a245a 100644
+--- a/drivers/dma/qcom/gpi.c
++++ b/drivers/dma/qcom/gpi.c
+@@ -2337,6 +2337,7 @@ static int gpi_create_i2c_tre(struct gchan *chan, struct gpi_desc *desc,
+ 		tre->dword[1] |= u32_encode_bits(i2c->delay, TRE_I2C_C0_DELAY);
+ 
+ 		tre->dword[2] = u32_encode_bits(i2c->clk_div, TRE_C0_CLK_DIV);
++		tre->dword[2] |= u32_encode_bits(i2c->clk_src, TRE_C0_CLK_SRC);
+ 		tre->dword[2] |= u32_encode_bits(i2c->ccu_cfg.retry, TRE_C0_RETRY);
+ 
+ 		tre->dword[3] = u32_encode_bits(TRE_TYPE_CONFIG0, TRE_FLAGS_TYPE);
+diff --git a/drivers/i2c/busses/i2c-qcom-geni.c b/drivers/i2c/busses/i2c-qcom-geni.c
+index f7657c9a1af6..b976fb9cc5d6 100644
+--- a/drivers/i2c/busses/i2c-qcom-geni.c
++++ b/drivers/i2c/busses/i2c-qcom-geni.c
+@@ -306,9 +306,9 @@ static const struct geni_i2c_clk_fld geni_i2c_clk_map[] = {
+  * only for CCU QUP.
+  */
+ static const struct geni_i2c_clk_fld geni_ccu_i2c_clk_map[] = {
+-	{KHZ(100), 7, 10, 11, 26},
+-	{KHZ(400), 2, 5, 12, 24},
+-	{KHZ(1000), 1, 7, 20, 36},
++	{KHZ(100), 8, 17, 21, 44},
++	{KHZ(400), 4, 4, 11, 21},
++	{KHZ(1000), 1, 7, 20, 35},
+ };
+ 
+ static int setup_gpi_dma(struct geni_i2c_dev *gi2c, int idx);
+@@ -360,16 +360,7 @@ static void qcom_geni_i2c_conf(struct geni_i2c_dev *gi2c)
+ 	const struct geni_i2c_clk_fld *itr = gi2c->clk_fld;
+ 	u32 val;
+ 
+-	/*
+-	 * For CCU QUP, to achieve 1MHz bus frequency
+-	 * 38.4MHz serial engine clock is needed. otherwise
+-	 * 19.2MHz serial engine clock need to be use for 100K
+-	 * or 400K frequency.
+-	 */
+-	if (gi2c->is_ccu_qup && (itr->clk_freq_out == KHZ(1000)))
+-		writel_relaxed(1, gi2c->se.base + SE_GENI_CLK_SEL);
+-	else
+-		writel_relaxed(0, gi2c->se.base + SE_GENI_CLK_SEL);
++	writel_relaxed(0, gi2c->se.base + SE_GENI_CLK_SEL);
+ 
+ 	val = (itr->clk_div << CLK_DIV_SHFT) | SER_CLK_EN;
+ 	writel_relaxed(val, gi2c->se.base + GENI_SER_M_CLK_CFG);
+@@ -1577,6 +1568,7 @@ static int geni_i2c_gpi_xfer(struct geni_i2c_dev *gi2c, struct i2c_msg msgs[], i
+ 	peripheral->high_count = itr->t_high_cnt;
+ 	peripheral->low_count = itr->t_low_cnt;
+ 	peripheral->clk_div = itr->clk_div;
++	peripheral->clk_src = gi2c->is_ccu_qup ? 1 : 0;
+ 	peripheral->set_config = 1;
+ 	peripheral->multi_msg = false;
+ 	peripheral->gi2c = gi2c;
+@@ -1779,12 +1771,12 @@ static int geni_i2c_xfer(struct i2c_adapter *adap,
+ 		atomic_inc(&dev->power.usage_count);
+ 	}
+ 
+-	qcom_geni_i2c_conf(gi2c);
+-
+-	if (gi2c->xfer_mode == GENI_GPI_DMA)
++	if (gi2c->xfer_mode == GENI_GPI_DMA) {
+ 		ret = geni_i2c_gpi_xfer(gi2c, msgs, num);
+-	else
++	} else {
++		qcom_geni_i2c_conf(gi2c);
+ 		ret = geni_i2c_fifo_xfer(gi2c, msgs, num);
++	}
+ 
+ 	pm_runtime_mark_last_busy(gi2c->se.dev);
+ 	pm_runtime_put_autosuspend(gi2c->se.dev);
+diff --git a/include/linux/dma/qcom-gpi-dma.h b/include/linux/dma/qcom-gpi-dma.h
+index d94b7b3f67f9..cf0c385368fe 100644
+--- a/include/linux/dma/qcom-gpi-dma.h
++++ b/include/linux/dma/qcom-gpi-dma.h
+@@ -96,6 +96,7 @@ enum i2c_op {
+  * @cycle_count: clock cycles to be sent
+  * @high_count: high period of clock
+  * @low_count: low period of clock
++ * @clk_src: select the clock source
+  * @clk_div: source clock divider
+  * @addr: i2c bus address
+  * @stretch: stretch the clock at eot
+@@ -116,6 +117,7 @@ struct gpi_i2c_config {
+ 	u8 cycle_count;
+ 	u8 high_count;
+ 	u8 low_count;
++	u8 clk_src;
+ 	u8 addr;
+ 	u8 stretch;
+ 	u16 clk_div;
+-- 
+2.34.1
+

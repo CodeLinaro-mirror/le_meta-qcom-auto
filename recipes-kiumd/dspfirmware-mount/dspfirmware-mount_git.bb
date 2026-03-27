@@ -4,11 +4,16 @@ HOMEPAGE = "https://git.codelinaro.org"
 LICENSE = "BSD-3-Clause-Clear"
 LIC_FILES_CHKSUM = "file://${QTI_LICENSE_DIR}/${LICENSE};md5=b796c0007db682166a1721da80267bb2"
 
+
+
+SRCPROJECT  = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/kiumd.git"
+SRCBRANCH  = "safe-services.lnx.1.0.r19-rel"
+SRCREV  = "426114ec89e2f90c660158653de96e7a1d9a6250"
+
 SRC_URI = "\
-    ${PATH_TO_REPO}/vendor/qcom/opensource/kiumd/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/kiumd;usehead=1 \
+    ${SRCPROJECT};branch=${SRCBRANCH};protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/kiumd; \
     file://mnt_fs.conf \
 "
-SRCREV = "${AUTOREV}"
 
 S = "${WORKDIR}/vendor/qcom/opensource/kiumd/dspfirmware-mount"
 inherit systemd
@@ -16,6 +21,7 @@ inherit systemd
 SYSTEMD_SERVICE:${PN} = "usr-lib-firmware-qcom.automount usr-lib-firmware-qcom.mount"
 
 SYSTEMD_SERVICE:${PN}:append = "${@bb.utils.contains('MACHINE_FEATURES', 'qti-vmm', ' firmware-vm-boot-autoghgvm.automount firmware-vm-boot-autoghgvm.mount', '', d)}"
+
 
 do_compile[noexec] = "1"
 
@@ -113,6 +119,7 @@ do_install:append:gen5() {
     install -m 0777 ${S}/sa8797_firmware-vm-boot-autoghgvm.automount ${D}${systemd_unitdir}/system/firmware-vm-boot-autoghgvm.automount
     install -m 0777 ${S}/sa8797_firmware-vm-boot-autoghgvm.mount ${D}${systemd_unitdir}/system/firmware-vm-boot-autoghgvm.mount
 }
+
 FILES:${PN} += "${systemd_unitdir}/*"
 FILES:${PN} += "${sysconfdir}/*"
 FILES:${PN} += "${libdir}/modules-load.d/*"

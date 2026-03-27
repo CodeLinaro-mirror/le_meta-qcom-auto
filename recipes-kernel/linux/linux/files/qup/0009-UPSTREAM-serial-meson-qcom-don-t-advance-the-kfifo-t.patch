@@ -1,0 +1,61 @@
+From 9aa38bff34089fa0ac2e7e1dd5fab3150e2b7c92 Mon Sep 17 00:00:00 2001
+From: Praveen Talari <praveen.talari@oss.qualcomm.com>
+Date: Sat, 13 Sep 2025 16:36:19 +0530
+Subject: [PATCH 09/19] UPSTREAM: serial: meson+qcom: don't advance the kfifo
+ twice
+
+Marek reports, that the -next commit 1788cf6a91d9 (tty: serial: switch
+from circ_buf to kfifo) broke meson_uart and qcom_geni_serial. The
+commit mistakenly advanced the kfifo twice: once by
+uart_fifo_get()/kfifo_out() and second time by uart_xmit_advance().
+
+To advance the fifo only once, drop the superfluous uart_xmit_advance()
+from both.
+
+To count the TX statistics properly, use uart_fifo_out() in
+qcom_geni_serial (meson_uart_start_tx() already uses that).
+
+I checked all other uses of uart_xmit_advance() and they appear correct:
+either they are finishing DMA transfers or are after peek/linear_ptr
+(i.e. they do not advance fifo).
+
+Change-Id: Iae445fe7b595a6547c9abfe9ca75dc4725ea6622
+Signed-off-by: Jiri Slaby (SUSE) <jirislaby@kernel.org>
+Reported-by: Marek Szyprowski <m.szyprowski@samsung.com>
+Fixes: 1788cf6a91d9 ("tty: serial: switch from circ_buf to kfifo")
+Cc: Neil Armstrong <neil.armstrong@linaro.org>
+Cc: Kevin Hilman <khilman@baylibre.com>
+Cc: Jerome Brunet <jbrunet@baylibre.com>
+Cc: Martin Blumenstingl <martin.blumenstingl@googlemail.com>
+Link: https://lore.kernel.org/r/20240416054825.6211-1-jirislaby@kernel.org
+Signed-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>
+Signed-off-by: Praveen Talari <praveen.talari@oss.qualcomm.com>
+---
+ drivers/tty/serial/qcom_geni_serial.c | 4 +---
+ 1 file changed, 1 insertion(+), 3 deletions(-)
+
+diff --git a/drivers/tty/serial/qcom_geni_serial.c b/drivers/tty/serial/qcom_geni_serial.c
+index fcd9e55393ce..0f2cf591506c 100644
+--- a/drivers/tty/serial/qcom_geni_serial.c
++++ b/drivers/tty/serial/qcom_geni_serial.c
+@@ -911,7 +911,6 @@ static void qcom_geni_serial_send_chunk_fifo(struct uart_port *uport,
+ 					     unsigned int chunk)
+ {
+ 	struct qcom_geni_serial_port *port = to_dev_port(uport);
+-	struct tty_port *tport = &uport->state->port;
+ 	unsigned int tx_bytes, remaining = chunk;
+ 	u8 buf[BYTES_PER_FIFO_WORD];
+ 
+@@ -919,8 +918,7 @@ static void qcom_geni_serial_send_chunk_fifo(struct uart_port *uport,
+ 		memset(buf, 0, sizeof(buf));
+ 		tx_bytes = min(remaining, BYTES_PER_FIFO_WORD);
+ 
+-		tx_bytes = kfifo_out(&tport->xmit_fifo, buf, tx_bytes);
+-		uart_xmit_advance(uport, tx_bytes);
++		tx_bytes = uart_fifo_out(uport, buf, tx_bytes);
+ 
+ 		iowrite32_rep(uport->membase + SE_GENI_TX_FIFOn, buf, 1);
+ 
+-- 
+2.34.1
+

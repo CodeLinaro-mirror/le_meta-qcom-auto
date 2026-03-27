@@ -1,0 +1,146 @@
+From 59b1e014eb817c041a605af6785c94c60dc679ae Mon Sep 17 00:00:00 2001
+From: Ram Kumar Dwivedi <rdwivedi@qti.qualcomm.com>
+Date: Wed, 26 Nov 2025 19:55:17 +0530
+Subject: [PATCH 7/7] QCLINUX: ufs: UFS bringup on Seca RUMI
+
+Configure UFS for bringup on Seca RUMI.
+
+Change-Id: If64abd8dfb61edc136ff259bf18a2391a50a3ca8
+Signed-off-by: Ram Kumar Dwivedi <rdwivedi@qti.qualcomm.com>
+---
+ arch/arm64/configs/qcom_defconfig |  2 +-
+ drivers/ufs/core/ufshcd.c         |  6 +++---
+ drivers/ufs/host/ufs-qcom.c       | 28 ++++++++++++----------------
+ drivers/ufs/host/ufshcd-pltfrm.c  | 12 ++++++------
+ 4 files changed, 22 insertions(+), 26 deletions(-)
+
+diff --git a/arch/arm64/configs/qcom_defconfig b/arch/arm64/configs/qcom_defconfig
+index 2582ba27dc63..0169e76940db 100644
+--- a/arch/arm64/configs/qcom_defconfig
++++ b/arch/arm64/configs/qcom_defconfig
+@@ -549,7 +549,7 @@ CONFIG_MMC_SDHCI_MSM=y
+ CONFIG_MMC_SPI=y
+ CONFIG_SCSI_UFSHCD=y
+ CONFIG_SCSI_UFS_BSG=y
+-CONFIG_SCSI_UFS_CRYPTO=y
++#CONFIG_SCSI_UFS_CRYPTO is not set
+ CONFIG_SCSI_UFSHCD_PLATFORM=y
+ CONFIG_SCSI_UFS_QCOM=y
+ CONFIG_NEW_LEDS=y
+diff --git a/drivers/ufs/core/ufshcd.c b/drivers/ufs/core/ufshcd.c
+index ab3b6d36dcf1..960f283d46c8 100644
+--- a/drivers/ufs/core/ufshcd.c
++++ b/drivers/ufs/core/ufshcd.c
+@@ -103,7 +103,7 @@
+ #define UFS_RTC_UPDATE_INTERVAL_MS (10 * MSEC_PER_SEC)
+ 
+ /* UFSHC 4.0 compliant HC support this mode. */
+-static bool use_mcq_mode = true;
++static bool use_mcq_mode = false;
+ 
+ static bool is_mcq_supported(struct ufs_hba *hba)
+ {
+@@ -674,7 +674,7 @@ static void ufshcd_print_pwr_info(struct ufs_hba *hba)
+ 	 * never-ending cycles of messages written back to storage by user space
+ 	 * causing runtime resume, causing more messages and so on.
+ 	 */
+-	dev_dbg(hba->dev, "%s:[RX, TX]: gear=[%d, %d], lane[%d, %d], pwr[%s, %s], rate = %d\n",
++	dev_err(hba->dev, "%s:[RX, TX]: gear=[%d, %d], lane[%d, %d], pwr[%s, %s], rate = %d\n",
+ 		 __func__,
+ 		 hba->pwr_info.gear_rx, hba->pwr_info.gear_tx,
+ 		 hba->pwr_info.lane_rx, hba->pwr_info.lane_tx,
+@@ -4601,7 +4601,7 @@ static int ufshcd_get_max_pwr_mode(struct ufs_hba *hba)
+ 		pwr_info->pwr_tx = FAST_MODE;
+ 		pwr_info->pwr_rx = FAST_MODE;
+ 	}
+-	pwr_info->hs_rate = PA_HS_MODE_B;
++	pwr_info->hs_rate = PA_HS_MODE_A;
+ 
+ 	/* Get the connected lane count */
+ 	ufshcd_dme_get(hba, UIC_ARG_MIB(PA_CONNECTEDRXDATALANES),
+diff --git a/drivers/ufs/host/ufs-qcom.c b/drivers/ufs/host/ufs-qcom.c
+index 9bd26c63476f..8ad1e7374c9b 100644
+--- a/drivers/ufs/host/ufs-qcom.c
++++ b/drivers/ufs/host/ufs-qcom.c
+@@ -519,6 +519,8 @@ static u32 ufs_qcom_get_hs_gear(struct ufs_hba *hba)
+ {
+ 	struct ufs_qcom_host *host = ufshcd_get_variant(hba);
+ 
++	return UFS_HS_G1;
++
+ 	if (host->hw_ver.major == 0x1) {
+ 		/*
+ 		 * HS-G3 operations may not reliably work on legacy QCOM
+@@ -1585,6 +1587,15 @@ static int ufs_qcom_fmr_init(struct ufs_hba *hba)
+ 	host->hba = hba;
+ 	ufshcd_set_variant(hba, host);
+ 
++	host->device_reset = devm_gpiod_get_optional(dev, "reset",
++						     GPIOD_OUT_HIGH);
++	if (IS_ERR(host->device_reset)) {
++		err = PTR_ERR(host->device_reset);
++		if (err != -EPROBE_DEFER)
++			dev_err(dev, "failed to acquire reset gpio: %d\n", err);
++		goto out_variant_clear;
++	}
++
+ 	ufs_qcom_get_controller_revision(hba, &host->hw_ver.major,
+ 		&host->hw_ver.minor, &host->hw_ver.step);
+ 
+@@ -2037,21 +2048,6 @@ static int ufs_qcom_device_reset(struct ufs_hba *hba)
+ 	return 0;
+ }
+ 
+-static int ufs_qcom_fmr_device_reset(struct ufs_hba *hba)
+-{
+-        struct ufs_qcom_host *host = ufshcd_get_variant(hba);
+-        static bool is_boot = true;
+-
+-        if (!is_boot) {
+-                pm_runtime_put_sync(hba->dev);
+-                pm_runtime_get_sync(hba->dev);
+-        } else {
+-                is_boot = false;
+-        }
+-
+-        return 0;
+-}
+-
+ #if IS_ENABLED(CONFIG_DEVFREQ_GOV_SIMPLE_ONDEMAND)
+ static void ufs_qcom_config_scaling_param(struct ufs_hba *hba,
+ 					struct devfreq_dev_profile *p,
+@@ -2335,7 +2331,7 @@ static const struct ufs_hba_variant_ops ufs_hba_qcom_fmr_vops = {
+ 	.suspend		= ufs_qcom_fmr_suspend,
+ 	.resume			= ufs_qcom_fmr_resume,
+ 	.dbg_register_dump	= ufs_qcom_dump_dbg_regs,
+-	.device_reset		= ufs_qcom_fmr_device_reset,
++	.device_reset		= ufs_qcom_device_reset,
+ 	.config_scaling_param   = ufs_qcom_config_scaling_param,
+ 	.program_key		= ufs_qcom_ice_program_key,
+ 	.derive_sw_secret	= ufs_qcom_ice_derive_sw_secret,
+diff --git a/drivers/ufs/host/ufshcd-pltfrm.c b/drivers/ufs/host/ufshcd-pltfrm.c
+index a644e9fda3ca..185a65bd578d 100644
+--- a/drivers/ufs/host/ufshcd-pltfrm.c
++++ b/drivers/ufs/host/ufshcd-pltfrm.c
+@@ -432,12 +432,12 @@ EXPORT_SYMBOL_GPL(ufshcd_negotiate_pwr_params);
+ void ufshcd_init_host_params(struct ufs_host_params *host_params)
+ {
+ 	*host_params = (struct ufs_host_params){
+-		.tx_lanes = UFS_LANE_2,
+-		.rx_lanes = UFS_LANE_2,
+-		.hs_rx_gear = UFS_HS_G3,
+-		.hs_tx_gear = UFS_HS_G3,
+-		.pwm_rx_gear = UFS_PWM_G4,
+-		.pwm_tx_gear = UFS_PWM_G4,
++		.tx_lanes = UFS_LANE_1,
++		.rx_lanes = UFS_LANE_1,
++		.hs_rx_gear = UFS_HS_G1,
++		.hs_tx_gear = UFS_HS_G1,
++		.pwm_rx_gear = UFS_PWM_G1,
++		.pwm_tx_gear = UFS_PWM_G1,
+ 		.rx_pwr_pwm = SLOW_MODE,
+ 		.tx_pwr_pwm = SLOW_MODE,
+ 		.rx_pwr_hs = FAST_MODE,
+-- 
+2.34.1
+

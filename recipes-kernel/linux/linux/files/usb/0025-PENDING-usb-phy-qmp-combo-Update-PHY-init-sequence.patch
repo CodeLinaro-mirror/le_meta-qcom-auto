@@ -1,0 +1,52 @@
+From fc9994de1842e5fd33a89f972b8cfc76af803cda Mon Sep 17 00:00:00 2001
+From: Sriram Dash <sriram.dash@oss.qualcomm.com>
+Date: Mon, 29 Dec 2025 11:01:06 +0530
+Subject: [PATCH] PENDING: usb: phy: qmp-combo: Update PHY init sequence
+
+Update the PHY init sequence according to latest HSR v1.12.
+
+Change-Id: I6f0ae0d99e0e581af2fd3aa8a778cc4ff95a30d5
+Signed-off-by: Sriram Dash <sriram.dash@oss.qualcomm.com>
+---
+ drivers/phy/qualcomm/phy-qcom-qmp-combo.c | 18 ++++++++++++++++--
+ 1 file changed, 16 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/phy/qualcomm/phy-qcom-qmp-combo.c b/drivers/phy/qualcomm/phy-qcom-qmp-combo.c
+index ee275811b9a1..27dc79a4e841 100644
+--- a/drivers/phy/qualcomm/phy-qcom-qmp-combo.c
++++ b/drivers/phy/qualcomm/phy-qcom-qmp-combo.c
+@@ -376,6 +376,20 @@ static const struct qmp_phy_init_tbl qmp_v3_usb3_pcs_tbl[] = {
+ 	QMP_PHY_INIT_CFG(QPHY_V3_PCS_RXEQTRAINING_RUN_TIME, 0x13),
+ };
+ 
++static const struct qmp_phy_init_tbl sa8797p_usb3_tx_tbl[] = {
++	QMP_PHY_INIT_CFG(QSERDES_V6_TX_RES_CODE_LANE_TX, 0x00),
++	QMP_PHY_INIT_CFG(QSERDES_V6_TX_RES_CODE_LANE_RX, 0x00),
++	QMP_PHY_INIT_CFG(QSERDES_V6_TX_RES_CODE_LANE_OFFSET_TX, 0x1f),
++	QMP_PHY_INIT_CFG(QSERDES_V6_TX_RES_CODE_LANE_OFFSET_RX, 0x09),
++	QMP_PHY_INIT_CFG(QSERDES_V6_TX_LANE_MODE_1, 0xf5),
++	QMP_PHY_INIT_CFG(QSERDES_V6_TX_LANE_MODE_3, 0x3f),
++	QMP_PHY_INIT_CFG(QSERDES_V6_TX_LANE_MODE_4, 0x3f),
++	QMP_PHY_INIT_CFG(QSERDES_V6_TX_LANE_MODE_5, 0x5f),
++	QMP_PHY_INIT_CFG(QSERDES_V6_TX_RCV_DETECT_LVL_2, 0x14),
++	QMP_PHY_INIT_CFG_LANE(QSERDES_V6_TX_PI_QEC_CTRL, 0x21, 1),
++	QMP_PHY_INIT_CFG_LANE(QSERDES_V6_TX_PI_QEC_CTRL, 0x05, 2),
++};
++
+ static const struct qmp_phy_init_tbl sm6350_usb3_rx_tbl[] = {
+ 	QMP_PHY_INIT_CFG(QSERDES_V3_RX_UCDR_FASTLOCK_FO_GAIN, 0x0b),
+ 	QMP_PHY_INIT_CFG(QSERDES_V3_RX_RX_EQU_ADAPTOR_CNTRL2, 0x0f),
+@@ -1484,8 +1498,8 @@ static const struct qmp_phy_cfg sa8797_usb3dpphy_cfg = {
+ 
+ 	.serdes_tbl		= sm8550_usb3_serdes_tbl,
+ 	.serdes_tbl_num		= ARRAY_SIZE(sm8550_usb3_serdes_tbl),
+-	.tx_tbl			= sm8550_usb3_tx_tbl,
+-	.tx_tbl_num		= ARRAY_SIZE(sm8550_usb3_tx_tbl),
++	.tx_tbl			= sa8797p_usb3_tx_tbl,
++	.tx_tbl_num		= ARRAY_SIZE(sa8797p_usb3_tx_tbl),
+ 	.rx_tbl			= sm8550_usb3_rx_tbl,
+ 	.rx_tbl_num		= ARRAY_SIZE(sm8550_usb3_rx_tbl),
+ 	.pcs_tbl		= sm8550_usb3_pcs_tbl,
+-- 
+2.34.1
+

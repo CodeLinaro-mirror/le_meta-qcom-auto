@@ -9,16 +9,52 @@ LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/BSD-3-Clause-C
 
 DEPENDS += "cargo-native libcap rust-native rust-llvm-native pkgconfig-native"
 
+
+QCOM_VMM_VHOST_SRC_bb  ?= "${CLO_LA_GIT}/platform/external/rust/crates/vmm_vhost.git"
+QCOM_VMM_VHOST_SRCBRANCH_bb  ?= "auto-vmm.lnx.1.0.r23-rel"
+QCOM_VMM_VHOST_SRCREV_bb  ?= "e20be590881517ac8a47008986221be81eca505c"
+
+
+QCOM_SIMPLELOG_SRC_bb  ?= "${CLO_LA_GIT}/platform/external/rust/crates/simplelog.git"
+QCOM_SIMPLELOG_SRCBRANCH_bb  ?= "auto-android-core-sys.lnx.13.0.r24-rel"
+QCOM_SIMPLELOG_SRCREV_bb  ?= "b2d25e663deaa1e8294c6bf94942eca8d86ae4c2"
+
+
+QCOM_ANDROID_LOGGER_SRC_bb  ?= "${CLO_LA_GIT}/platform/external/rust/crates/android_logger.git"
+QCOM_ANDROID_LOGGER_SRCBRANCH_bb  ?= "auto-vmm.lnx.1.0.r23-rel"
+QCOM_ANDROID_LOGGER_SRCREV_bb  ?= "7f4eca1ac49d9c7fc88cfa5f547ca09c7b5eace3"
+
+
+QCOM_MINIJAIL_SRC_bb  ?= "${CLO_LA_GIT}/platform/external/minijail.git"
+QCOM_MINIJAIL_SRCBRANCH_bb  ?= "auto-vmm.lnx.1.0.r23-rel"
+QCOM_MINIJAIL_SRCREV_bb  ?= "8cb44f9fc32f538a90b6a3f09d3941e26fe6d6f9"
+
+
+QCOM_CROSVM_SRC_bb  ?= "${CLO_LA_GIT}/platform/external/crosvm.git"
+QCOM_CROSVM_SRCBRANCH_bb  ?= "auto-vmm.lnx.1.0.r23-rel"
+QCOM_CROSVM_SRCREV_bb  ?= "8531b8ae11731f1e9f550bc92abda511eefac35d"
+
+
+QCOM_CROSVM_GUNYAH_SRC_bb  ?= "${CLO_LE_GIT}/platform/vendor/qcom-opensource/crosvm-gunyah.git"
+QCOM_CROSVM_GUNYAH_SRCBRANCH_bb  ?= "auto-android-core-sys.lnx.13.0.r24-rel"
+QCOM_CROSVM_GUNYAH_SRCREV_bb  ?= "e90421e98aa13b9f510b3e0d6c622c409266d81b"
+
+SRCREV_FORMAT = "crosvmgunyah_crosvm_minijail_androidlogger_simplelog_vmmvhost"
+SRCREV_crosvmgunyah  = "${QCOM_CROSVM_GUNYAH_SRCREV_bb}"
+SRCREV_crosvm  = "${QCOM_CROSVM_SRCREV_bb}"
+SRCREV_minijail  = "${QCOM_MINIJAIL_SRCREV_bb}"
+SRCREV_androidlogger  = "${QCOM_ANDROID_LOGGER_SRCREV_bb}"
+SRCREV_simplelog  = "${QCOM_SIMPLELOG_SRCREV_bb}"
+SRCREV_vmmvhost  = "${QCOM_VMM_VHOST_SRCREV_bb}"
 SRC_URI = "\
-    ${PATH_TO_REPO}/vendor/qcom/opensource/crosvm-gunyah/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/crosvm-gunyah;usehead=1 \
-    ${PATH_TO_REPO}/external/crosvm/.git;protocol=${PROTO};destsuffix=external/crosvm;usehead=1 \
-    ${PATH_TO_REPO}/external/minijail/.git;protocol=${PROTO};destsuffix=external/minijail;usehead=1 \
-    ${PATH_TO_REPO}/external/rust/crates/android_logger/.git;protocol=${PROTO};destsuffix=external/rust/crates/android_logger;usehead=1 \
-    ${PATH_TO_REPO}/external/rust/crates/simplelog/.git;protocol=${PROTO};destsuffix=external/rust/crates/simplelog;usehead=1 \
-    ${PATH_TO_REPO}/external/rust/crates/vmm_vhost/.git;protocol=${PROTO};destsuffix=external/rust/crates/vmm_vhost;usehead=1 \
+    ${QCOM_CROSVM_GUNYAH_SRC_bb};branch=${QCOM_CROSVM_GUNYAH_SRCBRANCH_bb};name=crosvmgunyah;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/crosvm-gunyah; \
+    ${QCOM_CROSVM_SRC_bb};branch=${QCOM_CROSVM_SRCBRANCH_bb};name=crosvm;protocol=${OSS_PROTO};destsuffix=external/crosvm; \
+    ${QCOM_MINIJAIL_SRC_bb};branch=${QCOM_MINIJAIL_SRCBRANCH_bb};name=minijail;protocol=${OSS_PROTO};destsuffix=external/minijail; \
+    ${QCOM_ANDROID_LOGGER_SRC_bb};branch=${QCOM_ANDROID_LOGGER_SRCBRANCH_bb};name=androidlogger;protocol=${OSS_PROTO};destsuffix=external/rust/crates/android_logger; \
+    ${QCOM_SIMPLELOG_SRC_bb};branch=${QCOM_SIMPLELOG_SRCBRANCH_bb};name=simplelog;protocol=${OSS_PROTO};destsuffix=external/rust/crates/simplelog; \
+    ${QCOM_VMM_VHOST_SRC_bb};branch=${QCOM_VMM_VHOST_SRCBRANCH_bb};name=vmmvhost;protocol=${OSS_PROTO};destsuffix=external/rust/crates/vmm_vhost; \
 "
 
-SRCREV = "${AUTOREV}"
 
 S = "${WORKDIR}/vendor/qcom/opensource/crosvm-gunyah"
 
@@ -79,3 +115,7 @@ do_install:append:sa8775-flex() {
     install -m 0644 ${S}/vm_config_xml/vm_config_lalv.xml ${D}${sysconfdir}/vm_config_lalv.xml
 }
 
+
+cargo_common_do_patch_paths() {
+    :
+}

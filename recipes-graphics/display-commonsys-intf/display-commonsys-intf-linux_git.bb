@@ -10,8 +10,13 @@ DEPENDS += "libcutils libhardware-headers liblog libutils virtual/kernel-headers
 
 PR = "r3"
 
-SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/commonsys-intf/display/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/commonsys-intf/display;usehead=1"
-SRCREV = "${AUTOREV}"
+
+
+SRCPROJECT  = "${CLO_LA_GIT}/platform/vendor/qcom-opensource/display-commonsys-intf.git"
+SRCBRANCH  = "display-sysintf.lnx.14.0.r23-rel"
+SRCREV  = "683fa7d92f46e2234ba39b4a77fc5e3ba5e238d6"
+
+SRC_URI = "${SRCPROJECT};branch=${SRCBRANCH};protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/commonsys-intf/display;"
 S = "${WORKDIR}/vendor/qcom/opensource/commonsys-intf/display"
 
 inherit autotools pkgconfig

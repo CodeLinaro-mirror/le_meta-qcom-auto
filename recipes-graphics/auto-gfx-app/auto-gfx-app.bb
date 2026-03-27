@@ -7,15 +7,20 @@ LIC_FILES_CHKSUM = "file://${QTI_LICENSE_DIR}/${LICENSE};md5=b796c0007db682166a1
 
 DEPENDS:append = " wayland-native pkgconfig-native wayland-protocols gbm gbm-headers virtual/egl bootkpi-logging"
 
+
+
+SRCPROJECT  = "${CLO_LE_GIT}/platform/vendor/qcom/opensource/auto-gfx-app.git"
+SRCBRANCH  = "auto-gfx-app.dev.1.0.r3-rel"
+SRCREV  = "2564886563555438af91971a85b19ce5f9df4356"
+
 SRC_URI = "\
-    ${PATH_TO_REPO}/vendor/qcom/opensource/auto-gfx-app/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/auto-gfx-app;usehead=1 \
+    ${SRCPROJECT};branch=${SRCBRANCH};protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/auto-gfx-app; \
 "
 
 SRC_URI:append = " \
     file://gles2_kpi.service  \
 "
 
-SRCREV = "${AUTOREV}"
 
 inherit cmake systemd
 

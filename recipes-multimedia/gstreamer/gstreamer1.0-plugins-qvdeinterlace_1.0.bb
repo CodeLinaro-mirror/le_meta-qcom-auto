@@ -18,8 +18,13 @@ DEPENDS += "\
     mm-gfx-auto-prop \
 "
 
-SRC_URI = "${PATH_TO_REPO}/gstreamer/gst-plugins-qti-oss/.git;protocol=${PROTO};destsuffix=gstreamer/gst-plugins-qti-oss;usehead=1"
-SRCREV = "${AUTOREV}"
+
+
+SRCPROJECT  = "${CLO_LA_GIT}/platform/vendor/qcom-opensource/gst-plugins-qti-oss.git"
+SRCBRANCH  = "gst-auto-tools-plugins.4.0.r9-rel"
+SRCREV  = "9834d8bede25ebaf8a1828ae1eff81a58315a5c5"
+
+SRC_URI = "${SRCPROJECT};branch=${SRCBRANCH};protocol=${OSS_PROTO};destsuffix=gstreamer/gst-plugins-qti-oss;"
 S = "${WORKDIR}/gstreamer/gst-plugins-qti-oss/gst-plugin-qvdeinterlace"
 
 inherit meson pkgconfig

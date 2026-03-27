@@ -7,8 +7,13 @@ LIC_FILES_CHKSUM = "file://${QTI_LICENSE_DIR}/${LICENSE};md5=801f80980d171dd6425
 
 DEPENDS = "bt-devicetree"
 
-SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/bt-kernel/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/bt-kernel;usehead=1"
-SRCREV = "${AUTOREV}"
+
+
+SRCPROJECT  = "${CLO_LA_GIT}/platform/vendor/qcom-opensource/bt-kernel.git"
+SRCBRANCH  = "bt-kernel.lnx.1.1.r34-rel"
+SRCREV  = "e4dc54f761ed7e659db08a46d9b6b4f0e0f57135"
+
+SRC_URI = "${SRCPROJECT};branch=${SRCBRANCH};protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/bt-kernel;"
 
 S = "${WORKDIR}/vendor/qcom/opensource/bt-kernel"
 

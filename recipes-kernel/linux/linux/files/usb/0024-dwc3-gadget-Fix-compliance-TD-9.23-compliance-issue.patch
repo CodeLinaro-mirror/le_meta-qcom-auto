@@ -1,0 +1,31 @@
+From faf4729687934d5d277051dca2e6b3ff772213ee Mon Sep 17 00:00:00 2001
+From: Hiren Gohel <vhiren@qti.qualcomm.com>
+Date: Fri, 2 Jan 2026 11:30:03 +0530
+Subject: [PATCH] dwc3: gadget: Fix compliance TD 9.23 compliance issue
+
+Call phy_caliberate on conndone interrupt to run register sequence,
+this is a SW WA for CV9 RESET DEVICE TEST(TD 9.23) compliance test
+failure.
+
+Signed-off-by: Hiren Gohel <vhiren@qti.qualcomm.com>
+---
+ drivers/usb/dwc3/gadget.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/drivers/usb/dwc3/gadget.c b/drivers/usb/dwc3/gadget.c
+index 5c396188f8ce..6302a15f081a 100644
+--- a/drivers/usb/dwc3/gadget.c
++++ b/drivers/usb/dwc3/gadget.c
+@@ -4182,6 +4182,9 @@ static void dwc3_gadget_conndone_interrupt(struct dwc3 *dwc)
+ 	speed = reg & DWC3_DSTS_CONNECTSPD;
+ 	dwc->speed = speed;
+ 
++	if (dwc->eusb2_phy_bitmap & BIT(0) && (speed >= DWC3_DSTS_SUPERSPEED))
++		phy_calibrate(dwc->usb2_generic_phy);
++
+ 	if (DWC3_IP_IS(DWC32))
+ 		lanes = DWC3_DSTS_CONNLANES(reg) + 1;
+ 
+-- 
+2.34.1
+

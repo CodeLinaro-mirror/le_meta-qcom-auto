@@ -1,0 +1,155 @@
+From 942e6aca39ab24acc3e2f341da5a2c5da85956f4 Mon Sep 17 00:00:00 2001
+From: Praveen Talari <quic_ptalari@quicinc.com>
+Date: Mon, 10 Mar 2025 16:30:02 +0530
+Subject: [PATCH] PENDING: i2c: qcom-geni: Add support for S2R feature
+
+In the context of S2R(System to RAM), a mode intended for
+prolonged sleep cycles, the system-on-chip (SoC)
+is powered down and its state is preserved and subsequently
+restored from DRAM during entry/exit phases of S2R.
+
+Within S2R, hardware context is relinquished,whereas
+software context persists. As a result, serial engine
+configurations undergo re-initialization, resembling
+a probe-like process.
+
+The flag PM_SUSPEND_MEM is used to determine whether the system
+is in S2R or not.
+
+This change support only in FIFO/SE-DMA mode and later we will do
+for GSI mode support.
+
+Change-Id: I3349c86a306782bbf8052ee294fde3ed5de631a8
+Signed-off-by: Praveen Talari <quic_ptalari@quicinc.com>
+Signed-off-by: Shazad Hussain <quic_shazhuss@quicinc.com>
+---
+ drivers/i2c/busses/i2c-qcom-geni.c | 48 ++++++++++++++++++++++--------
+ 1 file changed, 36 insertions(+), 12 deletions(-)
+
+diff --git a/drivers/i2c/busses/i2c-qcom-geni.c b/drivers/i2c/busses/i2c-qcom-geni.c
+index c70ad4ba0099..bd6d0c280634 100644
+--- a/drivers/i2c/busses/i2c-qcom-geni.c
++++ b/drivers/i2c/busses/i2c-qcom-geni.c
+@@ -19,6 +19,7 @@
+ #include <linux/pm_runtime.h>
+ #include <linux/soc/qcom/geni-se.h>
+ #include <linux/spinlock.h>
++#include <linux/suspend.h>
+ 
+ #define I2C_LOG(log_fn, level, dev, fmt, ...) do { \
+ 	if ((level) <= log_level) \
+@@ -120,10 +121,10 @@ struct geni_i2c_dev {
+ 	dma_addr_t dma_addr;
+ 	struct dma_chan *tx_c;
+ 	struct dma_chan *rx_c;
+-	bool gpi_mode;
+ 	bool abort_done;
+ 	bool is_shared;
+ 	const struct geni_i2c_desc *dev_data;
++	enum geni_se_xfer_mode xfer_mode;
+ };
+ 
+ struct geni_i2c_err_log {
+@@ -785,7 +786,7 @@ static int geni_i2c_xfer(struct i2c_adapter *adap,
+ 
+ 	qcom_geni_i2c_conf(gi2c);
+ 
+-	if (gi2c->gpi_mode)
++	if (gi2c->xfer_mode == GENI_GPI_DMA)
+ 		ret = geni_i2c_gpi_xfer(gi2c, msgs, num);
+ 	else
+ 		ret = geni_i2c_fifo_xfer(gi2c, msgs, num);
+@@ -911,6 +912,9 @@ static int geni_i2c_init(struct geni_i2c_dev *gi2c)
+ 	bool fifo_disable;
+ 	int ret = 0;
+ 
++	if (gi2c->xfer_mode != GENI_SE_INVALID)
++		return 0;
++
+ 	ret = pm_runtime_get_sync(gi2c->se.dev);
+ 	if (ret < 0) {
+ 		dev_err(gi2c->se.dev, "error turning on device :%d\n", ret);
+@@ -943,10 +947,11 @@ static int geni_i2c_init(struct geni_i2c_dev *gi2c)
+ 			goto err;
+ 		}
+ 
+-		gi2c->gpi_mode = true;
++		gi2c->xfer_mode = GENI_GPI_DMA;
++		geni_se_select_mode(&gi2c->se, gi2c->xfer_mode);
+ 		I2C_DBG_LOG(LOG_LVL_INFO, gi2c->se.dev, "Using GPI DMA mode for I2C\n");
+ 	} else {
+-		gi2c->gpi_mode = false;
++		gi2c->xfer_mode = GENI_SE_FIFO;
+ 		tx_depth = geni_se_get_tx_fifo_depth(&gi2c->se);
+ 
+ 		/* I2C Master Hub Serial Elements doesn't have the HW_PARAM_0 register */
+@@ -970,7 +975,7 @@ static int geni_i2c_init(struct geni_i2c_dev *gi2c)
+ err:
+ 	if (pm_runtime_put_sync(gi2c->se.dev) < 0) {
+ 		dev_err(gi2c->se.dev, "error turning off device :%d\n", ret);
+-		if (gi2c->gpi_mode)
++		if (gi2c->xfer_mode == GENI_GPI_DMA)
+ 			release_gpi_dma(gi2c);
+ 	}
+ 
+@@ -1073,6 +1078,7 @@ static int geni_i2c_probe(struct platform_device *pdev)
+ 		I2C_DBG_LOG(LOG_LVL_VERBOSE, &pdev->dev, "Multi-EE usecase with shared SE\n");
+ 	}
+ 
++	gi2c->xfer_mode = GENI_SE_INVALID;
+ 	ret =  geni_i2c_init(gi2c);
+ 	if (ret < 0) {
+ 		dev_err(gi2c->se.dev, "geni_i2c_prepare is failed :%d\n", ret);
+@@ -1155,24 +1161,42 @@ static int __maybe_unused geni_i2c_runtime_resume(struct device *dev)
+ static int __maybe_unused geni_i2c_suspend_noirq(struct device *dev)
+ {
+ 	struct geni_i2c_dev *gi2c = dev_get_drvdata(dev);
++	int ret = 0;
+ 
++	pm_runtime_enable(gi2c->se.dev);
+ 	i2c_mark_adapter_suspended(&gi2c->adap);
+ 
+-	if (!gi2c->suspended) {
+-		geni_i2c_runtime_suspend(dev);
+-		pm_runtime_disable(dev);
+-		pm_runtime_set_suspended(dev);
+-		pm_runtime_enable(dev);
++	ret = pm_runtime_force_suspend(dev);
++	if (ret) {
++		dev_err(dev, "%s: force suspend failed\n", __func__);
++		i2c_mark_adapter_resumed(&gi2c->adap);
+ 	}
+-	return 0;
++	return ret;
+ }
+ 
+ static int __maybe_unused geni_i2c_resume_noirq(struct device *dev)
+ {
+ 	struct geni_i2c_dev *gi2c = dev_get_drvdata(dev);
++	int ret = 0;
++
++	ret = pm_runtime_force_resume(dev);
++	if (ret)
++		return ret;
+ 
++	if (pm_suspend_target_state == PM_SUSPEND_MEM) {
++		dev_dbg(dev, "%s: In S2R\n", __func__);
++		gi2c->xfer_mode = GENI_SE_INVALID;
++
++		ret = geni_i2c_init(gi2c);
++		if (ret) {
++			dev_err(gi2c->se.dev, "geni_i2c_prepare is failed :%d\n", ret);
++			return ret;
++		}
++	}
++
++	pm_runtime_disable(gi2c->se.dev);
+ 	i2c_mark_adapter_resumed(&gi2c->adap);
+-	return 0;
++	return ret;
+ }
+ 
+ static const struct dev_pm_ops geni_i2c_pm_ops = {
+-- 
+2.34.1
+

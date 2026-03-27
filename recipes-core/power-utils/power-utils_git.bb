@@ -7,8 +7,13 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/BSD-3-Clause-Clear;md5=7a434440
 
 DEPENDS += "glibc glib-2.0 bootkpi-logging systemd"
 
-SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/safelinux-services/power-utils/.git;protocol=${PROTO};destsuffix=/vendor/qcom/opensource/safelinux-services/power-utils;usehead=1"
-SRCREV = "${AUTOREV}"
+
+
+SRCPROJECT  = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/safelinux-services.git"
+SRCBRANCH  = "safe-services.lnx.1.0.r19-rel"
+SRCREV  = "980d81535505f2a2d7292789d69004016c3dbe49"
+
+SRC_URI = "${SRCPROJECT};branch=${SRCBRANCH};protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/safelinux-services;"
 S = "${WORKDIR}/vendor/qcom/opensource/safelinux-services/power-utils"
 
 inherit systemd cmake pkgconfig

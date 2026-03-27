@@ -10,8 +10,13 @@ SYSTEMD_SERVICE:${PN} = "vhost-device-ssr.service"
 SYSTEMD_SERVICE:${PN}:append:gen5 = " vhost-device-ssr_lv.service"
 DEPENDS += "libssr-client"
 
-SRC_URI = "${PATH_TO_REPO}/external/vhost-device/.git;protocol=${PROTO};destsuffix=external/vhost-device;usehead=1"
-SRCREV = "${AUTOREV}"
+
+
+SRCPROJECT  = "${CLO_LE_GIT}/platform/external/rust-vmm/vhost-device.git"
+SRCBRANCH  = "auto-vmm.lnx.1.0.r23-rel"
+SRCREV  = "fcc85600c227107d21681e6e2b0000ce106bc238"
+
+SRC_URI = "${SRCPROJECT};branch=${SRCBRANCH};protocol=${OSS_PROTO};destsuffix=external/vhost-device;"
 S = "${WORKDIR}/external/vhost-device"
 
 inherit cargo systemd

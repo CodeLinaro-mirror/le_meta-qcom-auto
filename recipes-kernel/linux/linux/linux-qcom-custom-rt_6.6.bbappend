@@ -1,0 +1,1 @@
+linux-qcom-custom_6.6.bbappend
