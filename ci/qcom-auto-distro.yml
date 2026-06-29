@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/siemens/kas/master/kas/schema-kas.json
+
+header:
+  version: 14
+
+distro: qcom-auto-distro
+
+defaults:
+  repos:
+    branch: master
+
+repos:
+  meta-qcom-auto-distro:
+    path: meta-qcom-auto-distro
+
+  meta-virtualization:
+    url: https://git.yoctoproject.org/meta-virtualization
+    branch: wrynose
+
+target:
+  - qcom-auto-minimal-image
+  - qcom-auto-platform-image
+  - qcom-auto-multimedia-image
