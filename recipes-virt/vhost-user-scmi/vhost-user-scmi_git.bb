@@ -10,8 +10,8 @@ SYSTEMD_SERVICE:${PN}-lvgvm:append:sa8775-flex = " vhost-user-scmi-lv.service"
 
 DEPENDS += "safelinux-cfg-modules vhost-user-lib"
 
-SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/vhost-user-scmi/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/vhost-user-scmi;usehead=1"
-SRCREV = "${AUTOREV}"
+SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/vhost-user-scmi.git;branch=vhost-user-scmi.lnx.1.0.r15-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/vhost-user-scmi"
+SRCREV = "83f6d63a2cc19efde3080bca579dc00de74a2de1"
 
 S = "${WORKDIR}/vendor/qcom/opensource/vhost-user-scmi"
 

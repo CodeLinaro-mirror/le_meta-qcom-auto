@@ -1,0 +1,272 @@
+From 7fc8f29fe4c49af0ff7718fb0685636ba465eb5b Mon Sep 17 00:00:00 2001
+From: Yuvaraj Ranganathan <yrangana@qti.qualcomm.com>
+Date: Mon, 29 Sep 2025 11:49:12 +0530
+Subject: [PATCH] PENDING: firmware: qcom-scm: Add new lock and selectively
+ skip mutex for some SMC calls
+
+Currently SMCInvoke call parallelization is supported with wait queue
+and similar support is not enabled for the PIL subsystem calls. With
+the existing global mutex lock, there is a possibility that it
+could result into a deadlock when SMCInvoke and smc call go to
+firmware in the same order and both wait on same WAITQ in firmware.
+To serialize the calls, mutex lock is made applicable only to
+SCM calls that are not marked with "skip_mutex".
+
+SCM calls that are marked with "skip_mutex" set to true are expected to
+sleep long-term, so no need of relinquish the global SCM mutex lock before
+sleeping from WAITQ_SLEEP effects so that other SCM calls may go through.
+
+This is to support firmware versions that enable the ADCI
+(Arbitrary Destination Callback Invocations) feature. The firmware is
+deemed to have support to handle multiple SCM calls only if it can
+support at least two of them simultaneously.
+
+Change-Id: I9cf00301361d1a0817507f8fa9cdda328f672e42
+Signed-off-by: Yuvaraj Ranganathan <yrangana@qti.qualcomm.com>
+---
+ drivers/firmware/qcom_scm-legacy.c |  5 ++--
+ drivers/firmware/qcom_scm-smc.c    | 21 ++++++++++++-----
+ drivers/firmware/qcom_scm.c        | 37 ++++++++++++++++++++++++++++++
+ drivers/firmware/qcom_scm.h        |  7 ++++++
+ drivers/firmware/qcom_scm_addon.c  |  3 +++
+ 5 files changed, 64 insertions(+), 9 deletions(-)
+
+diff --git a/drivers/firmware/qcom_scm-legacy.c b/drivers/firmware/qcom_scm-legacy.c
+index 029e6d117cb8..1cea9547ca12 100644
+--- a/drivers/firmware/qcom_scm-legacy.c
++++ b/drivers/firmware/qcom_scm-legacy.c
+@@ -15,7 +15,6 @@
+ 
+ #include "qcom_scm.h"
+ 
+-static DEFINE_MUTEX(qcom_scm_lock);
+ 
+ 
+ /**
+@@ -173,11 +172,11 @@ int scm_legacy_call(struct device *dev, const struct qcom_scm_desc *desc,
+ 	smc.args[1] = (unsigned long)&context_id;
+ 	smc.args[2] = cmd_phys;
+ 
+-	mutex_lock(&qcom_scm_lock);
++	down(&qcom_scm_sem_lock);
+ 	__scm_legacy_do(&smc, &smc_res);
+ 	if (smc_res.a0)
+ 		ret = qcom_scm_remap_error(smc_res.a0);
+-	mutex_unlock(&qcom_scm_lock);
++	up(&qcom_scm_sem_lock);
+ 	if (ret)
+ 		goto out;
+ 
+diff --git a/drivers/firmware/qcom_scm-smc.c b/drivers/firmware/qcom_scm-smc.c
+index bccf417b895c..1674dde1e349 100644
+--- a/drivers/firmware/qcom_scm-smc.c
++++ b/drivers/firmware/qcom_scm-smc.c
+@@ -106,7 +106,7 @@ int scm_get_wq_ctx(u32 *wq_ctx, u32 *flags, u32 *more_pending)
+ 	(res->a0 == QCOM_SCM_WAITQ_SLEEP || res->a0 == QCOM_SCM_WAITQ_WAKE)
+ 
+ static int __scm_smc_do_quirk_handle_waitq(struct device *dev, struct arm_smccc_args *args,
+-					   struct arm_smccc_res *res)
++					   struct arm_smccc_res *res, bool skip_mutex)
+ {
+ 	int ret;
+ 	u32 wq_ctx, smc_call_ctx;
+@@ -144,9 +145,10 @@ static int __scm_smc_do_quirk_handle_waitq(struct device *dev, struct arm_smccc_
+ }
+ 
+ static int __scm_smc_do(struct device *dev, struct arm_smccc_args *smc,
+-			struct arm_smccc_res *res, bool atomic)
++			struct arm_smccc_res *res, bool atomic, bool desc_skip_mutex)
+ {
+ 	int ret, retry_count = 0;
++	bool skip_mutex = desc_skip_mutex && fw_supports_skip_mutex(dev);
+ 
+ 	if (atomic) {
+ 		__scm_smc_do_quirk(smc, res);
+@@ -154,11 +156,17 @@ static int __scm_smc_do(struct device *dev, struct arm_smccc_args *smc,
+ 	}
+ 
+ 	do {
+-		mutex_lock(&qcom_scm_lock);
++		if(!skip_mutex)
++			mutex_lock(&qcom_scm_lock);
++
++		down(&qcom_scm_sem_lock);
++
++		ret = __scm_smc_do_quirk_handle_waitq(dev, smc, res, skip_mutex);
+ 
+-		ret = __scm_smc_do_quirk_handle_waitq(dev, smc, res);
++		up(&qcom_scm_sem_lock);
+ 
+-		mutex_unlock(&qcom_scm_lock);
++		if(!skip_mutex)
++			mutex_unlock(&qcom_scm_lock);
+ 
+ 		if (ret)
+ 			return ret;
+@@ -186,6 +194,7 @@ int __scm_smc_call(struct device *dev, const struct qcom_scm_desc *desc,
+ 	u32 smccc_call_type = atomic ? ARM_SMCCC_FAST_CALL : ARM_SMCCC_STD_CALL;
+ 	u32 qcom_smccc_convention = (qcom_convention == SMC_CONVENTION_ARM_32) ?
+ 				    ARM_SMCCC_SMC_32 : ARM_SMCCC_SMC_64;
++	bool desc_skip_mutex = desc->skip_mutex;
+ 	struct arm_smccc_res smc_res;
+ 	struct arm_smccc_args smc = {0};
+ 
+@@ -222,7 +231,7 @@ int __scm_smc_call(struct device *dev, const struct qcom_scm_desc *desc,
+ 		smc.args[SCM_SMC_LAST_REG_IDX] = qcom_tzmem_to_phys(args_virt);
+ 	}
+ 
+-	ret = __scm_smc_do(dev, &smc, &smc_res, atomic);
++	ret = __scm_smc_do(dev, &smc, &smc_res, atomic, desc_skip_mutex);
+ 
+ 	if (ret) {
+ 		trace_scm_smc_done(ret, smc.args[0], &smc_res);
+diff --git a/drivers/firmware/qcom_scm.c b/drivers/firmware/qcom_scm.c
+index 57b9d05f9aa4..0676299d6713 100644
+--- a/drivers/firmware/qcom_scm.c
++++ b/drivers/firmware/qcom_scm.c
+@@ -43,17 +43,21 @@ struct qcom_scm {
+ 	struct clk *bus_clk;
+ 	struct icc_path *path;
+ 	struct xarray waitq;
++	bool fw_supports_skip_mutex;
+ 	struct reset_controller_dev reset;
+ 
+ 	/* control access to the interconnect path */
+ 	struct mutex scm_bw_lock;
+ 	int scm_vote_count;
+ 
++	u64 call_ctx_cnt;
+ 	u64 dload_mode_addr;
+ 
+ 	struct qcom_tzmem_pool *mempool;
+ };
+ 
++DEFINE_SEMAPHORE(qcom_scm_sem_lock, 1);
++
+ enum qcom_scm_rsctable_resp_type {
+ 	RSCTABLE_BUFFER_NOT_SUFFICIENT		= 20,
+ };
+@@ -1769,6 +1773,37 @@ bool qcom_scm_is_available(void)
+ }
+ EXPORT_SYMBOL_GPL(qcom_scm_is_available);
+ 
++#define MIN_SIMULTANEOUS_REQS 2
++static void __check_fw_for_skip_mutex_support(void)
++{
++	int ret, num_simultaneous_requests;
++	struct qcom_scm_desc desc = {
++		.svc = QCOM_SCM_SVC_WAITQ,
++		.cmd = QCOM_SCM_GET_WQ_QUEUE_INFO,
++		.owner = ARM_SMCCC_OWNER_SIP,
++	};
++	struct qcom_scm_res res;
++
++	ret = qcom_scm_call_atomic(__scm->dev, &desc, &res);
++	if (ret) {
++		dev_err(__scm->dev, "Failed to determine skip mutex fw support\n");
++		return;
++	}
++
++	num_simultaneous_requests = res.result[0] & 0xFF;
++
++	__scm->call_ctx_cnt = res.result[0] & 0xFF;
++
++	__scm->fw_supports_skip_mutex = (num_simultaneous_requests >= MIN_SIMULTANEOUS_REQS);
++}
++
++bool fw_supports_skip_mutex(struct device *dev)
++{
++	struct qcom_scm *scm = dev_get_drvdata(dev);
++
++	return scm->fw_supports_skip_mutex;
++}
++
+ static struct completion *qcom_scm_get_completion(struct qcom_scm *scm, u32 wq_ctx)
+ {
+ 	struct completion *wq;
+@@ -1976,6 +2011,8 @@ static int qcom_scm_probe(struct platform_device *pdev)
+ 	}
+ 
+ 	__get_convention();
++	__check_fw_for_skip_mutex_support();
++	sema_init(&qcom_scm_sem_lock, (int)__scm->call_ctx_cnt);
+ 
+ 	/*
+ 	 * If "download mode" is requested, from this point on warmboot
+diff --git a/drivers/firmware/qcom_scm.h b/drivers/firmware/qcom_scm.h
+index a3138923e2a7..2c7dab33e25c 100644
+--- a/drivers/firmware/qcom_scm.h
++++ b/drivers/firmware/qcom_scm.h
+@@ -5,6 +5,8 @@
+ #ifndef __QCOM_SCM_INT_H
+ #define __QCOM_SCM_INT_H
+ 
++#include <linux/semaphore.h>
++
+ struct qcom_tzmem_pool;
+ 
+ enum qcom_scm_convention {
+@@ -15,6 +17,7 @@ enum qcom_scm_convention {
+ };
+ 
+ extern enum qcom_scm_convention qcom_scm_convention;
++extern struct semaphore qcom_scm_sem_lock;
+ 
+ #define MAX_QCOM_SCM_ARGS 10
+ #define MAX_QCOM_SCM_RETS 3
+@@ -53,6 +56,7 @@ struct qcom_scm_desc {
+ 	u32 arginfo;
+ 	u64 args[MAX_QCOM_SCM_ARGS];
+ 	u32 owner;
++	bool skip_mutex;
+ };
+ 
+ /**
+@@ -67,6 +71,8 @@ struct qcom_scm;
+ int qcom_scm_wait_for_wq_completion(struct qcom_scm *scm, u32 wq_ctx);
+ int qcom_scm_waitq_wakeup(struct qcom_scm *scm, unsigned int wq_ctx);
+ int scm_get_wq_ctx(u32 *wq_ctx, u32 *flags, u32 *more_pending);
++bool qcom_scm_multi_call_allow(struct device *dev, bool multicall_allowed);
++bool fw_supports_skip_mutex(struct device *dev);
+ 
+ #define SCM_SMC_FNID(s, c)	((((s) & 0xFF) << 8) | ((c) & 0xFF))
+ extern int __scm_smc_call(struct device *dev, const struct qcom_scm_desc *desc,
+@@ -152,6 +158,7 @@ struct qcom_tzmem_pool *qcom_scm_get_tzmem_pool(void);
+ #define QCOM_SCM_WAITQ_ACK			0x01
+ #define QCOM_SCM_WAITQ_RESUME			0x02
+ #define QCOM_SCM_WAITQ_GET_WQ_CTX		0x03
++#define QCOM_SCM_GET_WQ_QUEUE_INFO		0x04
+ 
+ /* common error codes */
+ #define QCOM_SCM_V2_EBUSY	-12
+diff --git a/drivers/firmware/qcom_scm_addon.c b/drivers/firmware/qcom_scm_addon.c
+index cd08822c096f..d4104ef4ebe1 100644
+--- a/drivers/firmware/qcom_scm_addon.c
++++ b/drivers/firmware/qcom_scm_addon.c
+@@ -394,6 +394,7 @@ int qcom_scm_invoke_smc(phys_addr_t in_buf, size_t in_buf_size,
+ 		.args[3] = out_buf_size,
+ 		.arginfo = QCOM_SCM_ARGS(4, QCOM_SCM_RW, QCOM_SCM_VAL,
+ 					QCOM_SCM_RW, QCOM_SCM_VAL),
++		.skip_mutex = true,
+ 	};
+ 	struct qcom_scm_res res;
+ 
+@@ -427,6 +428,7 @@ int qcom_scm_invoke_smc_legacy(phys_addr_t in_buf, size_t in_buf_size,
+ 		.args[3] = out_buf_size,
+ 		.arginfo = QCOM_SCM_ARGS(4, QCOM_SCM_RW, QCOM_SCM_VAL,
+ 					QCOM_SCM_RW, QCOM_SCM_VAL),
++		.skip_mutex = true,
+ 	};
+ 
+ 	struct qcom_scm_res res;
+@@ -458,6 +460,7 @@ int qcom_scm_invoke_callback_response(phys_addr_t out_buf,
+ 		.args[0] = out_buf,
+ 		.args[1] = out_buf_size,
+ 		.arginfo = QCOM_SCM_ARGS(2, QCOM_SCM_RW, QCOM_SCM_VAL),
++		.skip_mutex = true,
+ 	};
+ 	struct qcom_scm_res res;
+ 
+-- 
+2.34.1
+

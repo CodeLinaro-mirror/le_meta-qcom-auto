@@ -22,8 +22,8 @@ DEPENDS += "\
     video-driver \
 "
 
-SRC_URI = "${PATH_TO_REPO}/gstreamer/gst-plugins-qti-oss/.git;protocol=${PROTO};destsuffix=gstreamer/gst-plugins-qti-oss;usehead=1"
-SRCREV = "${AUTOREV}"
+SRC_URI = "${CLO_LA_GIT}/platform/vendor/qcom-opensource/gst-plugins-qti-oss.git;branch=gst-auto-tools-plugins.4.0.r14-rel;protocol=${OSS_PROTO};destsuffix=gstreamer/gst-plugins-qti-oss"
+SRCREV = "9ebed5a9e5cfa1613a84db38db650a4e87bc80cf"
 S = "${WORKDIR}/gstreamer/gst-plugins-qti-oss/gst-plugin-vidc"
 
 inherit meson pkgconfig

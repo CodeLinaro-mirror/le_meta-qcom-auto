@@ -10,8 +10,8 @@ DEPENDS += "libcutils libpcre libsparse"
 
 PR = "r1"
 
-SRC_URI = "${PATH_TO_REPO}/system/extras/.git;protocol=${PROTO};destsuffix=system/extras;usehead=1"
-SRCREV = "${AUTOREV}"
+SRC_URI = "${CLO_LE_GIT}/platform/system/extras.git;branch=lv-blast.lnx.1.1.r63-rel;protocol=${OSS_PROTO};destsuffix=system/extras"
+SRCREV = "3e001cf18d002daeed49334f0c10dc73988898fe"
 
 S = "${WORKDIR}/system/extras/ext4_utils"
 

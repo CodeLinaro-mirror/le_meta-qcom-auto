@@ -1,0 +1,44 @@
+From 598f9a62b75e352733e70471e1cebabdb78fb4d3 Mon Sep 17 00:00:00 2001
+From: Ram Kumar Dwivedi <rdwivedi@qti.qualcomm.com>
+Date: Thu, 16 Apr 2026 16:40:02 +0530
+Subject: [PATCH] PENDING: ufs: ufs-qcom: Enable UFS Temperature Monitoring
+
+Enable CONFIG_SCSI_UFS_HWMON to support UFS hardware monitoring and
+set the UFSHCD_CAP_TEMP_NOTIF capability to expose temperature readings
+via the hwmon interface.
+
+Change-Id: I5a6beb15c1a80fd45f8acddf061c44fc495f9e77
+Signed-off-by: Ram Kumar Dwivedi <rdwivedi@qti.qualcomm.com>
+---
+ arch/arm64/configs/qcom_gen4auto.config | 1 +
+ drivers/ufs/host/ufs-qcom.c             | 2 ++
+ 2 files changed, 3 insertions(+)
+
+diff --git a/arch/arm64/configs/qcom_gen4auto.config b/arch/arm64/configs/qcom_gen4auto.config
+index 4e69620b66ac..81edcb3b559e 100644
+--- a/arch/arm64/configs/qcom_gen4auto.config
++++ b/arch/arm64/configs/qcom_gen4auto.config
+@@ -168,6 +168,7 @@ CONFIG_QCOM_DMABUF_HEAPS_CARVEOUT=y
+ CONFIG_QCOM_DMABUF_HEAPS_CARVEOUT_DEFER_ZERO=y
+ CONFIG_VIRTIO_IOMMU=y
+ CONFIG_ARM_SMMU_V3_QCOM_VIRTIO=y
++CONFIG_SCSI_UFS_HWMON=y
+ # CONFIG_WLAN_VENDOR_ADMTEK is not set
+ # CONFIG_WLAN_VENDOR_ATH is not set
+ # CONFIG_WLAN_VENDOR_ATMEL is not set
+diff --git a/drivers/ufs/host/ufs-qcom.c b/drivers/ufs/host/ufs-qcom.c
+index be2279fc3362..5ceadf5a5ade 100644
+--- a/drivers/ufs/host/ufs-qcom.c
++++ b/drivers/ufs/host/ufs-qcom.c
+@@ -1606,6 +1606,8 @@ static int ufs_qcom_fmr_init(struct ufs_hba *hba)
+ 	hba->quirks &= ~UFSHCD_QUIRK_REINIT_AFTER_MAX_GEAR_SWITCH;
+ 
+ 	hba->caps |= UFSHCD_CAP_WB_EN;
++	hba->caps |= UFSHCD_CAP_TEMP_NOTIF;
++
+ 	ufs_qcom_set_host_params(hba);
+ 
+ 	return 0;
+-- 
+2.34.1
+

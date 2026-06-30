@@ -1,0 +1,111 @@
+From b01c0c255432a1b51d0013e55bf69e32af1cbb6e Mon Sep 17 00:00:00 2001
+From: Rama Krishna Phani A <ramkri@qti.qualcomm.com>
+Date: Thu, 14 May 2026 18:56:36 +0530
+Subject: [PATCH] PCIe: Add LTSSM state monitoring via debugfs
+
+Add support for monitoring PCIe Link Training and Status State Machine
+(LTSSM) state through debugfs interface. This provides visibility into
+the current link state.
+
+Change-Id: I9a4e3715c8920ddb1b3737cc20c48d8fa263fd48
+Signed-off-by: Rama Krishna Phani A <ramkri@qti.qualcomm.com>
+---
+ drivers/pci/controller/pcie-qcom-ecam.c | 69 +++++++++++++++++++++++++
+ 1 file changed, 69 insertions(+)
+
+diff --git a/drivers/pci/controller/pcie-qcom-ecam.c b/drivers/pci/controller/pcie-qcom-ecam.c
+index 0b2bada7dad0..66f3c0733bce 100644
+--- a/drivers/pci/controller/pcie-qcom-ecam.c
++++ b/drivers/pci/controller/pcie-qcom-ecam.c
+@@ -63,6 +63,9 @@
+ #define PARF_INT_ALL_5_STATUS			0x2dd4
+ #define PARF_CFG_SAFETY_INT_MASK_CTRL		0x2c60
+ 
++/* PARF LTSSM Register */
++#define PCIE20_PARF_LTSSM			0x1b0
++#define PCIE_LTSSM_STATE_MASK			0x3f
+ 
+ #define PCIE_AER_EXT_CAP_ID			0x01
+ #define PCI_EXT_CAP_RASDP_ID			0x0b
+@@ -1612,6 +1615,70 @@ static int qcom_pcie_link_transition_count(struct seq_file *s, void *data)
+ 	return 0;
+ }
+ 
++static const char *ltssm_str(u32 state)
++{
++	switch (state) {
++	case 0x00: return "DETECT_QUIET";
++	case 0x01: return "DETECT_ACT";
++	case 0x02: return "POLL_ACTIVE";
++	case 0x03: return "POLL_COMPLIANCE";
++	case 0x04: return "POLL_CONFIG";
++	case 0x05: return "PRE_DETECT_QUIET";
++	case 0x06: return "DETECT_WAIT";
++	case 0x07: return "CFG_LINKWD_START";
++	case 0x08: return "CFG_LINKWD_ACCEPT";
++	case 0x09: return "CFG_LANENUM_WAIT";
++	case 0x0a: return "CFG_LANENUM_ACCEPT";
++	case 0x0b: return "CFG_COMPLETE";
++	case 0x0c: return "CFG_IDLE";
++	case 0x0d: return "RCVRY_LOCK";
++	case 0x0e: return "RCVRY_SPEED";
++	case 0x0f: return "RCVRY_RCVRCFG";
++	case 0x10: return "RCVRY_IDLE";
++	case 0x11: return "L0";
++	case 0x12: return "L0S";
++	case 0x13: return "L123_SEND_EIDLE";
++	case 0x14: return "L1_IDLE";
++	case 0x15: return "L2_IDLE";
++	case 0x16: return "L2_WAKE";
++	case 0x17: return "DISABLED_ENTRY";
++	case 0x18: return "DISABLED_IDLE";
++	case 0x19: return "DISABLED";
++	case 0x1a: return "LPBK_ENTRY";
++	case 0x1b: return "LPBK_ACTIVE";
++	case 0x1c: return "LPBK_EXIT";
++	case 0x1d: return "LPBK_EXIT_TIMEOUT";
++	case 0x1e: return "HOT_RESET_ENTRY";
++	case 0x1f: return "HOT_RESET";
++	case 0x20: return "RCVRY_EQ0";
++	case 0x21: return "RCVRY_EQ1";
++	case 0x22: return "RCVRY_EQ2";
++	case 0x23: return "RCVRY_EQ3";
++	default: return "UNKNOWN";
++	}
++}
++
++static int qcom_pcie_ltssm_state_show(struct seq_file *s, void *data)
++{
++	struct qcom_pcie *pcie = (struct qcom_pcie *)dev_get_drvdata(s->private);
++	u32 ltssm_state;
++
++	/* Check if PARF region is available */
++	if (IS_ERR_OR_NULL(pcie->parf)) {
++		seq_printf(s, "PARF region not available\n");
++		return 0;
++	}
++
++	/* Read LTSSM state from PARF register */
++	ltssm_state = readl_relaxed(pcie->parf + PCIE20_PARF_LTSSM) &
++		      PCIE_LTSSM_STATE_MASK;
++
++	seq_printf(s, "Current LTSSM State: %s (0x%02x)\n",
++		   ltssm_str(ltssm_state), ltssm_state);
++
++	return 0;
++}
++
+ static void qcom_pcie_init_debugfs(struct qcom_pcie *pcie)
+ {
+ 	struct device *dev = pcie->dev;
+@@ -1624,6 +1691,8 @@ static void qcom_pcie_init_debugfs(struct qcom_pcie *pcie)
+ 	pcie->debugfs = debugfs_create_dir(name, NULL);
+ 	debugfs_create_devm_seqfile(dev, "link_transition_count", pcie->debugfs,
+ 				    qcom_pcie_link_transition_count);
++	debugfs_create_devm_seqfile(dev, "ltssm_state", pcie->debugfs,
++				    qcom_pcie_ltssm_state_show);
+ }
+ 
+ static int qcom_pcie_ecam_probe(struct platform_device *pdev)
+--
+

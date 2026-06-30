@@ -1,0 +1,1060 @@
+From e1c70409578ea12037afd1180ba214e67757a8f7 Mon Sep 17 00:00:00 2001
+From: Aniket Randive <arandive@qti.qualcomm.com>
+Date: Thu, 5 Feb 2026 14:08:06 +0530
+Subject: [PATCH] ccu: Add FUSA error handling and recovery support for CCU QUP
+
+Add support for Functional Safety (FUSA) features in the QUP software
+driver, including ECC, parity checks, and functional error detection
+to meet automotive safety requirements.
+
+Map FUSA fault aggregator registers for QUP instances using ioremap.
+Enable FUSA block by configuring ECC and FUSA IRQ hardware registers
+during initialization and power collapse scenarios.
+
+Expose FUSA_IRQ_STATUS command to retrieve FUSA IRQ status for a given
+QUP instance. Check all FUSA IRQ sets and return a 32-bit recovery mask
+indicating required resets for SE and GPII nodes. Update CCU QUP config
+structure to support QUP instance identification.
+
+Report missing SE errors to the GENI I2C driver to improve error
+visibility and handling.
+
+Add synchronous logic to coordinate GPII reset requests with FUSA IRQ
+and QUP functional reset operations. Track GPII state to prevent
+repeated resets and ensure correct synchronization.
+
+Change-Id: I9749feeb9f0ad9e06082f92604b741fbeee3a409
+Signed-off-by: Maramaina Naresh <mnaresh@qti.qualcomm.com>
+Signed-off-by: Aniket Randive <arandive@qti.qualcomm.com>
+---
+ drivers/dma/qcom/gpi.c                |  81 +++++++++
+ drivers/i2c/busses/i2c-qcom-geni.c    | 202 +++++++++++++++++++---
+ drivers/soc/qcom/qcom_ccu_qup.c       | 236 +++++++++++++++++++++++++-
+ include/linux/dma/qcom-gpi-dma.h      |   6 +
+ include/linux/soc/qcom/geni-se.h      |  10 ++
+ include/linux/soc/qcom/qcom_ccu_qup.h |  82 ++++++++-
+ include/uapi/linux/ccu_qup/ccu_qup.h  |   6 +-
+ 7 files changed, 589 insertions(+), 34 deletions(-)
+
+diff --git a/drivers/dma/qcom/gpi.c b/drivers/dma/qcom/gpi.c
+index f7a6a6c52f43..2bfab3612899 100644
+--- a/drivers/dma/qcom/gpi.c
++++ b/drivers/dma/qcom/gpi.c
+@@ -1399,6 +1399,70 @@ static void gpi_process_imed_data_event(struct gchan *gchan,
+ 	gpi_desc = NULL;
+ }
+ 
++/* processing transfer qup notification events */
++static void gpi_process_qup_notif_event(struct gchan *gchan,
++					struct qup_notif_event *notif_event)
++{
++	struct gpii *gpii = gchan->gpii;
++	struct virt_dma_desc *vd;
++	struct gpi_desc *gpi_desc;
++	struct dmaengine_result result;
++	unsigned long flags;
++
++	/*
++	 * If channel not active don't process event
++	 */
++	if (unlikely(gchan->pm_state != ACTIVE_STATE)) {
++		GPI_ERR_LOG(LOG_LVL_ERROR, gpii->gpi_dev->dev,
++			    "skipping processing event because ch @ %s state\n",
++			    TO_GPI_PM_STR(gchan->pm_state));
++		return;
++	}
++
++	spin_lock_irqsave(&gchan->vc.lock, flags);
++	vd = vchan_next_desc(&gchan->vc);
++	if (!vd) {
++		struct gpi_ere *gpi_ere;
++
++		spin_unlock_irqrestore(&gchan->vc.lock, flags);
++		GPI_ERR_LOG(LOG_LVL_ERROR, gpii->gpi_dev->dev,
++			    "Event without a pending descriptor!\n");
++		gpi_ere = (struct gpi_ere *)notif_event;
++		GPI_ERR_LOG(LOG_LVL_ERROR, gpii->gpi_dev->dev,
++			    "Event: %08x %08x %08x %08x\n",
++			    gpi_ere->dword[0], gpi_ere->dword[1],
++			    gpi_ere->dword[2], gpi_ere->dword[3]);
++		return;
++	}
++
++	gpi_desc = to_gpi_desc(vd);
++	spin_unlock_irqrestore(&gchan->vc.lock, flags);
++
++	result.result = DMA_TRANS_WRITE_FAILED;
++
++	result.residue = 0;
++	result.gpii_id = gpii->gpii_id;
++	GPI_DBG_LOG(LOG_LVL_VERBOSE, gpii->gpi_dev->dev,
++		    "GPII:%d QUP notif_event status:%d\n", gpii->gpii_id, notif_event->status);
++
++	dma_cookie_complete(&vd->tx);
++	if (gchan->protocol == QCOM_GPI_I2C) {
++		struct dmaengine_desc_callback cb;
++		struct gpi_i2c_config *i2c;
++
++		dmaengine_desc_get_callback(&vd->tx, &cb);
++		i2c = cb.callback_param;
++		i2c->status = notif_event->status;
++		dmaengine_desc_callback_invoke(&cb, &result);
++	}
++
++	spin_lock_irqsave(&gchan->vc.lock, flags);
++	list_del(&vd->node);
++	spin_unlock_irqrestore(&gchan->vc.lock, flags);
++	kfree(gpi_desc);
++	gpi_desc = NULL;
++}
++
+ /* processing transfer completion events */
+ static void gpi_process_xfer_compl_event(struct gchan *gchan,
+ 					 struct xfer_compl_event *compl_event)
+@@ -1543,6 +1607,8 @@ static void gpi_process_events(struct gpii *gpii)
+ 				gchan = &gpii->gchan[chid];
+ 				GPI_DBG_LOG(LOG_LVL_INFO, gpii->gpi_dev->dev,
+ 					    "GPII:%d QUP_NOTIF_EV_TYPE\n", gpii->gpii_id);
++				gpi_process_qup_notif_event(gchan,
++							    &gpi_event->qup_notif_event);
+ 				break;
+ 			case CCU_ERROR_NOTIFICATION_EV_TYPE:
+ 				GPI_DBG_LOG(LOG_LVL_INFO, gpii->gpi_dev->dev,
+@@ -2180,6 +2246,21 @@ static int gpi_pause(struct dma_chan *chan)
+ 
+ 	mutex_lock(&gpii->ctrl_lock);
+ 
++	/*
++	 * Mark channel as DECONFIGURED in software only; skip hardware teardown.
++	 * Used during CCU IP reset when hardware is already in a bad or unreliable
++	 * state, so HW deconfigure is intentionally avoided.
++	 */
++	if (gpi_ctrl && gpi_ctrl->cmd == QCOM_GPI_CHANNEL_SOFT_DECONFIGURE) {
++		GPI_DBG_LOG(LOG_LVL_INFO, gpii->gpi_dev->dev,
++			    "Marked GPII:%d channel as soft DECONFIGURE\n", gpii->gpii_id);
++		write_lock_irq(&gpii->pm_lock);
++		gpii->pm_state = PAUSE_STATE;
++		write_unlock_irq(&gpii->pm_lock);
++		mutex_unlock(&gpii->ctrl_lock);
++		return 0;
++	}
++
+ 	/*
+ 	 * pause/resume are per gpii not per channel, so
+ 	 * client needs to call pause only once
+diff --git a/drivers/i2c/busses/i2c-qcom-geni.c b/drivers/i2c/busses/i2c-qcom-geni.c
+index d697daea309c..2ae0b7d05caa 100644
+--- a/drivers/i2c/busses/i2c-qcom-geni.c
++++ b/drivers/i2c/busses/i2c-qcom-geni.c
+@@ -162,8 +162,28 @@ struct ccu_frame_info {
+ 	struct ccu_i2c_async_read_msg_info async_read_msg_info_arr[I2C_RDWR_IOCTL_MAX_MSGS];
+ };
+ 
+-/* struct ccu_gpii_info - represents the GPII information
++/*
++ * enum gpii_state - State of the GPII channel
++ * @GPII_IDLE: No activity
++ * @GPII_ACTIVE: Transfer in progress
++ * @GPII_RESET_IN_PROGRESS: Reset operation in progress
++ * @GPII_RESET_DONE: Reset operation completed
++ *
++ * This enum defines the possible states of the GPII interface during
++ * its lifecycle, including idle, active transfer, and reset phases.
++ */
++enum gpii_state {
++	GPII_IDLE = 1,
++	GPII_ACTIVE,
++	GPII_RESET_IN_PROGRESS,
++	GPII_RESET_DONE,
++};
++
++/*
++ * struct ccu_gpii_info - represents the GPII information
+  * @frame: points to the ccu_frame_info structure
++ * @state: current state of GPII
++ * @state_lock: mutex to protect GPII state transitions and related operations
+  * @frame_usage_bitmap: bitmap indicating used (1) or free (0) memory frames
+  * @released_cnt: indicate the count of xfer completed frames
+  * @recvd_cnt: indicate the count of received frames
+@@ -173,6 +193,9 @@ struct ccu_frame_info {
+  */
+ struct ccu_gpii_info {
+ 	struct ccu_frame_info frame[CCU_MAX_NUM_FRAMES];
++	enum gpii_state state;
++	/* mutex to protect GPII state transitions and related operations */
++	struct mutex state_lock;
+ 	unsigned long frame_usage_bitmap;
+ 	atomic_t released_cnt;
+ 	u8 recvd_cnt;
+@@ -214,6 +237,7 @@ struct ccu_msg_config {
+  * @inter_delay: inter transfer delay
+  * @gpii: handle for struct ccu_gpii_info
+  * @result: handle for struct ccu_xfer_result
++ * @ip_reset_in_progress: indicates if CCU IP reset is in progress
+  */
+ struct ccu_i2c_config {
+ 	struct ccu_msg_config msg_cfg;
+@@ -223,6 +247,7 @@ struct ccu_i2c_config {
+ 	u16 inter_delay;
+ 	struct ccu_gpii_info gpii[CCU_MAX_GPII];
+ 	struct ccu_xfer_result result;
++	atomic_t *ip_reset_in_progress;
+ };
+ 
+ struct geni_i2c_dev {
+@@ -316,6 +341,7 @@ static const struct geni_i2c_clk_fld geni_ccu_i2c_clk_map[] = {
+ static int setup_gpi_dma(struct geni_i2c_dev *gi2c, int idx);
+ static void release_gpi_dma(struct geni_i2c_dev *gi2c);
+ static void i2c_gpi_cb_result(void *cb, const struct dmaengine_result *result);
++static int geni_i2c_dmaengine_terminate_sync(struct geni_i2c_dev *gi2c, u8 idx);
+ 
+ static int log_level = -1;
+ static ssize_t log_level_show(struct device *dev,
+@@ -373,16 +399,53 @@ static void qcom_geni_i2c_conf(struct geni_i2c_dev *gi2c)
+ 	writel_relaxed(val, gi2c->se.base + SE_I2C_SCL_COUNTERS);
+ }
+ 
++/*
++ * geni_i2c_ccu_fusa_ecc_setup () - Setup FUSA ECC logger enablement
++ * @gi2c: pointer to i2c dev structure
++ *
++ * This function clears ECC-related FIFOs and counters, then enables them
++ * to activate ECC logger enblement functionality for the I2C CCU.
++ *
++ * Return none.
++ */
++void geni_i2c_ccu_fusa_ecc_setup(struct geni_i2c_dev *gi2c)
++{
++	u32 val;
++
++	writel(ECC_FIFO_CLEAR, gi2c->se.base + SE_GENI_ECC_CLEAR_FIFO_0);
++	writel(ECC_FIFO_ENABLE, gi2c->se.base + SE_GENI_ECC_CLEAR_FIFO_0);
++	writel(ECC_FIFO_CLEAR, gi2c->se.base + SE_GENI_ECC_CLEAR_FIFO_1);
++	writel(ECC_FIFO_ENABLE, gi2c->se.base + SE_GENI_ECC_CLEAR_FIFO_1);
++	writel(ECC_IRQ_SEC_ENABLE, gi2c->se.base + SE_GENI_ECC_IRQ_SEC_0);
++	writel(ECC_IRQ_SEC_ENABLE, gi2c->se.base + SE_GENI_ECC_IRQ_SEC_1);
++	writel(ECC_SEC_DED_AED_COUNTER_CLEAR, gi2c->se.base + SE_GENI_ECC_CLEAR_COUNTER_0);
++	writel(ECC_SEC_DED_AED_COUNTER_ENABLE, gi2c->se.base + SE_GENI_ECC_CLEAR_COUNTER_0);
++	writel(ECC_SEC_DED_AED_COUNTER_CLEAR, gi2c->se.base + SE_GENI_ECC_CLEAR_COUNTER_1);
++	writel(ECC_SEC_DED_AED_COUNTER_ENABLE, gi2c->se.base + SE_GENI_ECC_CLEAR_COUNTER_1);
++
++	val = readl_relaxed(gi2c->se.base + SE_GENI_CFG_REG67);
++	val &= ~(M_AUTO_OPCODE_CANCEL);
++	writel_relaxed(val, gi2c->se.base + SE_GENI_CFG_REG67);
++	val = readl_relaxed(gi2c->se.base + SE_GENI_CFG_REG67);
++
++	/* Ensure all relaxed MMIO writes are flushed and CFG_REG67 read-back is complete */
++	mb();
++	I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev,
++		    "%s: done, CFG_REG67:0x%x\n", __func__, val);
++}
++
+ /*
+  * geni_i2c_power_on_off - This function is used to turn on or off all the clock
+  *                         and it will free the GPII resources in suspend path and
+  *                         allocate the resources in resume path.
+  * @adap: i2c adapter handle
+  * @suspend: true in case of suspend or false
++ * @ip_reset_in_progress: indicates if CCU IP reset is in progress
+  *
+  * Return 0 on success or error on failure
+  */
+-static int geni_i2c_power_on_off(struct i2c_adapter *adap, bool suspend)
++static int geni_i2c_power_on_off(struct i2c_adapter *adap, bool suspend,
++				 atomic_t *ip_reset_in_progress)
+ {
+ 	struct geni_i2c_dev *gi2c;
+ 	int ret, i;
+@@ -398,21 +461,30 @@ static int geni_i2c_power_on_off(struct i2c_adapter *adap, bool suspend)
+ 		}
+ 	}
+ 
+-	I2C_DBG_LOG(LOG_LVL_INFO, gi2c->se.dev, "%s: suspend:%d\n", __func__, suspend);
++	if (!gi2c->ccu->ip_reset_in_progress)
++		gi2c->ccu->ip_reset_in_progress = ip_reset_in_progress;
++
++	I2C_DBG_LOG(LOG_LVL_INFO, gi2c->se.dev,
++		    "%s: suspend:%d IP_RST:%d\n",
++		    __func__, suspend, atomic_read(ip_reset_in_progress));
+ 	if (suspend) {
+-		if (atomic_read(&gi2c->se.dev->power.usage_count) > 0) {
++		if (atomic_read(&gi2c->se.dev->power.usage_count) > 0 &&
++		    !atomic_read(ip_reset_in_progress)) {
+ 			I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev,
+-				    "Please retry, Device in Use. Usage_count: %d\n",
++				    "Please retry, Device in Use or IP reset in progress. Usage_count: %d\n",
+ 				    atomic_read(&gi2c->se.dev->power.usage_count));
+ 			return -EAGAIN;
+ 		}
+ 
+ 		for (i = 0; i < CCU_MAX_GPII; i++) {
+ 			if (gi2c->tx_c[i]) {
+-				gi2c->tx_gchan_ctrl.cmd = QCOM_GPI_CHANNEL_DECONFIGURE;
++				if (atomic_read(ip_reset_in_progress))
++					gi2c->tx_gchan_ctrl.cmd = QCOM_GPI_CHANNEL_SOFT_DECONFIGURE;
++				else
++					gi2c->tx_gchan_ctrl.cmd = QCOM_GPI_CHANNEL_DECONFIGURE;
+ 				gi2c->tx_c[i]->private = &gi2c->tx_gchan_ctrl;
+ 				ret = dmaengine_pause(gi2c->tx_c[i]);
+-				if (ret) {
++				if (ret && !atomic_read(ip_reset_in_progress)) {
+ 					I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "dmaengine_pause failed: ret:%d\n",
+ 						ret);
+ 					return -EAGAIN;
+@@ -434,6 +506,8 @@ static int geni_i2c_power_on_off(struct i2c_adapter *adap, bool suspend)
+ 				}
+ 			}
+ 		}
++		geni_i2c_ccu_fusa_ecc_setup(gi2c);
++
+ 	}
+ 
+ 	return 0;
+@@ -492,7 +566,7 @@ static int geni_i2c_gpi_send_bus_cmd(struct geni_i2c_dev *gi2c, u8 cmd)
+ 	if (!time_left) {
+ 		I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "%s: I2C timeout for cmd:%d\n", __func__, cmd);
+ 		gi2c->err = -ETIMEDOUT;
+-		dmaengine_terminate_sync(dma_chan);
++		geni_i2c_dmaengine_terminate_sync(gi2c, 0);
+ 	}
+ 
+ 	return gi2c->err;
+@@ -667,12 +741,49 @@ static int geni_i2c_configure_ccu_mode(struct i2c_adapter *adap, u8 gpii_no,
+ 	if (gi2c->rx_c[idx] && gi2c->tx_c[idx]) {
+ 		ccu_gpi_configure_mode(gi2c->tx_c[idx], mode, ch_type, trigger_type);
+ 		ccu_gpi_configure_mode(gi2c->rx_c[idx], mode, ch_type, trigger_type);
+-		dmaengine_terminate_sync(gi2c->tx_c[idx]);
++		geni_i2c_dmaengine_terminate_sync(gi2c, idx);
+ 	}
+ 
+ 	return 0;
+ }
+ 
++/*
++ * geni_i2c_dmaengine_terminate_sync - Wrap dmaengine_terminate_sync with GPII state synchronization
++ * @gi2c: GENI I2C device pointer
++ * @idx: GPII channel index
++ *
++ * Wrap dmaengine_terminate_sync for the specified GPII channel. For CCU QUP,
++ * acquire the GPII state mutex, check and update GPII state to avoid repeated resets,
++ * terminate DMA transfer, and mark reset done. Synchronize state transitions to ensure
++ * correct operation.
++ *
++ * Return: 0 if already reset, or result of dmaengine_terminate_sync.
++ */
++static int geni_i2c_dmaengine_terminate_sync(struct geni_i2c_dev *gi2c, u8 idx)
++{
++	int ret;
++
++	mutex_lock(&gi2c->ccu->gpii[idx].state_lock);
++
++	if (gi2c->ccu->gpii[idx].state == GPII_RESET_DONE ||
++	    gi2c->ccu->gpii[idx].state == GPII_IDLE) {
++		I2C_DBG_LOG(LOG_LVL_INFO, gi2c->se.dev, "Skipped GPII reset, idx:%d, state:%d\n",
++			    idx, gi2c->ccu->gpii[idx].state);
++		mutex_unlock(&gi2c->ccu->gpii[idx].state_lock);
++		return 0; /* Already reset */
++	}
++
++	gi2c->ccu->gpii[idx].state = GPII_RESET_IN_PROGRESS;
++
++	ret = dmaengine_terminate_sync(gi2c->tx_c[idx]);
++
++	gi2c->ccu->gpii[idx].state = GPII_RESET_DONE;
++
++	mutex_unlock(&gi2c->ccu->gpii[idx].state_lock);
++
++	return ret;
++}
++
+ /*
+  * geni_i2c_gpii_reset : Reset the GPII channel.
+  *
+@@ -706,12 +817,15 @@ static int geni_i2c_gpii_reset(struct i2c_adapter *adap, int gpii_no,
+ 				__func__, gpii_no);
+ 			return -EINVAL;
+ 		}
+-		if (gi2c->tx_c[idx])
++		if (gi2c->tx_c[idx]) {
++			mutex_lock(&gi2c->ccu->gpii[idx].state_lock);
+ 			ccu_gpi_set_premature_cancel_flag(gi2c->tx_c[idx]);
++			mutex_unlock(&gi2c->ccu->gpii[idx].state_lock);
++		}
+ 	}
+ 
+ 	if (gi2c->tx_c[idx]) {
+-		ret = dmaengine_terminate_sync(gi2c->tx_c[idx]);
++		ret = geni_i2c_dmaengine_terminate_sync(gi2c, idx);
+ 		if (ret) {
+ 			I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "%s: gpi terminate failed for tx_c[%d] ret:%d\n",
+ 				__func__, idx, ret);
+@@ -1129,7 +1243,7 @@ static int geni_i2c_gpi_nop_tre(struct geni_i2c_dev *gi2c, struct dma_slave_conf
+ 
+ err:
+ 	I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "%s: GPI transfer failed: %d\n", __func__, ret);
+-	dmaengine_terminate_sync(gi2c->tx_c[idx]);
++	geni_i2c_dmaengine_terminate_sync(gi2c, idx);
+ 
+ err_submit:
+ 	return ret;
+@@ -1184,18 +1298,27 @@ static void i2c_gpi_cb_result(void *cb, const struct dmaengine_result *result)
+ 	struct ccu_frame_info *frame;
+ 	u8 gpii_idx, frame_idx;
+ 
+-	if (i2c->status & (BIT(NACK) << 5)) {
+-		geni_i2c_err(gi2c, NACK);
+-	} else if (i2c->status & (BIT(BUS_PROTO) << 5)) {
+-		geni_i2c_err(gi2c, BUS_PROTO);
+-	} else if (i2c->status & (BIT(ARB_LOST) << 5)) {
+-		geni_i2c_err(gi2c, ARB_LOST);
+-	} else if (result->result != DMA_TRANS_NOERROR) {
+-		I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "DMA txn failed:%d\n", result->result);
++	/* QUP Notification Event */
++	if (gi2c->is_ccu_qup && result->result == DMA_TRANS_WRITE_FAILED) {
++		I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev,
++			    "QUP notification error status:%x\n", i2c->status);
+ 		gi2c->err = -EIO;
+-	} else if (result->residue) {
+-		I2C_DBG_LOG(LOG_LVL_VERBOSE, gi2c->se.dev,
+-			    "DMA xfer has pending: %d\n", result->residue);
++	/* Transfer Completion Event */
++	} else {
++		if (i2c->status & (BIT(NACK) << 5)) {
++			geni_i2c_err(gi2c, NACK);
++		} else if (i2c->status & (BIT(BUS_PROTO) << 5)) {
++			geni_i2c_err(gi2c, BUS_PROTO);
++		} else if (i2c->status & (BIT(ARB_LOST) << 5)) {
++			geni_i2c_err(gi2c, ARB_LOST);
++		} else if (result->result != DMA_TRANS_NOERROR) {
++			I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev,
++				    "DMA txn failed:%d\n", result->result);
++			gi2c->err = -EIO;
++		} else if (result->residue) {
++			I2C_DBG_LOG(LOG_LVL_VERBOSE, gi2c->se.dev,
++				    "DMA xfer has pending: %d\n", result->residue);
++		}
+ 	}
+ 
+ 	if (i2c->op == I2C_BUS_CLEAR || i2c->op == I2C_STOP_ON_BUS) {
+@@ -1561,6 +1684,13 @@ static int geni_i2c_gpi_xfer(struct geni_i2c_dev *gi2c, struct i2c_msg msgs[], i
+ 	u8 frame_no;
+ 	bool async_xfer = false;
+ 
++	if (gi2c->is_ccu_qup &&
++	    gi2c->ccu->ip_reset_in_progress && atomic_read(gi2c->ccu->ip_reset_in_progress)) {
++		I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev,
++			    "retry xfer, CCU IP reset in progress\n");
++		return -EAGAIN;
++	}
++
+ 	peripheral = devm_kzalloc(gi2c->se.dev, sizeof(*peripheral), GFP_KERNEL);
+ 	if (!peripheral)
+ 		return -ENOMEM;
+@@ -1597,6 +1727,13 @@ static int geni_i2c_gpi_xfer(struct geni_i2c_dev *gi2c, struct i2c_msg msgs[], i
+ 				return ret;
+ 
+ 			idx = (gi2c->ccu->msg_cfg.gpii_no % CCU_MAX_GPII);
++
++			if (gi2c->ccu->gpii[idx].state == GPII_RESET_IN_PROGRESS) {
++				I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev,
++					    "retry xfer, GPII:%d reset in progress\n", idx);
++				return -EAGAIN;
++			}
++
+ 			async_xfer = gi2c->ccu->gpii[idx].async;
+ 
+ 			if (async_xfer) {
+@@ -1646,6 +1783,12 @@ static int geni_i2c_gpi_xfer(struct geni_i2c_dev *gi2c, struct i2c_msg msgs[], i
+ 
+ 		dma_async_issue_pending(gi2c->tx_c[idx]);
+ 
++		if (gi2c->is_ccu_qup && peripheral->first_msg) {
++			mutex_lock(&gi2c->ccu->gpii[idx].state_lock);
++			gi2c->ccu->gpii[idx].state = GPII_ACTIVE;
++			mutex_unlock(&gi2c->ccu->gpii[idx].state_lock);
++		}
++
+ 		/* Prioritize regular chan if Priority bit is set */
+ 		if (gi2c->is_ccu_qup && gi2c->ccu->msg_cfg.priority) {
+ 			if (idx == REGULAR_GPII) {
+@@ -1682,6 +1825,7 @@ static int geni_i2c_gpi_xfer(struct geni_i2c_dev *gi2c, struct i2c_msg msgs[], i
+ 
+ 
+ 		geni_i2c_gpi_unmap(gi2c, &msgs[i], tx_buf, tx_addr, rx_buf, rx_addr);
++
+ next_msg:
+ 		if (gi2c->is_ccu_qup && async_xfer) {
+ 			if (msgs[i].flags & I2C_M_RD) {
+@@ -1706,7 +1850,10 @@ static int geni_i2c_gpi_xfer(struct geni_i2c_dev *gi2c, struct i2c_msg msgs[], i
+ err:
+ 	I2C_DBG_LOG(LOG_LVL_INFO, gi2c->se.dev, "GPI transfer failed: %d\n", ret);
+ 
+-	dmaengine_terminate_sync(gi2c->tx_c[idx]);
++	if (gi2c->is_ccu_qup)
++		geni_i2c_dmaengine_terminate_sync(gi2c, idx);
++	else
++		dmaengine_terminate_sync(gi2c->tx_c[idx]);
+ 
+ 	if (!(gi2c->is_ccu_qup && async_xfer))
+ 		geni_i2c_gpi_unmap(gi2c, &msgs[i], tx_buf, tx_addr, rx_buf, rx_addr);
+@@ -1965,6 +2112,10 @@ static int geni_i2c_init(struct geni_i2c_dev *gi2c)
+ 				release_gpi_dma(gi2c);
+ 				goto err;
+ 			}
++			if (gi2c->is_ccu_qup) {
++				gi2c->ccu->gpii[i].state = GPII_IDLE;
++				mutex_init(&gi2c->ccu->gpii[i].state_lock);
++			}
+ 		}
+ 		I2C_DBG_LOG(LOG_LVL_VERBOSE, gi2c->se.dev, "Using GPI DMA mode for I2C\n");
+ 	} else {
+@@ -2167,6 +2318,9 @@ static int geni_i2c_probe(struct platform_device *pdev)
+ 		goto err;
+ 	}
+ 
++	if (gi2c->is_ccu_qup)
++		geni_i2c_ccu_fusa_ecc_setup(gi2c);
++
+ 	ret = device_create_file(gi2c->se.dev, &dev_attr_log_level);
+ 	if (ret)
+ 		I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev,
+diff --git a/drivers/soc/qcom/qcom_ccu_qup.c b/drivers/soc/qcom/qcom_ccu_qup.c
+index ec10eaf343b7..366c6ca5385f 100644
+--- a/drivers/soc/qcom/qcom_ccu_qup.c
++++ b/drivers/soc/qcom/qcom_ccu_qup.c
+@@ -44,7 +44,6 @@
+ #define CCU_SYNC_TIMERS		20
+ #define CCU_MAX_GPII		14
+ #define CCU_MAX_GPII_PER_SE	3
+-#define CCU_MAX_QUP		2
+ #define CCU_MAX_SE		5
+ #define GPII_IRQ_COUNT		(GPII_14_IRQ - GPII_0_IRQ + 1)
+ #define CCU_RETRY_TIME		50
+@@ -380,14 +379,188 @@ static int ccu_open(struct inode *inode, struct file *filp)
+ 	return 0;
+ }
+ 
+-int ccu_power_on_off(struct i2c_adapter *adap, bool suspend)
++/*
++ * ccu_qup_update_qup_reset_mask() - Check FuSa IRQ status and update recovery mask
++ * @status:       Current FuSa IRQ status bits
++ * @irq_set_num:  IRQ set number (enum ccu_fusa_irq_set)
++ * @mask:         Pointer to recovery mask to update
++ *
++ * This function looks at the FuSa IRQ status for the given QUP set.
++ * If a critical fault is found, it sets the mask to CCU_RESET_IP and
++ * returns true. Otherwise, it adds recovery actions for SE or GPII
++ * based on the status bits and returns false.
++ *
++ * Return: true if IP reset is needed, false if normal recovery actions apply.
++ */
++static inline bool ccu_qup_update_qup_reset_mask(u32 status,
++						 enum ccu_fusa_irq_set irq_set_num, u32 *mask)
++{
++	/* RESET_IP check for critical faults */
++	if ((irq_set_num == CCU_FUSA_IRQ_SET_1 && (status & RESET_IP_MASK_SET1)) ||
++	    (irq_set_num == CCU_FUSA_IRQ_SET_2 && (status & RESET_IP_MASK_SET2)) ||
++	    (irq_set_num == CCU_FUSA_IRQ_SET_4 && (status & RESET_IP_MASK_SET4))) {
++		*mask = CCU_RESET_IP;
++		return true;
++	}
++
++	switch (irq_set_num) {
++	case CCU_FUSA_IRQ_SET_0:
++		if (status & CCU_FUSA_IRQ_SET0_SE0_CMD_ERR_MASK)
++			*mask |= RECOVER_SE(0);
++		if (status & CCU_FUSA_IRQ_SET0_SE1_CMD_ERR_MASK)
++			*mask |= RECOVER_SE(1);
++		if (status & CCU_FUSA_IRQ_SET0_SE2_CMD_ERR_MASK)
++			*mask |= RECOVER_SE(2);
++		if (status & CCU_FUSA_IRQ_SET0_SE3_CMD_ERR_MASK)
++			*mask |= RECOVER_SE(3);
++		if (status & CCU_FUSA_IRQ_SET0_SE4_CMD_ERR_MASK)
++			*mask |= RECOVER_SE(4);
++
++		if (status & CCU_FUSA_IRQ_SET0_GPII_GLOB_WARN_MASK)
++			for (int gpii = 0; gpii <= 4; gpii++)
++				if (status & BIT(27 + gpii))
++					*mask |= RECOVER_GPII(gpii);
++		break;
++
++	case CCU_FUSA_IRQ_SET_1:
++		if (status & CCU_FUSA_IRQ_SET1_GPII_GLOB_WARN_MASK)
++			for (int gpii = 0; gpii <= 9; gpii++)
++				if (status & BIT(gpii))
++					*mask |= RECOVER_GPII(5 + gpii);
++		break;
++
++	case CCU_FUSA_IRQ_SET_2:
++		if (status & CCU_FUSA_IRQ_SET2_SE0_I2C_FIFO_ERR_MASK)
++			*mask |= RECOVER_SE(0);
++		break;
++
++	case CCU_FUSA_IRQ_SET_3:
++		if (status & CCU_FUSA_IRQ_SET3_SE0_I2C_FIFO_ERR_MASK)
++			*mask |= RECOVER_SE(0);
++		if (status & CCU_FUSA_IRQ_SET3_SE1_I2C_FIFO_ERR_MASK)
++			*mask |= RECOVER_SE(1);
++		if (status & CCU_FUSA_IRQ_SET3_SE2_I2C_FIFO_ERR_MASK)
++			*mask |= RECOVER_SE(2);
++		if (status & CCU_FUSA_IRQ_SET3_SE3_I2C_FIFO_ERR_MASK)
++			*mask |= RECOVER_SE(3);
++		if (status & CCU_FUSA_IRQ_SET3_SE4_I2C_FIFO_ERR_MASK)
++			*mask |= RECOVER_SE(4);
++		break;
++
++	case CCU_FUSA_IRQ_SET_4:
++		if (status & CCU_FUSA_IRQ_SET4_SE0_DMA_ERR_MASK)
++			*mask |= RECOVER_SE(0);
++		if (status & CCU_FUSA_IRQ_SET4_SE1_DMA_ERR_MASK)
++			*mask |= RECOVER_SE(1);
++		if (status & CCU_FUSA_IRQ_SET4_SE2_DMA_ERR_MASK)
++			*mask |= RECOVER_SE(2);
++		if (status & CCU_FUSA_IRQ_SET4_SE3_DMA_ERR_MASK)
++			*mask |= RECOVER_SE(3);
++		if (status & CCU_FUSA_IRQ_SET4_SE4_DMA_ERR_MASK ||
++		    status & CCU_FUSA_IRQ_SET4_SE4_I2C_BUS_ERR_MASK)
++			*mask |= RECOVER_SE(4);
++
++		if (status & CCU_FUSA_IRQ_SET4_GPII_TIMEOUT_MASK)
++			for (int gpii = 0; gpii <= 14; gpii++)
++				if (status & BIT(11 + gpii))
++					*mask |= RECOVER_GPII(gpii);
++		break;
++	}
++
++	return false;
++}
++
++/*
++ * ccu_qup_fusa_irq_get_status() - Retrieve FuSa IRQ status for a QUP instance
++ *
++ * @ccu:      Pointer to CCU QUP structure
++ * @qup_idx:  Index of the QUP instance where the FuSa interrupt occurred
++ *
++ * Return: 32-bit mask indicating required recovery actions,
++ *         0 if no recovery actions are needed, or a negative error code on failure.
++ */
++static int ccu_qup_fusa_irq_get_status(struct ccu_qup *ccu, u8 qup_idx)
+ {
++	void __iomem *base;
++	u32 status, qup_reset_mask = 0;
++
++	if (atomic_read(&ccu->ip_reset_in_progress)) {
++		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev,
++			    "Please retry after CCU IP reset operation completes\n");
++		return -EAGAIN;
++	}
++
++	if (qup_idx > CCU_MAX_QUP) {
++		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev,
++			    "%s: Invalid qup_idx:%d\n", __func__, qup_idx);
++		return -EINVAL;
++	}
++
++	base = ccu->qup_fusa_fault_aggregator[qup_idx];
++	if (!base) {
++		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev,
++			    "%s: No base addr found for qup_idx:%d\n", __func__, qup_idx);
++		return -EINVAL;
++	}
++
++	for (enum ccu_fusa_irq_set irq_set_num = CCU_FUSA_IRQ_SET_0;
++		irq_set_num < CCU_MAX_FUSA_IRQ_SET; irq_set_num++) {
++		status = readl_relaxed(base + CCU_QUPV3_FUSA_IRQ_STATUS_n(irq_set_num));
++		writel_relaxed(status, base + CCU_QUPV3_FUSA_IRQ_CLEAR_n(irq_set_num));
++		writel_relaxed(FUSA_IRQ_CMD_CLEAR_CMD, base + CCU_QUPV3_FUSA_IRQ_CMD);
++
++		CCU_DBG_LOG(LOG_LVL_VERBOSE, ccu->dev,
++			    "%s: qup_idx:%d FUSA_IRQ_SET:%d status:0x%x\n",
++			    __func__, qup_idx, irq_set_num, status);
++		if (ccu_qup_update_qup_reset_mask(status, irq_set_num, &qup_reset_mask)) {
++			atomic_set(&ccu->ip_reset_in_progress, 1);
++			break;
++		}
++	}
++
++	CCU_DBG_LOG(LOG_LVL_VERBOSE, ccu->dev, "%s: qup_idx:%d: qup_reset_mask:0x%x\n",
++		    __func__, qup_idx, qup_reset_mask);
++
++	return qup_reset_mask;
++}
++
++/*
++ * ccu_fusa_irq_enable - Enable FUSA IRQs for CCU
++ *
++ * @ccu: handle for ccu qup structure
++ *
++ * Returns 0 on success and error number on failure.
++ */
++static int ccu_fusa_irq_enable(struct ccu_qup *ccu)
++{
++	void __iomem *base = NULL;
++
++	for (u8 qup_idx = 0; qup_idx < CCU_MAX_QUP; qup_idx++) {
++		base = ccu->qup_fusa_fault_aggregator[qup_idx];
++		if (!base) {
++			CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev,
++				    "%s: Invalid qup_idx:%d\n", __func__, qup_idx);
++			return -EINVAL;
++		}
++
++		for (u8 i = 0; i < CCU_MAX_FUSA_IRQ_SET; i++)
++			writel_relaxed(0, base + CCU_QUPV3_FUSA_IRQ_MASK_n(i));
++
++		writel_relaxed(FUSA_IRQ_CMD_CLEAR_CMD, base + CCU_QUPV3_FUSA_IRQ_CMD);
++	}
++
++	return 0;
++}
++
++int ccu_power_on_off(struct ccu_qup *ccu, bool suspend)
++{
++	struct i2c_adapter *adap = ccu->adap;
+ 	int ret;
+ 
+ 	if (!adap)
+ 		return -EINVAL;
+ 
+-	ret = ccu_on_off(adap, suspend);
++	ret = ccu_on_off(adap, suspend, &ccu->ip_reset_in_progress);
+ 	if (ret) {
+ 		CCU_ERR_LOG(LOG_LVL_ERROR, ccud->dev,
+ 			    "failed to turn on/off the clocks:%d\n", suspend);
+@@ -397,6 +570,9 @@ int ccu_power_on_off(struct i2c_adapter *adap, bool suspend)
+ 	if (suspend)
+ 		ccud->fw_loaded = false;
+ 
++	if (!suspend && atomic_read(&ccu->ip_reset_in_progress))
++		atomic_set(&ccu->ip_reset_in_progress, 0);
++
+ 	return 0;
+ }
+ 
+@@ -604,6 +780,10 @@ int ccu_qup_load_firmware(void)
+ 	}
+ 	ccud->fw_loaded = true;
+ 
++	ret = ccu_fusa_irq_enable(ccud);
++	if (ret)
++		return ret;
++
+ 	CCU_DBG_LOG(LOG_LVL_VERBOSE, ccud->dev,
+ 		    "CCU QUP initialized and firmware loaded successfully\n");
+ 	return ret;
+@@ -651,7 +831,6 @@ int ccu_gpii_reset(struct i2c_adapter *adap, int gpii_no, bool partial,
+ static inline int ccu_get_se_adapter(int fd, struct ccu_qup *ccu)
+ {
+ 	struct file *file;
+-	struct i2c_client *client;
+ 
+ 	file = fget(fd);
+ 	if (!file && !file->private_data)
+@@ -749,11 +928,22 @@ static ssize_t ccu_config_write(struct file *filp, const char __user *buf,
+ 		ret = ccu_check_recover_bus(ccu->adap);
+ 		break;
+ 	case POWER_ON:
+-		ret = ccu_power_on_off(ccu->adap, false);
++		ret = ccu_power_on_off(ccu, false);
+ 		break;
+ 	case POWER_OFF:
+-		ret = ccu_power_on_off(ccu->adap, true);
++		ret = ccu_power_on_off(ccu, true);
+ 		break;
++	case FUSA_IRQ_STATUS:
++		/*
++		 * Return:
++		 *   >0 : 32-bit mask of required recovery actions
++		 *    0 : no recovery needed
++		 *   <0 : negative error code on failure
++		 */
++		ret = ccu_qup_fusa_irq_get_status(ccu, ccu->cfg->qup_no);
++		kfree(ccu->cfg);
++		ccu->cfg = NULL;
++		return ret;
+ 	default:
+ 		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, "Invalid cmd:%d\n", ccu->cfg->cmd);
+ 		break;
+@@ -835,7 +1025,6 @@ static void get_set_child_dev_node(struct work_struct *work)
+ 
+ 	struct child_probe_status *child_status;
+ 	struct device_node *node = ccu->dev->of_node, *gpi_node;
+-	struct resource *res;
+ 	const char *gpi[2] = {"dma-controller0", "dma-controller1"};
+ 	static int retry_cnt;
+ 	int i = 0;
+@@ -1046,6 +1235,38 @@ static int ccu_qup_probe(struct platform_device *pdev)
+ 		return -ENODEV;
+ 	}
+ 
++	res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
++					   "ccu_qupv3_0_fusa_fault_aggregator");
++	if (!res) {
++		CCU_ERR_LOG(LOG_LVL_ERROR, &pdev->dev,
++			    "missing 'reg' for ccu_qupv3_0_fusa_fault_aggregator\n");
++		return -EINVAL;
++	}
++
++	ccu->qup_fusa_fault_aggregator[0] = devm_ioremap(&pdev->dev, res->start,
++							 resource_size(res));
++	if (!ccu->qup_fusa_fault_aggregator[0]) {
++		CCU_ERR_LOG(LOG_LVL_ERROR, &pdev->dev,
++			    "ioremap failed for qup_fusa_fault_aggregator[0]\n");
++		return -ENODEV;
++	}
++
++	res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
++					   "ccu_qupv3_1_fusa_fault_aggregator");
++	if (!res) {
++		CCU_ERR_LOG(LOG_LVL_ERROR, &pdev->dev,
++			    "missing 'reg' for ccu_qupv3_1_fusa_fault_aggregator\n");
++		return -EINVAL;
++	}
++
++	ccu->qup_fusa_fault_aggregator[1] = devm_ioremap(&pdev->dev, res->start,
++							 resource_size(res));
++	if (!ccu->qup_fusa_fault_aggregator[1]) {
++		CCU_ERR_LOG(LOG_LVL_ERROR, &pdev->dev,
++			    "ioremap failed for qup_fusa_fault_aggregator[1]\n");
++		return -ENODEV;
++	}
++
+ 	ret = ccu_qup_create_chrdev_node(ccu);
+ 	if (ret)
+ 		return ret;
+@@ -1072,6 +1293,7 @@ static int ccu_qup_probe(struct platform_device *pdev)
+ 
+ 	ccud = ccu;
+ 	ccud->fw_loaded = false;
++
+ 	/* Queue the delayed work to be executed after 30 milli second */
+ 	queue_delayed_work(ccu->gpi_wq, &ccu->get_child_dev_node,
+ 			   msecs_to_jiffies(CCU_RETRY_TIME));
+diff --git a/include/linux/dma/qcom-gpi-dma.h b/include/linux/dma/qcom-gpi-dma.h
+index b4cb2f2d7bb0..58ba66694b66 100644
+--- a/include/linux/dma/qcom-gpi-dma.h
++++ b/include/linux/dma/qcom-gpi-dma.h
+@@ -25,6 +25,12 @@ enum gpi_chan_ctrl_cmd {
+ 	QCOM_GPI_DEFAULT,
+ 	QCOM_GPI_CHANNEL_DECONFIGURE,
+ 	QCOM_GPI_CHANNEL_CONFIGURE,
++	/*
++	 * Mark channel as DECONFIGURED in software only; skip hardware teardown.
++	 * Used during CCU IP reset when hardware is already in a bad or unreliable
++	 * state, so HW deconfigure is intentionally avoided.
++	 */
++	QCOM_GPI_CHANNEL_SOFT_DECONFIGURE,
+ };
+ 
+ struct gpi_chan_ctrl {
+diff --git a/include/linux/soc/qcom/geni-se.h b/include/linux/soc/qcom/geni-se.h
+index f9beb30b07e9..14bdfa8e095d 100644
+--- a/include/linux/soc/qcom/geni-se.h
++++ b/include/linux/soc/qcom/geni-se.h
+@@ -113,6 +113,7 @@ struct geni_se {
+ #define SE_GENI_CLK_SEL			0x7c
+ #define SE_GENI_CFG_SEQ_START		0x84
+ #define SE_GENI_CFG_REG0		0x100
++#define SE_GENI_CFG_REG67		0x20C
+ #define SE_GENI_DMA_MODE_EN		0x258
+ #define SE_GENI_M_CMD0			0x600
+ #define SE_GENI_M_CMD_CTRL_REG		0x604
+@@ -160,6 +161,9 @@ struct geni_se {
+ /* GENI_FORCE_DEFAULT_REG fields */
+ #define FORCE_DEFAULT	BIT(0)
+ 
++/* GENI CFG REG67 fields */
++#define M_AUTO_OPCODE_CANCEL		BIT(27)
++
+ /* GENI_OUTPUT_CTRL fields */
+ #define GENI_IO_MUX_0_EN		BIT(0)
+ 
+@@ -390,6 +394,12 @@ struct geni_se {
+ #define SE_GENI_ECC_CLEAR_FIFO_1		0xBD0
+ #define SE_GENI_ECC_ERROR_COUNTER_1		0xBD4
+ 
++#define ECC_FIFO_CLEAR			0xa
++#define ECC_FIFO_ENABLE			0x5
++#define ECC_IRQ_SEC_ENABLE		0xa
++#define ECC_SEC_DED_AED_COUNTER_CLEAR	0xaaaa
++#define ECC_SEC_DED_AED_COUNTER_ENABLE	0x5555
++
+ #if IS_ENABLED(CONFIG_QCOM_GENI_SE)
+ 
+ u32 geni_se_get_qup_hw_version(struct geni_se *se);
+diff --git a/include/linux/soc/qcom/qcom_ccu_qup.h b/include/linux/soc/qcom/qcom_ccu_qup.h
+index 5edabfd1a63a..1d8c3805775e 100644
+--- a/include/linux/soc/qcom/qcom_ccu_qup.h
++++ b/include/linux/soc/qcom/qcom_ccu_qup.h
+@@ -19,6 +19,7 @@
+ #define CCU_QUP_IRQ_SET		0xc
+ #define CCU_QUP_IRQ_CMD		0x10
+ #define CCU_MAX_NUM_FRAMES	4
++#define CCU_MAX_QUP		2
+ 
+ #define CCU_GPII_IRQ		GENMASK(19, 0)
+ 
+@@ -45,6 +46,79 @@
+ #define CCU_QUPV3_SYNC1_ID_SE_MAP4	0x170
+ #define CCU_QUPV3_SYNC_DATA_DEBUG	0x180
+ 
++/* CCU QUP FUSA_IRQ_STATUS Register */
++#define CCU_QUPV3_FUSA_IRQ_STATUS_n(n)	(0x180 + (0x4 * (n)))
++#define CCU_QUPV3_FUSA_IRQ_CLEAR_n(n)	(0x100 + (0x4 * (n)))
++#define CCU_QUPV3_FUSA_IRQ_MASK_n(n)	(0x80 + (0x4 * (n)))
++#define CCU_QUPV3_FUSA_IRQ_CMD		0x200
++
++/* Reflect the settings of FUSA_IRQ_CLR_n registers on IRQ Controller */
++#define FUSA_IRQ_CMD_CLEAR_CMD		0x1
++
++/* Recovery mask bits */
++#define CCU_RESET_IP				BIT(0)
++/* SE0..SE4 -> bits 1-5 */
++#define RECOVER_SE(idx)				BIT(1 + (idx))
++/* GPII0..GPII14 -> bits 6-20 */
++#define RECOVER_GPII(idx)			BIT(6 + (idx))
++
++/*
++ * RESET_IP masks:
++ * These cover severe faults requiring IP reset:
++ * - ECC address error detection
++ * - ECC double error detection
++ * - CSR parity errors (GENI, DMA, CFG, IMAGE, COMMON, GSI)
++ * - VMIDMT parity faults
++ * - FuSa aggregator parity faults
++ * - GSI critical errors (CMD FIFO overflow, stack overflow, bus error)
++ */
++/* CCU_FUSA_IRQ_SET_1: ECC address/double errors */
++#define RESET_IP_MASK_SET1			GENMASK(31, 10)
++/* CCU_FUSA_IRQ_SET_2: CSR parity + ECC faults */
++#define RESET_IP_MASK_SET2			GENMASK(29, 0)
++/* CCU_FUSA_IRQ_SET_3: CSR parity + GSI errors */
++#define RESET_IP_MASK_SET4			GENMASK(29, 26)
++
++/* CCU FUSA IRQ SET identifiers */
++enum ccu_fusa_irq_set {
++	CCU_FUSA_IRQ_SET_0,
++	CCU_FUSA_IRQ_SET_1,
++	CCU_FUSA_IRQ_SET_2,
++	CCU_FUSA_IRQ_SET_3,
++	CCU_FUSA_IRQ_SET_4,
++	CCU_MAX_FUSA_IRQ_SET,
++};
++
++/* CCU_FUSA_IRQ_SET_0 */
++#define CCU_FUSA_IRQ_SET0_SE0_CMD_ERR_MASK		GENMASK(14, 12)
++#define CCU_FUSA_IRQ_SET0_SE1_CMD_ERR_MASK		GENMASK(17, 15)
++#define CCU_FUSA_IRQ_SET0_SE2_CMD_ERR_MASK		GENMASK(20, 18)
++#define CCU_FUSA_IRQ_SET0_SE3_CMD_ERR_MASK		GENMASK(23, 21)
++#define CCU_FUSA_IRQ_SET0_SE4_CMD_ERR_MASK		GENMASK(26, 24)
++#define CCU_FUSA_IRQ_SET0_GPII_GLOB_WARN_MASK		GENMASK(31, 27)
++
++/* CCU_FUSA_IRQ_SET_1 */
++#define CCU_FUSA_IRQ_SET1_GPII_GLOB_WARN_MASK		GENMASK(9, 0)
++
++/* CCU_FUSA_IRQ_SET_2 */
++#define CCU_FUSA_IRQ_SET2_SE0_I2C_FIFO_ERR_MASK		GENMASK(31, 30)
++
++/* CCU_FUSA_IRQ_SET_3 */
++#define CCU_FUSA_IRQ_SET3_SE0_I2C_FIFO_ERR_MASK		GENMASK(4, 0)
++#define CCU_FUSA_IRQ_SET3_SE1_I2C_FIFO_ERR_MASK		GENMASK(11, 5)
++#define CCU_FUSA_IRQ_SET3_SE2_I2C_FIFO_ERR_MASK		GENMASK(18, 12)
++#define CCU_FUSA_IRQ_SET3_SE3_I2C_FIFO_ERR_MASK		GENMASK(25, 19)
++#define CCU_FUSA_IRQ_SET3_SE4_I2C_FIFO_ERR_MASK		GENMASK(31, 26)
++
++/* CCU_FUSA_IRQ_SET_4 */
++#define CCU_FUSA_IRQ_SET4_SE4_I2C_BUS_ERR_MASK		BIT(0)
++#define CCU_FUSA_IRQ_SET4_SE0_DMA_ERR_MASK		GENMASK(2, 1)
++#define CCU_FUSA_IRQ_SET4_SE1_DMA_ERR_MASK		GENMASK(4, 3)
++#define CCU_FUSA_IRQ_SET4_SE2_DMA_ERR_MASK		GENMASK(6, 5)
++#define CCU_FUSA_IRQ_SET4_SE3_DMA_ERR_MASK		GENMASK(8, 7)
++#define CCU_FUSA_IRQ_SET4_SE4_DMA_ERR_MASK		GENMASK(10, 9)
++#define CCU_FUSA_IRQ_SET4_GPII_TIMEOUT_MASK		GENMASK(25, 11)
++
+ /* struct ccu_response_data - Contains result of completed async xfer.
+  * @res_buf: contains the client data which will pass to the user
+  *           space client.
+@@ -101,6 +175,8 @@ struct ccu_xfer_result {
+  * @qup1_common_reg: Base address for common reg for CCU QUP1.
+  * @qup_irq_base[2]: Array of pointer which hold base address of
+  *                   IRQ register for CCU QUP0 & QUP1.
++ * @qup_fusa_fault_aggregator: Array of pointer which hold base address of
++ *                   fusa fault aggregator register for CCU QUP0 & QUP1.
+  * @ccu_qup0_irq: Irq number of CCU QUP0.
+  * @ccu_qup1_irq: Irq number of CCU QUP1.
+  * @gpi_dev[2]: Array of pointer which hold base address of
+@@ -120,6 +196,7 @@ struct ccu_xfer_result {
+  * @lock: spin lock to protect the callback function.
+  * @readq: queue of file desc waiting for read notification.
+  * @rx_avail: represent the rx data available for read.
++ * @ip_reset_in_progress: indicates if IP reset is in progress
+  * @response_list: list which represent the response.
+  * @data: pointer to the struct ccu_response_data.
+  * fw_loaded: flag to check fw loaded or not.
+@@ -132,6 +209,7 @@ struct ccu_qup {
+ 	void __iomem *qup1_common_reg;
+ 	void __iomem *ccu_top;
+ 	void __iomem *qup_irq_base[2];
++	void __iomem *qup_fusa_fault_aggregator[CCU_MAX_QUP];
+ 	int ccu_qup0_irq;
+ 	int ccu_qup1_irq;
+ 	struct platform_device *gpi_pdev[2];
+@@ -151,6 +229,7 @@ struct ccu_qup {
+ 	spinlock_t lock;
+ 	wait_queue_head_t readq;
+ 	atomic_t rx_avail;
++	atomic_t ip_reset_in_progress;
+ 	struct list_head response_list;
+ 	struct ccu_response_data data;
+ 	bool fw_loaded;
+@@ -187,7 +266,8 @@ int ccu_check_recover_bus(struct i2c_adapter *adap);
+ 
+ void ccu_update_xfer_result(struct ccu_xfer_result *result);
+ 
+-typedef int (*power_on_off_t) (struct i2c_adapter *adap, bool suspend);
++typedef int (*power_on_off_t) (struct i2c_adapter *adap,
++			       bool suspend, atomic_t *ip_reset_in_progress);
+ 
+ typedef int (*recover_ios_line_t) (struct i2c_adapter *adap);
+ 
+diff --git a/include/uapi/linux/ccu_qup/ccu_qup.h b/include/uapi/linux/ccu_qup/ccu_qup.h
+index 77ef84fbe74b..35b9c5cd6185 100644
+--- a/include/uapi/linux/ccu_qup/ccu_qup.h
++++ b/include/uapi/linux/ccu_qup/ccu_qup.h
+@@ -21,7 +21,7 @@
+  *             recovery of lines if in bad state.
+  * @POWER_ON: This cmd is used to turn on all the QUP clock.
+  * @POWER_OFF: This cmd is used to turn off all teh QUP clock
+- * @RESERVED_1: Reserved for future use.
++ * @FUSA_IRQ_STATUS: This cmd is used for CCU QUP FUSA IRQ STATUS
+  * @RESERVED_2: Reserved for future use.
+  */
+ enum cmd_type {
+@@ -33,7 +33,7 @@ enum cmd_type {
+ 	BUS_CLEAR = 5,
+ 	POWER_ON = 6,
+ 	POWER_OFF = 7,
+-	RESERVED_1 = 8,
++	FUSA_IRQ_STATUS = 8,
+ 	RESERVED_2 = 9,
+ 	INVALID_CMD = -EINVAL,
+ };
+@@ -117,6 +117,7 @@ struct sync_info {
+  *           10 -> SYNC1 channel).
+  * @trigger_type: Represents behaviour of trigger (0-> sticky, 1 -> non-sticky).
+  * @delay: Delay in microseconds.
++ * @qup_no: QUP number where the FuSa interrupt was detected.
+  * @reserved[20]: Reserved for future purpose.
+  */
+ struct ccu_qup_config {
+@@ -130,6 +131,7 @@ struct ccu_qup_config {
+ 	__u8 ch_type;
+ 	_Bool trigger_type;
+ 	__u64 delay;
++	__u8 qup_no;
+ 	__u32 reserved[20];
+ };
+ 
+-- 
+2.34.1
+

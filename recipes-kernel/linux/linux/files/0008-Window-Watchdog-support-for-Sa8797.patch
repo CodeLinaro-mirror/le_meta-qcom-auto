@@ -1,0 +1,403 @@
+From 7392ebbb1598e006b4d3cbbbe7e2ca0b5abe55a7 Mon Sep 17 00:00:00 2001
+From: Deepti Jaggi <quic_djaggi@quicinc.com>
+Date: Tue, 30 Jul 2024 17:26:33 -0700
+Subject: [PATCH] Window Watchdog support for Sa8797
+
+Change-Id: I859cb46d3de3d07437ce7a2bec333deff95ff758
+Signed-off-by: Deepti Jaggi <quic_djaggi@quicinc.com>
+---
+ drivers/watchdog/Kconfig              |  12 +
+ drivers/watchdog/Makefile             |   1 +
+ drivers/watchdog/qcom-win-wdt.c | 345 ++++++++++++++++++++++++++++++++
+ 3 files changed, 358 insertions(+)
+ create mode 100644 drivers/watchdog/qcom-win-wdt.c
+
+diff --git a/drivers/watchdog/Kconfig b/drivers/watchdog/Kconfig
+index 6bee137cfbe0..12b21e3a262c 100644
+--- a/drivers/watchdog/Kconfig
++++ b/drivers/watchdog/Kconfig
+@@ -827,6 +827,18 @@ config QCOM_WDT
+ 	  To compile this driver as a module, choose M here: the
+ 	  module will be called qcom_wdt.
+ 
++config QCOM_WIN_WDT
++	tristate "QCOM watchdog"
++	depends on HAS_IOMEM
++	depends on ARCH_QCOM || COMPILE_TEST
++	select WATCHDOG_CORE
++	help
++	  Say Y here to include Watchdog timer support for the windowed watchdog found
++	  on QCOM chipsets.  Currently supported targets are the SA8797
++
++	  To compile this driver as a module, choose M here: the
++	  module will be called qcom_win_wdt.
++
+ config MESON_GXBB_WATCHDOG
+ 	tristate "Amlogic Meson GXBB SoCs watchdog support"
+ 	depends on ARCH_MESON || COMPILE_TEST
+diff --git a/drivers/watchdog/Makefile b/drivers/watchdog/Makefile
+index 3710c218f05e..492837cf1893 100644
+--- a/drivers/watchdog/Makefile
++++ b/drivers/watchdog/Makefile
+@@ -74,6 +74,7 @@ obj-$(CONFIG_BCM2835_WDT) += bcm2835_wdt.o
+ obj-$(CONFIG_MOXART_WDT) += moxart_wdt.o
+ obj-$(CONFIG_ST_LPC_WATCHDOG) += st_lpc_wdt.o
+ obj-$(CONFIG_QCOM_WDT) += qcom-wdt.o
++obj-$(CONFIG_QCOM_WIN_WDT) += qcom-win-wdt.o
+ obj-$(CONFIG_BCM_KONA_WDT) += bcm_kona_wdt.o
+ obj-$(CONFIG_TEGRA_WATCHDOG) += tegra_wdt.o
+ obj-$(CONFIG_MESON_GXBB_WATCHDOG) += meson_gxbb_wdt.o
+diff --git a/drivers/watchdog/qcom-win-wdt.c b/drivers/watchdog/qcom-win-wdt.c
+new file mode 100644
+index 000000000000..4845eabd3113
+--- /dev/null
++++ b/drivers/watchdog/qcom-win-wdt.c
+@@ -0,0 +1,345 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/* Copyright (c) 2014, The Linux Foundation. All rights reserved.
++ */
++#include <linux/bits.h>
++#include <linux/clk.h>
++#include <linux/delay.h>
++#include <linux/interrupt.h>
++#include <linux/io.h>
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/of.h>
++#include <linux/platform_device.h>
++#include <linux/watchdog.h>
++
++enum wdt_reg {
++	WDT_PET,
++	WDT_EN,
++	WDT_STS,
++	WDT_BARK_TIME,
++	WDT_BITE_TIME,
++	WDT_WINDOW_MIN_TIME,
++	WDT_WINDOW_MAX_TIME,
++	WDT_WINDOW_START_TIME,
++	WDT_FREEZE_CTL,
++	WDT_ERROR_SYNDROME,
++};
++
++static const u32 reg_offset_data_wwdog[] = {
++	[WDT_PET] = 0x4,
++	[WDT_EN] = 0x0,
++	[WDT_STS] = 0x20,
++	[WDT_BARK_TIME] = 0x0C,
++	[WDT_BITE_TIME] = 0x10,
++	[WDT_WINDOW_START_TIME] = 0x08,
++	[WDT_WINDOW_MIN_TIME] = 0x14,
++	[WDT_WINDOW_MAX_TIME] = 0x18,
++	[WDT_FREEZE_CTL] = 0x28,
++	[WDT_ERROR_SYNDROME] = 0x24,
++};
++
++#define WDOG_ENABLE	0x01
++#define WDOG_FREEZE	0x02
++#define WDOG_PET	0x01
++
++struct qcom_win_wdt_match_data {
++	const u32 *offset;
++	bool pretimeout;
++	u32 max_tick_count;
++};
++
++struct qcom_win_wdt {
++	struct watchdog_device	wdd;
++	unsigned long		rate;
++	void __iomem		*base;
++	const u32		*layout;
++};
++
++static void __iomem *wdt_addr(struct qcom_win_wdt *wdt, enum wdt_reg reg)
++{
++	return wdt->base + wdt->layout[reg];
++}
++
++static inline
++struct qcom_win_wdt *to_qcom_win_wdt(struct watchdog_device *wdd)
++{
++	return container_of(wdd, struct qcom_win_wdt, wdd);
++}
++
++static irqreturn_t qcom_win_wdt_isr(int irq, void *arg)
++{
++	struct watchdog_device *wdd = arg;
++
++	watchdog_notify_pretimeout(wdd);
++
++	return IRQ_HANDLED;
++}
++
++static int qcom_win_wdt_start(struct watchdog_device *wdd)
++{
++	struct qcom_win_wdt *wdt = to_qcom_win_wdt(wdd);
++	unsigned int bark = wdd->timeout - wdd->pretimeout;
++
++	u32 status = readl(wdt_addr(wdt, WDT_ERROR_SYNDROME));
++
++	writel(WDOG_FREEZE, wdt_addr(wdt, WDT_EN));
++	writel(0x0, wdt_addr(wdt, WDT_WINDOW_START_TIME));
++	writel(0x0, wdt_addr(wdt, WDT_WINDOW_MIN_TIME));
++	writel(0xffffffff, wdt_addr(wdt, WDT_WINDOW_MAX_TIME));
++	writel(0x3, wdt_addr(wdt, WDT_FREEZE_CTL));
++	writel(bark * wdt->rate, wdt_addr(wdt, WDT_BARK_TIME));
++	writel(wdd->timeout * wdt->rate, wdt_addr(wdt, WDT_BITE_TIME));
++	writel(WDOG_ENABLE, wdt_addr(wdt, WDT_EN));
++	writel(WDOG_PET, wdt_addr(wdt, WDT_PET));
++	return 0;
++}
++
++static int qcom_win_wdt_stop(struct watchdog_device *wdd)
++{
++	struct qcom_win_wdt *wdt = to_qcom_win_wdt(wdd);
++
++	writel(WDOG_FREEZE, wdt_addr(wdt, WDT_EN));
++	return 0;
++}
++
++static int qcom_win_wdt_ping(struct watchdog_device *wdd)
++{
++	struct qcom_win_wdt *wdt = to_qcom_win_wdt(wdd);
++
++	writel(WDOG_PET, wdt_addr(wdt, WDT_PET));
++	return 0;
++}
++
++static int qcom_win_wdt_set_timeout(struct watchdog_device *wdd,
++				unsigned int timeout)
++{
++	wdd->timeout = timeout;
++	return qcom_win_wdt_start(wdd);
++}
++
++static int qcom_win_wdt_set_pretimeout(struct watchdog_device *wdd,
++				   unsigned int timeout)
++{
++	wdd->pretimeout = timeout;
++	return qcom_win_wdt_start(wdd);
++}
++
++static int qcom_win_wdt_restart(struct watchdog_device *wdd, unsigned long action,
++			    void *data)
++{
++	struct qcom_win_wdt *wdt = to_qcom_win_wdt(wdd);
++	u32 timeout;
++
++	/*
++	 * Trigger watchdog bite:
++	 *    Setup BITE_TIME to be 128ms, and enable WDT.
++	 */
++	timeout = 128 * wdt->rate / 1000;
++
++	writel(WDOG_FREEZE, wdt_addr(wdt, WDT_EN));
++	writel(timeout, wdt_addr(wdt, WDT_BARK_TIME));
++	writel(timeout, wdt_addr(wdt, WDT_BITE_TIME));
++	writel(WDOG_ENABLE, wdt_addr(wdt, WDT_EN));
++	writel(WDOG_PET, wdt_addr(wdt, WDT_PET));
++
++	/*
++	 * Actually make sure the above sequence hits hardware before sleeping.
++	 */
++	wmb();
++
++	mdelay(150);
++	return 0;
++}
++
++static int qcom_win_wdt_is_running(struct watchdog_device *wdd)
++{
++	struct qcom_win_wdt *wdt = to_qcom_win_wdt(wdd);
++
++	return (readl(wdt_addr(wdt, WDT_EN)) & WDOG_ENABLE);
++}
++
++static const struct watchdog_ops qcom_win_wdt_ops = {
++	.start		= qcom_win_wdt_start,
++	.stop		= qcom_win_wdt_stop,
++	.ping		= qcom_win_wdt_ping,
++	.set_timeout	= qcom_win_wdt_set_timeout,
++	.set_pretimeout	= qcom_win_wdt_set_pretimeout,
++	.restart        = qcom_win_wdt_restart,
++	.owner		= THIS_MODULE,
++};
++
++static const struct watchdog_info qcom_win_wdt_info = {
++	.options	= WDIOF_KEEPALIVEPING
++			| WDIOF_MAGICCLOSE
++			| WDIOF_SETTIMEOUT
++			| WDIOF_CARDRESET,
++	.identity	= KBUILD_MODNAME,
++};
++
++static const struct watchdog_info qcom_win_wdt_pt_info = {
++	.options	= WDIOF_KEEPALIVEPING
++			| WDIOF_MAGICCLOSE
++			| WDIOF_SETTIMEOUT
++			| WDIOF_PRETIMEOUT
++			| WDIOF_CARDRESET,
++	.identity	= KBUILD_MODNAME,
++};
++
++static const struct qcom_win_wdt_match_data match_data_win_wdt = {
++	.offset = reg_offset_data_wwdog,
++	.pretimeout = true,
++	.max_tick_count = 0xFFFFFFFFU,
++};
++
++static int qcom_win_wdt_probe(struct platform_device *pdev)
++{
++	struct device *dev = &pdev->dev;
++	struct qcom_win_wdt *wdt;
++	struct resource *res;
++	struct device_node *np = dev->of_node;
++	const struct qcom_win_wdt_match_data *data;
++	u32 percpu_offset;
++	int irq, ret;
++	struct clk *clk;
++
++	data = of_device_get_match_data(dev);
++	if (!data) {
++		dev_err(dev, "Unsupported QCOM WDT module\n");
++		return -ENODEV;
++	}
++
++	wdt = devm_kzalloc(dev, sizeof(*wdt), GFP_KERNEL);
++	if (!wdt)
++		return -ENOMEM;
++
++	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
++	if (!res)
++		return -ENOMEM;
++
++	/* We use CPU0's DGT for the watchdog */
++	if (of_property_read_u32(np, "cpu-offset", &percpu_offset))
++		percpu_offset = 0;
++
++	res->start += percpu_offset;
++	res->end += percpu_offset;
++
++	wdt->base = devm_ioremap_resource(dev, res);
++	if (IS_ERR(wdt->base))
++		return PTR_ERR(wdt->base);
++
++	clk = devm_clk_get_enabled(dev, NULL);
++	if (IS_ERR(clk)) {
++		dev_err(dev, "failed to get input clock\n");
++		return PTR_ERR(clk);
++	}
++
++	/*
++	 * We use the clock rate to calculate the max timeout, so ensure it's
++	 * not zero to avoid a divide-by-zero exception.
++	 *
++	 * WATCHDOG_CORE assumes units of seconds, if the WDT is clocked such
++	 * that it would bite before a second elapses it's usefulness is
++	 * limited.  Bail if this is the case.
++	 */
++	wdt->rate = clk_get_rate(clk);
++	if (wdt->rate == 0 ||
++	    wdt->rate > data->max_tick_count) {
++		dev_err(dev, "invalid clock rate\n");
++		return -EINVAL;
++	}
++
++	/* check if there is pretimeout support */
++	irq = platform_get_irq_optional(pdev, 0);
++	if (data->pretimeout && irq > 0) {
++		ret = devm_request_irq(dev, irq, qcom_win_wdt_isr, 0,
++				       "wdt_bark", &wdt->wdd);
++		if (ret)
++			return ret;
++
++		wdt->wdd.info = &qcom_win_wdt_pt_info;
++		wdt->wdd.pretimeout = 1;
++	} else {
++		if (irq == -EPROBE_DEFER)
++			return -EPROBE_DEFER;
++
++		wdt->wdd.info = &qcom_win_wdt_info;
++	}
++
++	wdt->wdd.ops = &qcom_win_wdt_ops;
++	wdt->wdd.min_timeout = 1;
++	wdt->wdd.max_timeout = data->max_tick_count / wdt->rate;
++	wdt->wdd.parent = dev;
++	wdt->layout = data->offset;
++
++	if (readl(wdt_addr(wdt, WDT_STS)) & 2)
++		wdt->wdd.bootstatus = WDIOF_CARDRESET;
++
++	/*
++	 * If 'timeout-sec' unspecified in devicetree, assume a 30 second
++	 * default, unless the max timeout is less than 30 seconds, then use
++	 * the max instead.
++	 */
++	wdt->wdd.timeout = min(wdt->wdd.max_timeout, 30U);
++	watchdog_init_timeout(&wdt->wdd, 0, dev);
++
++	/*
++	 * If WDT is already running, call WDT start which
++	 * will stop the WDT, set timeouts as bootloader
++	 * might use different ones and set running bit
++	 * to inform the WDT subsystem to ping the WDT
++	 */
++	if (qcom_win_wdt_is_running(&wdt->wdd)) {
++		qcom_win_wdt_start(&wdt->wdd);
++		set_bit(WDOG_HW_RUNNING, &wdt->wdd.status);
++	}
++
++	ret = devm_watchdog_register_device(dev, &wdt->wdd);
++	if (ret)
++		return ret;
++
++	platform_set_drvdata(pdev, wdt);
++	return 0;
++}
++
++static int __maybe_unused qcom_win_wdt_suspend(struct device *dev)
++{
++	struct qcom_win_wdt *wdt = dev_get_drvdata(dev);
++
++	if (watchdog_active(&wdt->wdd))
++		qcom_win_wdt_stop(&wdt->wdd);
++
++	return 0;
++}
++
++static int __maybe_unused qcom_win_wdt_resume(struct device *dev)
++{
++	struct qcom_win_wdt *wdt = dev_get_drvdata(dev);
++
++	if (watchdog_active(&wdt->wdd))
++		qcom_win_wdt_start(&wdt->wdd);
++
++	return 0;
++}
++
++static const struct dev_pm_ops qcom_win_wdt_pm_ops = {
++	SET_LATE_SYSTEM_SLEEP_PM_OPS(qcom_win_wdt_suspend, qcom_win_wdt_resume)
++};
++
++static const struct of_device_id qcom_win_wdt_of_table[] = {
++	{ .compatible = "qcom,win-wdt", .data = &match_data_win_wdt },
++	{ },
++};
++MODULE_DEVICE_TABLE(of, qcom_win_wdt_of_table);
++
++static struct platform_driver qcom_win_watchdog_driver = {
++	.probe	= qcom_win_wdt_probe,
++	.driver	= {
++		.name		= KBUILD_MODNAME,
++		.of_match_table	= qcom_win_wdt_of_table,
++		.pm		= &qcom_win_wdt_pm_ops,
++	},
++};
++module_platform_driver(qcom_win_watchdog_driver);
++
++MODULE_DESCRIPTION("QCOM Window Watchdog Driver");
++MODULE_LICENSE("GPL v2");
+-- 
+2.25.1
+

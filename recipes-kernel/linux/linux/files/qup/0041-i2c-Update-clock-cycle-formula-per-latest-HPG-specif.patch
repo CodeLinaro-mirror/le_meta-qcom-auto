@@ -1,0 +1,96 @@
+From 13a26a31912388f77a3630a0670a98b3d4e2b67e Mon Sep 17 00:00:00 2001
+From: Aniket Randive <arandive@qti.qualcomm.com>
+Date: Mon, 29 Sep 2025 15:51:16 +0530
+Subject: [PATCH] i2c: Update clock cycle formula per latest HPG specification
+
+Update the formula used to calculate clock cycles based on the
+latest HPG specification.
+
+The Clock cycle on the bus is now computed as,
+  Clock_cycle = Delay(in ns) / (CLK_DIV_VALUE * INPUT_SERIAL_CLOCK_period
+(ns) * 64)
+
+This change reflects the updated timing model and ensures accurate
+delay configuration for I2C transactions. The maximum supported
+delay is 2^20 ns, as defined by the 20-bit width of M_GP_CNT3[19:0].
+
+Change-Id: Ic6f6245aab07c2156f0443d7da23b24fe56d8287
+Signed-off-by: Aniket Randive <arandive@qti.qualcomm.com>
+---
+ drivers/i2c/busses/i2c-qcom-geni.c | 43 ++++++++++++++++++++----------
+ 1 file changed, 29 insertions(+), 14 deletions(-)
+
+diff --git a/drivers/i2c/busses/i2c-qcom-geni.c b/drivers/i2c/busses/i2c-qcom-geni.c
+index 6523c7db8d51..f7657c9a1af6 100644
+--- a/drivers/i2c/busses/i2c-qcom-geni.c
++++ b/drivers/i2c/busses/i2c-qcom-geni.c
+@@ -64,6 +64,7 @@
+ #define LOW_COUNTER_MSK		GENMASK(19, 10)
+ #define LOW_COUNTER_SHFT	10
+ #define CYCLE_COUNTER_MSK	GENMASK(9, 0)
++#define MAX_CLK_CYCLE		16383
+ 
+ #define I2C_PACK_TX		BIT(0)
+ #define I2C_PACK_RX		BIT(1)
+@@ -747,7 +748,10 @@ static int geni_i2c_gpii_reset(struct i2c_adapter *adap, int gpii_no,
+ static void geni_i2c_configure_pre_delay(struct i2c_adapter *adap, unsigned long delay)
+ {
+ 	struct geni_i2c_dev *gi2c;
+-	unsigned int delay_cycle = 0;
++	unsigned long clk_div = 0;
++	unsigned long src_clk_freq_khz = 0;
++	unsigned long numerator;
++	unsigned long denominator;
+ 
+ 	if (!adap) {
+ 		pr_err("%s: Adap is NULL\n", __func__);
+@@ -761,22 +765,33 @@ static void geni_i2c_configure_pre_delay(struct i2c_adapter *adap, unsigned long
+ 	}
+ 
+ 	/*
+-	 * The inter-frame delay field in the Config TRE is limited to 16 bits,
+-	 * which restricts the maximum number of clock pulses that can be used
+-	 * to introduce a delay between transfers.
++	 * Configure delay before and after I2C command using I2C_DELAY_COUNTER.DELAY_COUNTER.
++	 * DELAY_COUNTER = Delay (ns) /(CLK_DIV_VALUE * 64 * INPUT_SERIAL_CLOCK_period)
+ 	 */
+-	if (((delay > 65535) && (gi2c->clk_freq_out == KHZ(1000))) ||
+-		((delay > 163838) && (gi2c->clk_freq_out == KHZ(400))) ||
+-		((delay > 655350) && (gi2c->clk_freq_out == KHZ(100)))) {
+-			I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "%s: Invalid delay:%d received for %d frequency\n",
+-				__func__, delay, gi2c->clk_freq_out);
+-			return;
++	clk_div = gi2c->clk_fld->clk_div;
++	// Determine source clock frequency in kHz (integer)
++	if (gi2c->is_ccu_qup)
++		src_clk_freq_khz = 38400; // 38.4 MHz
++	else
++		src_clk_freq_khz = 19200; // 19.2 MHz
++
++	numerator = delay * NSEC_PER_USEC;
++	numerator = numerator * src_clk_freq_khz;
++
++	// Denominator: clk_div * 64 * 1000000
++	denominator = (unsigned long)clk_div * 64 * 1000000;
++
++	gi2c->ccu->inter_delay = numerator / denominator;
++
++	if (gi2c->ccu->inter_delay > MAX_CLK_CYCLE) {
++		I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev,
++			    "%s: Invalid!! Passed maximum delay:%d\n", __func__, delay);
++		gi2c->ccu->inter_delay = 0;
++		return;
+ 	}
+ 
+-	delay_cycle = ((1 * NSEC_PER_SEC) / gi2c->clk_freq_out);
+-	gi2c->ccu->inter_delay = ((delay * NSEC_PER_USEC) / delay_cycle);
+-	I2C_DBG_LOG(LOG_LVL_INFO, gi2c->se.dev, "%s: Received delay in(Us): %d delay_cycle:%d\n",
+-		    __func__, delay, gi2c->ccu->inter_delay);
++	I2C_DBG_LOG(LOG_LVL_INFO, gi2c->se.dev, "%s: Received delay in(Us): %lu clock_cycle:%u"
++            "clk_div:%lu\n", __func__, delay, gi2c->ccu->inter_delay, clk_div);
+ }
+ 
+ static void geni_i2c_err_misc(struct geni_i2c_dev *gi2c)
+-- 
+2.34.1
+

@@ -1,0 +1,51 @@
+From bd3c5c0958482a3aed057f195d17084089f9587b Mon Sep 17 00:00:00 2001
+From: Aniket Randive <arandive@qti.qualcomm.com>
+Date: Fri, 6 Feb 2026 10:23:54 +0530
+Subject: [PATCH] i2c: qcom-geni: Remove redundant runtime_resume fallback in
+ xfer path
+
+When pm_runtime_get_sync() fails in geni_i2c_xfer(), the fallback call
+to geni_i2c_runtime_resume() incorrectly returned 0 even though no actual
+resume occurred. This allowed the transfer flow to continue without
+proper hardware initialization, leading to NOC errors.
+
+Remove the extra runtime_resume call from the transfer path to prevent
+I2C operations from proceeding when the hardware is not fully powered.
+This avoids NOC issues while preserving backward compatibility for
+platforms that rely on local clock management.
+
+Change-Id: I132a1d0f30dba0015f166b4d875e4fb535f03636
+Signed-off-by: Aniket Randive <arandive@qti.qualcomm.com>
+---
+ drivers/i2c/busses/i2c-qcom-geni.c | 11 ++---------
+ 1 file changed, 2 insertions(+), 9 deletions(-)
+
+diff --git a/drivers/i2c/busses/i2c-qcom-geni.c b/drivers/i2c/busses/i2c-qcom-geni.c
+index bd6d0c280634..212c8497f834 100644
+--- a/drivers/i2c/busses/i2c-qcom-geni.c
++++ b/drivers/i2c/busses/i2c-qcom-geni.c
+@@ -769,19 +769,12 @@ static int geni_i2c_xfer(struct i2c_adapter *adap,
+ 	reinit_completion(&gi2c->done);
+ 	ret = pm_runtime_get_sync(gi2c->se.dev);
+ 	if (ret < 0 && gi2c->suspended) {
+-		I2C_DBG_LOG(LOG_LVL_VERBOSE, gi2c->se.dev,
+-			    "%s: pm_runtime_get_sync failed ! doing force resume\n",
+-			    __func__);
+-		ret = geni_i2c_runtime_resume(gi2c->se.dev);
+-		if (ret) {
+-			I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev,
+-				    "error turning SE resources:%d\n", ret);
++		I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev,
++			    "error turning SE resources:%d\n", ret);
+ 			pm_runtime_put_noidle(gi2c->se.dev);
+ 			/* Set device in suspended since resume failed */
+ 			pm_runtime_set_suspended(gi2c->se.dev);
+ 			return ret;
+-		}
+-		atomic_inc(&dev->power.usage_count);
+ 	}
+ 
+ 	qcom_geni_i2c_conf(gi2c);
+-- 
+2.34.1
+

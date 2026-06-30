@@ -5,8 +5,8 @@ LICENSE = "BSD-3-Clause-Clear"
 LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/${LICENSE};md5=7a434440b651f4a472ca93716d01033a"
 
 DEPENDS += "glib-2.0 vmm-lib abctl"
-SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/vmm-boot-lcm/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/vmm-boot-lcm;usehead=1"
-SRCREV = "${AUTOREV}"
+SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/vmm-boot-lcm.git;branch=vmm.apss.1.0.r17-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/vmm-boot-lcm"
+SRCREV = "9b2caa12480aa510addac95f00d77eef09c5027b"
 S = "${WORKDIR}/vendor/qcom/opensource/vmm-boot-lcm"
 RDEPENDS:${PN} = "vmm-lib abctl"
 

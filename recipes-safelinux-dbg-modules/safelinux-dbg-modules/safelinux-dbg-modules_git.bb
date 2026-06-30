@@ -7,8 +7,8 @@ LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/${LICENSE};md5
 SYSTEMD_SERVICE:${PN} = "qcom-dcc.service"
 SYSTEMD_AUTO_ENABLE:${PN} = "enable"
 
-SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/safelinux-dbg-modules/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/safelinux-dbg-modules;usehead=1"
-SRCREV = "${AUTOREV}"
+SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/safelinux-dbg-modules.git;branch=safe-services.lnx.1.0.r24-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/safelinux-dbg-modules"
+SRCREV = "f53307c06e4284876b631a868cfb5ccd477418a9"
 
 S = "${WORKDIR}/vendor/qcom/opensource/safelinux-dbg-modules"
 

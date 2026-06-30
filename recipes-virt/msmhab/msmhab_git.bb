@@ -7,9 +7,9 @@ LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/${LICENSE};md5
 
 DEPENDS += "gunyah-drivers"
 
-SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/mmhab-drv/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/mmhab-drv;usehead=1"
+SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/mmhab-drv.git;branch=mmhab-drv.lnx.1.0.r15-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/mmhab-drv"
 
-SRCREV = "${AUTOREV}"
+SRCREV = "7e095d9fae10d288c4d76967ea835718c214d4f3"
 
 S = "${WORKDIR}/vendor/qcom/opensource/mmhab-drv"
 

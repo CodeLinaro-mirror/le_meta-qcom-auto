@@ -10,7 +10,7 @@ DEPENDS += "liblog"
 PR = "r1"
 
 SRC_URI = "\
-    ${PATH_TO_REPO}/system/core/.git;protocol=${PROTO};destsuffix=system/core;usehead=1 \
+    ${CLO_LE_GIT}/platform/system/core.git;branch=lv-blast.lnx.1.1.r63-rel;protocol=${OSS_PROTO};destsuffix=system/core \
     file://0001-libcutils-Remove-autotools-support.patch;patchdir=../ \
     https://git.codelinaro.org/clo/la/platform/system/core/-/commit/c2d8aad8d70aeb4d50f077f552044b85ef6c64b9.patch;downloadfilename=0001-libcutils-ashmem-fortify-and-comply-with-Android-cod.patch;patchdir=../;name=patch1 \
     https://git.codelinaro.org/clo/la/platform/system/core/-/commit/1186f3a5ad6581fae6e284fef4bfcefe50462cda.patch;downloadfilename=0002-libcutils-ashmem-check-fd-validity.patch;patchdir=../;name=patch2 \
@@ -29,7 +29,7 @@ SRC_URI[patch4.md5sum] = "47b1e3513f57c20c4d1184f38d4417c3"
 SRC_URI[patch4.sha256sum] = "e3bf36a7384889508c7bcd663125353084ba3177043a7ddea717804f6d7dce83"
 SRC_URI[patch5.md5sum] = "c96860bcb5aa51249491fc51cf36b805"
 SRC_URI[patch5.sha256sum] = "38ae4061a44592cddbcb3c137caaacc59147ee5c2415c87771add55b3893d26e"
-SRCREV = "${AUTOREV}"
+SRCREV = "cbf2a7461173d37cded2701a56cf48aee4f7816f"
 
 S = "${WORKDIR}/system/core/libcutils"
 

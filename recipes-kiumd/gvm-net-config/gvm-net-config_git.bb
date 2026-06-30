@@ -9,9 +9,9 @@ SYSTEMD_SERVICE:${PN}-lvgvm = " gvm_net_config_lvgvm.service"
 SYSTEMD_PACKAGES = "${PN} ${PN}-lvgvm"
 
 SRC_URI = "\
-    ${PATH_TO_REPO}/vendor/qcom/opensource/kiumd/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/kiumd;usehead=1 \
+    ${CLO_LE_GIT}/platform/vendor/qcom-opensource/kiumd.git;branch=safe-services.lnx.1.0.r24-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/kiumd \
 "
-SRCREV = "${AUTOREV}"
+SRCREV = "a48ae3399863aa9cb06f42eb04abbfb5d7865024"
 
 S = "${WORKDIR}/vendor/qcom/opensource/kiumd/gvm_net_config"
 

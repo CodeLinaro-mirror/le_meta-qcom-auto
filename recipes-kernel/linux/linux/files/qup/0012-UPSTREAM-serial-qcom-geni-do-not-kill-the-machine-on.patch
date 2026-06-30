@@ -1,0 +1,42 @@
+From fa28fab5909072e0c1be81f6ec7c083868eebdb1 Mon Sep 17 00:00:00 2001
+From: Praveen Talari <praveen.talari@oss.qualcomm.com>
+Date: Sat, 13 Sep 2025 16:39:06 +0530
+Subject: [PATCH 12/19] UPSTREAM: serial: qcom-geni: do not kill the machine on
+ fifo underrun
+
+The Qualcomm GENI serial driver did not handle buffer flushing and used
+to print discarded characters when the circular buffer was cleared.
+Since commit 1788cf6a91d9 ("tty: serial: switch from circ_buf to kfifo")
+this instead resulted in a hard lockup due to
+qcom_geni_serial_send_chunk_fifo() spinning indefinitely in the
+interrupt handler.
+
+The underlying bugs have now been fixed, but make sure to output NUL
+characters instead of killing the machine if a similar driver bug is
+ever reintroduced.
+
+Change-Id: Id626ffd77d140f7c0abe5ac85835205e47a83234
+Signed-off-by: Johan Hovold <johan+linaro@kernel.org>
+Link: https://lore.kernel.org/r/20240704101805.30612-4-johan+linaro@kernel.org
+Signed-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>
+Signed-off-by: Praveen Talari <praveen.talari@oss.qualcomm.com>
+---
+ drivers/tty/serial/qcom_geni_serial.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/tty/serial/qcom_geni_serial.c b/drivers/tty/serial/qcom_geni_serial.c
+index 6fb2ecb35a7a..36832393f764 100644
+--- a/drivers/tty/serial/qcom_geni_serial.c
++++ b/drivers/tty/serial/qcom_geni_serial.c
+@@ -935,7 +935,7 @@ static void qcom_geni_serial_send_chunk_fifo(struct uart_port *uport,
+ 		memset(buf, 0, sizeof(buf));
+ 		tx_bytes = min(remaining, BYTES_PER_FIFO_WORD);
+ 
+-		tx_bytes = uart_fifo_out(uport, buf, tx_bytes);
++		uart_fifo_out(uport, buf, tx_bytes);
+ 
+ 		iowrite32_rep(uport->membase + SE_GENI_TX_FIFOn, buf, 1);
+ 
+-- 
+2.34.1
+

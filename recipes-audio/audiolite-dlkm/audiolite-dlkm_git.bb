@@ -6,9 +6,9 @@ LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/${LICENSE};md5
 
 DEPENDS += "virtual/kernel"
 
-SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/audiolite/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/audiolite;usehead=1"
+SRC_URI = "${CLO_LA_GIT}/platform/vendor/qcom-opensource/audiolite.git;branch=audiolite.lnx.1.0.r38-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/audiolite"
 
-SRCREV = "${AUTOREV}"
+SRCREV = "36c4e3ce1bded8473bc7b5fcf1b3e93924906f6d"
 
 S = "${WORKDIR}/vendor/qcom/opensource/audiolite/test_drivers/pvm"
 

@@ -1,0 +1,93 @@
+From 7d99a12f74673fd9b577b2ee77f59ffb85e03417 Mon Sep 17 00:00:00 2001
+From: Sriram Dash <quic_sriramd@quicinc.com>
+Date: Fri, 28 Feb 2025 14:17:32 +0530
+Subject: [PATCH 09/20] PENDING: usb: dwc3: host: Set XHCI_RESET_ON_RESUME for
+ xhci
+
+When power is lost for the controller during APPS suspend, the
+controller generates a Host Controller Error (HCE) upon APPS
+resume, necessitating a complete reinitialization of the Host
+Controller (HC).
+
+Upstream commit 8b328f8002bcf29ef517ee4bf234e09aabec4d2e
+("xhci: re-initialize the HC during resume if HCE was set")
+addresses this issue by using the XHCI_RESET_ON_RESUME
+mechanism.
+
+For targets such as the SA8255P, which require a complete
+shutdown during APPS suspend, the controller must be
+reinitialized during APPS resume.
+
+Let dwc3 manage the quirk for the usb controller using
+software properties.
+
+Change-Id: Iedcf1e746b3d8ea898c0ce16e303721202f73ac4
+Signed-off-by: Sriram Dash <quic_sriramd@quicinc.com>
+---
+ drivers/usb/dwc3/core.c | 5 +++++
+ drivers/usb/dwc3/core.h | 2 ++
+ drivers/usb/dwc3/host.c | 5 ++++-
+ 3 files changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/usb/dwc3/core.c b/drivers/usb/dwc3/core.c
+index 49311e04e18f0..ee9874aebd27c 100644
+--- a/drivers/usb/dwc3/core.c
++++ b/drivers/usb/dwc3/core.c
+@@ -1709,6 +1709,11 @@ static void dwc3_get_software_properties(struct dwc3 *dwc)
+ 				break;
+ 		}
+ 	}
++
++	for (tmpdev = dwc->dev; tmpdev; tmpdev = tmpdev->parent) {
++		dwc->xhci_reset_on_resume = device_property_read_bool(tmpdev,
++						"xhci-reset-on-resume");
++	}
+ }
+ 
+ /* check whether the core supports IMOD */
+diff --git a/drivers/usb/dwc3/core.h b/drivers/usb/dwc3/core.h
+index fc35492f09d85..4cc0457a1e920 100644
+--- a/drivers/usb/dwc3/core.h
++++ b/drivers/usb/dwc3/core.h
+@@ -1153,6 +1153,7 @@ struct dwc3_glue_data {
+  * @suspended: set to track suspend event due to U3/L2.
+  * @allow_role_switch_userspace_control: Expose sysfs entries to allow
+  *					userspace to control role switch.
++ * @xhci_reset_on_resume: Set if reinit is required on APPS Resume.
+  * @susphy_state: state of DWC3_GUSB2PHYCFG_SUSPHY + DWC3_GUSB3PIPECTL_SUSPHY
+  *		  before PM suspend.
+  * @imod_interval: set the interrupt moderation interval in 250ns
+@@ -1383,6 +1384,7 @@ struct dwc3 {
+ 	unsigned		wakeup_configured:1;
+ 	unsigned		suspended:1;
+ 	unsigned		allow_role_switch_userspace_control:1;
++	unsigned		xhci_reset_on_resume:1;
+ 	unsigned		susphy_state:1;
+ 
+ 	u16			imod_interval;
+diff --git a/drivers/usb/dwc3/host.c b/drivers/usb/dwc3/host.c
+index 6c143f7d24103..549670886df69 100644
+--- a/drivers/usb/dwc3/host.c
++++ b/drivers/usb/dwc3/host.c
+@@ -82,7 +82,7 @@ static int dwc3_host_get_irq(struct dwc3 *dwc)
+ 
+ int dwc3_host_init(struct dwc3 *dwc)
+ {
+-	struct property_entry	props[5];
++	struct property_entry	props[6];
+ 	struct platform_device	*xhci;
+ 	int			ret, irq;
+ 	int			prop_idx = 0;
+@@ -118,6 +118,9 @@ int dwc3_host_init(struct dwc3 *dwc)
+ 	if (dwc->usb2_lpm_disable)
+ 		props[prop_idx++] = PROPERTY_ENTRY_BOOL("usb2-lpm-disable");
+ 
++	if (dwc->xhci_reset_on_resume)
++		props[prop_idx++] = PROPERTY_ENTRY_BOOL("xhci-reset-on-resume");
++
+ 	/**
+ 	 * WORKAROUND: dwc3 revisions <=3.00a have a limitation
+ 	 * where Port Disable command doesn't work.
+-- 
+2.17.1
+

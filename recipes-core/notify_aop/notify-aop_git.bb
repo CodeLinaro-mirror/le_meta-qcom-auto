@@ -8,8 +8,8 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/BSD-3-Clause-Clear;md5=7a434440
 DEPENDS += "virtual/kernel-headers libstd systemd libkiumd power-utils libpil-client"
 DEPENDS += "${@bb.utils.contains('MACHINE_FEATURES', 'qti-umd', 'safelinux-cfg-modules', '', d)}"
 
-SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/safelinux-services/notify_aop/.git;protocol=${PROTO};destsuffix=/vendor/qcom/opensource/safelinux-services/notify_aop;usehead=1"
-SRCREV = "${AUTOREV}"
+SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/safelinux-services.git;branch=safe-services.lnx.1.0.r24-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/safelinux-services"
+SRCREV = "3128411e0312b7ad0e397c923c08990190525dfd"
 S = "${WORKDIR}/vendor/qcom/opensource/safelinux-services/notify_aop"
 
 inherit systemd cmake pkgconfig sleep-notify-service

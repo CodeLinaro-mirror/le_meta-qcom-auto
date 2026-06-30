@@ -9,7 +9,7 @@ SYSTEMD_SERVICE:${PN} = "\
 "
 
 SRC_URI = "\
-    ${PATH_TO_REPO}/vendor/qcom/opensource/safelinux-system-cfg/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/safelinux-system-cfg;usehead=1 \
+    ${CLO_LE_GIT}/platform/vendor/qcom-opensource/safelinux-system-cfg.git;branch=safe-services.lnx.1.0.r24-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/safelinux-system-cfg \
     file://vm_net.conf \
     file://vfio.conf \
     file://vfio_param.conf \
@@ -17,7 +17,7 @@ SRC_URI = "\
     file://0001-vfio-device-probe-service-remove-delay-after-start-o.patch \
 "
 
-SRCREV = "${AUTOREV}"
+SRCREV = "0628db7814eeab139f72595e49392725798e0ad5"
 
 S = "${WORKDIR}/vendor/qcom/opensource/safelinux-system-cfg"
 

@@ -9,8 +9,8 @@ require recipes-kernel/linux/linux-qcom.inc
 COMPATIBLE_MACHINE = "sa8775|sa7255|gen5"
 
 SRC_URI = "\
-    ${PATH_TO_REPO}/kernel/kernel_platform/kernel/.git;protocol=${PROTO};destsuffix=kernel/kernel_platform/kernel;usehead=1 \
+    ${CLO_LA_GIT}/kernel/qcom.git;branch=kernel.qclinux.1.0.r16-rel;protocol=${OSS_PROTO};destsuffix=kernel/kernel_platform/kernel \
 "
+SRCREV = "40205a85d096cfaaaff98e26b8d0aa39560faebb"
 
 S = "${WORKDIR}/kernel/kernel_platform/kernel"
-

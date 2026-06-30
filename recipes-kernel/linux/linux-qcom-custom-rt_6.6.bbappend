@@ -1,4 +1,4 @@
-FILESEXTRAPATHS:prepend = "${SRC_DIR_ROOT}/layers/meta-qti-automotive/recipes-kernel/linux/files:"
+FILESEXTRAPATHS:prepend := "${THISDIR}/linux/files:"
 
 S = "${WORKDIR}/kernel/kernel_platform/kernel"
 

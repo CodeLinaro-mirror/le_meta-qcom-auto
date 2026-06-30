@@ -1,0 +1,194 @@
+From c7edb77c2873ef9b4d811d15125d0114589c236f Mon Sep 17 00:00:00 2001
+From: linlzhan <quic_linlzhan@quicinc.com>
+Date: Mon, 22 Dec 2025 20:34:28 +0800
+Subject: [PATCH] PENDING: ice: Enable ICE on SA8255p Qualcomm platforms
+
+Enable ICE and ignore the UFS ICE clock in ICE driver
+since this clock is already requested ON/OFF via UFS
+power domain channel due to SCMI support.
+
+Change-Id: I96747e077d171110fb119e4c5065b51e8db25fd0
+Signed-off-by: linlzhan <quic_linlzhan@quicinc.com>
+---
+ drivers/soc/qcom/ice.c | 153 +++++++++++++++++++++--------------------
+ 1 file changed, 79 insertions(+), 74 deletions(-)
+
+diff --git a/drivers/soc/qcom/ice.c b/drivers/soc/qcom/ice.c
+index bb3500b2121f..99d73be700b4 100644
+--- a/drivers/soc/qcom/ice.c
++++ b/drivers/soc/qcom/ice.c
+@@ -81,6 +81,7 @@ struct qcom_ice {
+ 	u8 hwkm_version;
+ 	bool use_hwkm;
+ 	bool hwkm_init_complete;
++	bool skip_clk;
+ 	unsigned long max_freq;
+ 	unsigned long min_freq;
+ 	bool has_opp;
+@@ -562,85 +563,89 @@ static struct qcom_ice *qcom_ice_create(struct device *dev,
+ 	engine->dev = dev;
+ 	engine->base = base;
+ 
+-	/*
+-	 * Legacy DT binding uses different clk names for each consumer,
+-	 * so lets try those first. Also get its corresponding clock index.
+-	 */
+-	for (int i = 0; i < ARRAY_SIZE(legacy_ice_clk_names); i++) {
+-		engine->core_clk = devm_clk_get_optional(dev, legacy_ice_clk_names[i]);
+-		if (!engine->core_clk)
+-			continue;
+-
+-		if (IS_ERR(engine->core_clk))
+-			return ERR_CAST(engine->core_clk);
+-
+-		/* Get the ICE clk index */
+-		clk_index = of_property_match_string(dev->of_node,
+-						     "clock-names",
+-						     legacy_ice_clk_names[i]);
+-		if (clk_index < 0)
+-			return ERR_PTR(clk_index);
+-
+-		/* Vote for maximum clock rate for maximum performance */
+-		err = clk_set_rate(engine->core_clk, INT_MAX);
+-		if (err)
+-			dev_warn(dev, "Failed boosting the ICE clk to TURBO\n");
+-
+-		break;
+-	}
+-
+-	/* When it does not match the legacy DT bindings
+-	 * it must have only one clock and it is part of
+-	 * decicated DT node
+-	 */
+-	if (!engine->core_clk) {
+-		engine->core_clk = devm_clk_get(dev, NULL);
+-		if (IS_ERR(engine->core_clk))
+-			return ERR_CAST(engine->core_clk);
+-
+-		/* OPP table is optional */
+-		err = devm_pm_opp_of_add_table(dev);
+-		if (err && err != -ENODEV) {
+-			dev_err(dev, "Invalid OPP table in Device tree\n");
+-			return ERR_PTR(err);
++	engine->skip_clk = of_property_read_bool(dev->of_node,
++						 "qcom,ice-skip-clk");
++	if (!engine->skip_clk) {
++		/*
++		* Legacy DT binding uses different clk names for each consumer,
++		* so lets try those first. Also get its corresponding clock index.
++		*/
++		for (int i = 0; i < ARRAY_SIZE(legacy_ice_clk_names); i++) {
++			engine->core_clk = devm_clk_get_optional(dev, legacy_ice_clk_names[i]);
++			if (!engine->core_clk)
++				continue;
++
++			if (IS_ERR(engine->core_clk))
++				return ERR_CAST(engine->core_clk);
++
++			/* Get the ICE clk index */
++			clk_index = of_property_match_string(dev->of_node,
++								"clock-names",
++								legacy_ice_clk_names[i]);
++			if (clk_index < 0)
++				return ERR_PTR(clk_index);
++
++			/* Vote for maximum clock rate for maximum performance */
++			err = clk_set_rate(engine->core_clk, INT_MAX);
++			if (err)
++				dev_warn(dev, "Failed boosting the ICE clk to TURBO\n");
++
++			break;
+ 		}
+-		engine->has_opp = (err == 0);
+-
+-		/* Vote for maximum clock rate for maximum performance */
+-		err = dev_pm_opp_set_rate(dev, INT_MAX);
+-		if (err)
+-			dev_warn(dev, "Failed boosting the ICE clk to TURBO\n");
+ 
+-		/* Since, there is only one clock
+-		 * index can be set as 0
+-		 */
+-		clk_index = 0;
+-	}
++		/* When it does not match the legacy DT bindings
++		* it must have only one clock and it is part of
++		* decicated DT node
++		*/
++		if (!engine->core_clk) {
++			engine->core_clk = devm_clk_get(dev, NULL);
++			if (IS_ERR(engine->core_clk))
++				return ERR_CAST(engine->core_clk);
++
++			/* OPP table is optional */
++			err = devm_pm_opp_of_add_table(dev);
++			if (err && err != -ENODEV) {
++				dev_err(dev, "Invalid OPP table in Device tree\n");
++				return ERR_PTR(err);
++			}
++			engine->has_opp = (err == 0);
++
++			/* Vote for maximum clock rate for maximum performance */
++			err = dev_pm_opp_set_rate(dev, INT_MAX);
++			if (err)
++				dev_warn(dev, "Failed boosting the ICE clk to TURBO\n");
++
++			/* Since, there is only one clock
++			* index can be set as 0
++			*/
++			clk_index = 0;
++		}
+ 
+-	/* Find the ICE core clock min and max frequencies */
+-	rate = 0;
+-	opp = dev_pm_opp_find_freq_ceil_indexed(dev, &rate, clk_index);
+-	if (IS_ERR(opp)) {
+-		dev_warn(dev, "Unable to find ICE core clock min freq\n");
+-	} else {
+-		engine->min_freq = rate;
+-		dev_pm_opp_put(opp);
+-	}
++		/* Find the ICE core clock min and max frequencies */
++		rate = 0;
++		opp = dev_pm_opp_find_freq_ceil_indexed(dev, &rate, clk_index);
++		if (IS_ERR(opp)) {
++			dev_warn(dev, "Unable to find ICE core clock min freq\n");
++		} else {
++			engine->min_freq = rate;
++			dev_pm_opp_put(opp);
++		}
+ 
+-	rate = ULONG_MAX;
+-	opp = dev_pm_opp_find_freq_floor_indexed(dev, &rate, clk_index);
+-	if (IS_ERR(opp)) {
+-		dev_warn(dev, "Unable to find ICE core clock max freq\n");
+-	} else {
+-		engine->max_freq = rate;
+-		dev_pm_opp_put(opp);
+-	}
++		rate = ULONG_MAX;
++		opp = dev_pm_opp_find_freq_floor_indexed(dev, &rate, clk_index);
++		if (IS_ERR(opp)) {
++			dev_warn(dev, "Unable to find ICE core clock max freq\n");
++		} else {
++			engine->max_freq = rate;
++			dev_pm_opp_put(opp);
++		}
+ 
+-	/* Enable the clock before we check what HW version the driver supports */
+-	err = clk_prepare_enable(engine->core_clk);
+-	if (err) {
+-		dev_err(dev, "Failed to enable ICE core clock\n");
+-		return ERR_PTR(err);
++		/* Enable the clock before we check what HW version the driver supports */
++		err = clk_prepare_enable(engine->core_clk);
++		if (err) {
++			dev_err(dev, "Failed to enable ICE core clock\n");
++			return ERR_PTR(err);
++		}
+ 	}
+ 	engine->use_hwkm = of_property_read_bool(dev->of_node,
+ 						 "qcom,ice-use-hwkm");
+-- 
+2.34.1
+

@@ -10,12 +10,14 @@ DEPENDS += "libcutils libhardware-headers liblog libutils virtual/kernel-headers
 
 PR = "r3"
 
-SRC_URI = "${PATH_TO_REPO}/${TARGET_DIR}vendor/qcom/opensource/commonsys-intf/display/.git;protocol=${PROTO};destsuffix=${TARGET_DIR}vendor/qcom/opensource/commonsys-intf/display;usehead=1"
+SRC_URI = "${CLO_LA_GIT}/platform/vendor/qcom-opensource/display-commonsys-intf.git;branch=display-sysintf.lnx.14.0.r27-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/commonsys-intf/display"
 
-SRCREV = "${AUTOREV}"
+SRC_URI:sa8775-flex = "${CLO_LA_GIT}/platform/vendor/qcom-opensource/gen4-5/display-commonsys-intf.git;branch=display-android-commonsys_gen4-5.lnx.1.0.r2-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/commonsys-intf/display"
+SRCREV = "ed017f86c7348e3a4b1d9b8087e4073982c4b44e"
 
 
-S = "${WORKDIR}/${TARGET_DIR}vendor/qcom/opensource/commonsys-intf/display"
+SRCREV:sa8775-flex = "992d69ea4f36455fb57aba066a6e2f014cbd70d8"
+S = "${WORKDIR}/vendor/qcom/opensource/commonsys-intf/display"
 
 
 inherit autotools pkgconfig
@@ -28,9 +30,9 @@ LDFLAGS += "-llog -lutils -lcutils"
 CPPFLAGS += "-DTARGET_HEADLESS"
 CPPFLAGS += "-DVENUS_COLOR_FORMAT"
 CPPFLAGS += "-DPAGE_SIZE=4096"
-CPPFLAGS += "-I${WORKDIR}/${TARGET_DIR}vendor/qcom/opensource/commonsys-intf/display/gralloc"
-CPPFLAGS += "-I${WORKDIR}/${TARGET_DIR}vendor/qcom/opensource/commonsys-intf/display/libqdmetadata"
-CPPFLAGS += "-I${WORKDIR}/${TARGET_DIR}vendor/qcom/opensource/commonsys-intf/display/include"
+CPPFLAGS += "-I${WORKDIR}/vendor/qcom/opensource/commonsys-intf/display/gralloc"
+CPPFLAGS += "-I${WORKDIR}/vendor/qcom/opensource/commonsys-intf/display/libqdmetadata"
+CPPFLAGS += "-I${WORKDIR}/vendor/qcom/opensource/commonsys-intf/display/include"
 
 do_install:append() {
     install -d ${D}${includedir}

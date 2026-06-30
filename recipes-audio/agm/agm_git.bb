@@ -8,9 +8,8 @@ DEPENDS += "tinyalsa-new tinycompress expat dbus \
     audioreach-conf \
 "
 
-SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/agm/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/agm;usehead=1"
-
-SRCREV = "${AUTOREV}"
+SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom/opensource/agm.git;branch=audio-core-auto.lnx.2.0.r5-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/agm"
+SRCREV = "51183bc98229b5a671acfc763c57d6c10eddb12f"
 
 S = "${WORKDIR}/vendor/qcom/opensource/agm"
 

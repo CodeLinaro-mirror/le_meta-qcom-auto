@@ -8,7 +8,7 @@ DEPENDS += "bzip2-replacement-native checkpolicy-native m4-native policycoreutil
 PROVIDES = "virtual/refpolicy"
 
 SRC_URI = "git://git.codelinaro.org/clo/yocto-mirrors/github/selinuxproject/refpolicy.git;protocol=https;branch=master;name=refpolicy;destsuffix=refpolicy \
-        ${PATH_TO_REPO}/lv-sepolicy/.git;protocol=${PROTO};destsuffix=lv-sepolicy;usehead=1 \
+        ${CLO_LE_GIT}/lv-sepolicy.git;branch=lv-sepolicy.lnx.2.0.r22-rel;protocol=${OSS_PROTO};destsuffix=lv-sepolicy;name=lvsepolicy \
 "
 
 # Specific config files for Poky
@@ -21,6 +21,8 @@ SRC_URI += "file://customizable_types  \
 "
 
 SRCREV_refpolicy = "429b26878be53e0b3537771a98e240e6e383ee73"
+SRCREV_lvsepolicy = "6832c168bbb9d30368a64d204631fe9ee84af4ba"
+SRCREV_FORMAT = "refpolicy_lvsepolicy"
 
 S = "${WORKDIR}/refpolicy"
 

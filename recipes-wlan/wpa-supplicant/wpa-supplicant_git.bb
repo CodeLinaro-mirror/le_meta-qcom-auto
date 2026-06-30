@@ -2,22 +2,29 @@ SUMMARY = "Client for Wi-Fi Protected Access (WPA)"
 DESCRIPTION = "WPA supplicant client used for WLAN STA/AP/P2P/WPS such feature test"
 HOMEPAGE = "https://git.codelinaro.org/"
 LICENSE = "BSD-2-Clause"
-LIC_FILES_CHKSUM = "file://${WORKDIR}/${TARGET_DIR}external/wpa_supplicant_8/COPYING;md5=5ebcb90236d1ad640558c3d3cd3035df"
+LIC_FILES_CHKSUM = "file://${WORKDIR}/external/wpa_supplicant_8/COPYING;md5=5ebcb90236d1ad640558c3d3cd3035df"
 
 DEPENDS += "dbus libnl openssl"
-SRC_URI = "${PATH_TO_REPO}/${TARGET_DIR}external/wpa_supplicant_8/.git;protocol=${PROTO};destsuffix=${TARGET_DIR}external/wpa_supplicant_8;usehead=1 \
+SRC_URI = "${CLO_LA_GIT}/platform/external/wpa_supplicant_8.git;branch=auto-wlan-service.lnx.1.4.r8-rel;protocol=${OSS_PROTO};destsuffix=external/wpa_supplicant_8 \
            file://wpa_supplicant.conf-sane \
            file://defconfig-qcacld \
            file://wpa-supplicant.sh \
            file://99_wpa_supplicant \
           "
-SRCREV = "${AUTOREV}"
+SRC_URI:sa8775-flex = "${CLO_LA_GIT}/platform/external/gen4-5/wpa_supplicant_8.git;branch=auto-wlan-service_gen4-5.lnx.1.1.r2-rel;protocol=${OSS_PROTO};destsuffix=external/wpa_supplicant_8 \
+           file://wpa_supplicant.conf-sane \
+           file://defconfig-qcacld \
+           file://wpa-supplicant.sh \
+           file://99_wpa_supplicant \
+          "
+SRCREV = "a4d0363506082096f3def02f66f60753edd8f7f3"
+SRCREV:sa8775-flex = "033b843b76ad435aa48060248ac988f9342c9a40"
 PR = "r5.2"
 
 SOLIBS = "*.so"
 FILES_SOLIBSDEV = ""
 
-S = "${WORKDIR}/${TARGET_DIR}external/wpa_supplicant_8/wpa_supplicant"
+S = "${WORKDIR}/external/wpa_supplicant_8/wpa_supplicant"
 
 inherit autotools-brokensep linux-kernel-base pkgconfig systemd
 
@@ -64,4 +71,3 @@ CONFFILES:${PN} += "${sysconfdir}/wpa_supplicant.conf"
 FILES:${PN} += "${systemd_unitdir}/system/*"
 FILES:${PN} += "${datadir}"
 FILES:${PN} += "${datadir}/dbus-1/system-services/*"
-

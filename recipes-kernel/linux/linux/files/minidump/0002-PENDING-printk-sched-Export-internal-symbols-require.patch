@@ -1,0 +1,57 @@
+From 96019dd027d94c5f500f525181d25d8a4187bb68 Mon Sep 17 00:00:00 2001
+From: Sankalp Negi <snegi@qti.qualcomm.com>
+Date: Wed, 4 Feb 2026 03:56:52 -0800
+Subject: [PATCH 2/2] PENDING: printk, sched: Export internal symbols required
+ by indirect module users
+
+Some exported helper APIs used by modules indirectly depend
+on internal symbols that are not exported. For example:
+
+  - printk_deferred() internally calls _printk_deferred()
+  - register_trace_sched_switch() callbacks use sched_switch
+  - cpu_rq() / cpu_curr() require access to runqueues[]
+
+Export the required internal symbols so that indirect
+module callers reliably:
+
+  - EXPORT_SYMBOL_GPL(_printk_deferred)
+  - EXPORT_TRACEPOINT_SYMBOL_GPL(sched_switch)
+  - EXPORT_SYMBOL_GPL(runqueues)
+
+Change-Id: I837f839b6591c092e3619295d392570b137db56c
+Signed-off-by: Sankalp Negi <snegi@qti.qualcomm.com>
+---
+ kernel/printk/printk.c | 1 +
+ kernel/sched/core.c    | 2 ++
+ 2 files changed, 3 insertions(+)
+
+diff --git a/kernel/printk/printk.c b/kernel/printk/printk.c
+index 51c43e0f9b29..b2086178b64c 100644
+--- a/kernel/printk/printk.c
++++ b/kernel/printk/printk.c
+@@ -3984,6 +3984,7 @@ int _printk_deferred(const char *fmt, ...)
+ 
+ 	return r;
+ }
++EXPORT_SYMBOL_GPL(_printk_deferred);
+ 
+ /*
+  * printk rate limiting, lifted from the networking subsystem.
+diff --git a/kernel/sched/core.c b/kernel/sched/core.c
+index e6a05c0594e8..ced767ce5ab9 100644
+--- a/kernel/sched/core.c
++++ b/kernel/sched/core.c
+@@ -114,8 +114,10 @@ EXPORT_TRACEPOINT_SYMBOL_GPL(sched_overutilized_tp);
+ EXPORT_TRACEPOINT_SYMBOL_GPL(sched_util_est_cfs_tp);
+ EXPORT_TRACEPOINT_SYMBOL_GPL(sched_util_est_se_tp);
+ EXPORT_TRACEPOINT_SYMBOL_GPL(sched_update_nr_running_tp);
++EXPORT_TRACEPOINT_SYMBOL_GPL(sched_switch);
+ 
+ DEFINE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
++EXPORT_PER_CPU_SYMBOL_GPL(runqueues);
+ DEFINE_PER_CPU(struct rnd_state, sched_rnd_state);
+ 
+ #ifdef CONFIG_SCHED_DEBUG
+-- 
+2.34.1
+

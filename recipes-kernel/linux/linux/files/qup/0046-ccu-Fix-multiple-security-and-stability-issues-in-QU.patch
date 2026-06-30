@@ -1,0 +1,224 @@
+From 9b3b31ce420f277fd533b96e5fa070b2527614c4 Mon Sep 17 00:00:00 2001
+From: Aniket Randive <arandive@qti.qualcomm.com>
+Date: Thu, 12 Feb 2026 12:21:04 +0530
+Subject: [PATCH] ccu: Fix multiple security and stability issues in
+ QUP-related code
+
+Fix several issues that could lead to NULL pointer dereferences,
+uninitialized variable usage, memory leaks, and format string
+vulnerabilities. Correct incorrect NULL check logic and error-path
+handling to prevent dereferencing invalid pointers and ensure proper
+resource cleanup. Remove unnecessary memory allocation that could
+leak on failure paths. Initialize address variables to avoid use of
+uninitialized data. Fix unsafe vsnprintf usage by properly handling
+its return value and ensuring buffers are explicitly null-terminated
+when truncated.
+
+Change-Id: I89fbad37f03448961bd3f3eb5d5cea195406778d
+Signed-off-by: Aniket Randive <arandive@qti.qualcomm.com>
+---
+ drivers/i2c/busses/i2c-qcom-geni.c      |  2 +-
+ drivers/soc/qcom/qcom_ccu_qup.c         | 57 +++++++++++++++++++------
+ include/trace/events/qup_trace_common.h |  9 ++--
+ 3 files changed, 51 insertions(+), 17 deletions(-)
+
+diff --git a/drivers/i2c/busses/i2c-qcom-geni.c b/drivers/i2c/busses/i2c-qcom-geni.c
+index 2ae0b7d05caa..d3eb90da5ec7 100644
+--- a/drivers/i2c/busses/i2c-qcom-geni.c
++++ b/drivers/i2c/busses/i2c-qcom-geni.c
+@@ -1677,7 +1677,7 @@ static int geni_i2c_gpi_xfer(struct geni_i2c_dev *gi2c, struct i2c_msg msgs[], i
+ 	struct gpi_i2c_config *peripheral;
+ 	int i, ret = 0, idx = 0;
+ 	unsigned long time_left;
+-	dma_addr_t tx_addr, rx_addr;
++	dma_addr_t tx_addr = 0, rx_addr = 0;
+ 	void *tx_buf = NULL, *rx_buf = NULL;
+ 	const struct geni_i2c_clk_fld *itr = gi2c->clk_fld;
+ 	struct ccu_frame_info *frame;
+diff --git a/drivers/soc/qcom/qcom_ccu_qup.c b/drivers/soc/qcom/qcom_ccu_qup.c
+index 366c6ca5385f..e140adc2394b 100644
+--- a/drivers/soc/qcom/qcom_ccu_qup.c
++++ b/drivers/soc/qcom/qcom_ccu_qup.c
+@@ -279,6 +279,11 @@ void ccu_update_xfer_result(struct ccu_xfer_result *result)
+ 	struct ccu_response_data *entry;
+ 	unsigned long flags;
+ 
++	if (!ccu) {
++		pr_err("%s: CCU device not initialized\n", __func__);
++		return;
++	}
++
+ 	entry = kmalloc(sizeof(*entry), GFP_KERNEL);
+ 	if (!entry) {
+ 		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, "Memory allocation failed for entry\n");
+@@ -310,6 +315,11 @@ void ccu_update_error_notification_event(int qup_no, int gpii_no, int err)
+ 	struct ccu_response_data *entry;
+ 	unsigned long flags;
+ 
++	if (!ccu) {
++		pr_err("%s: CCU device not initialized\n", __func__);
++		return;
++	}
++
+ 	CCU_DBG_LOG(LOG_LVL_VERBOSE, ccu->dev, "%s: start\n", __func__);
+ 	result = kzalloc(sizeof(*result), GFP_ATOMIC);
+ 	if (!result) {
+@@ -352,7 +362,7 @@ static int ccu_release(struct inode *inode, struct file *filp)
+ {
+ 	struct ccu_qup *ccu;
+ 
+-	if (!filp && !filp->private_data)
++	if (!filp || !filp->private_data)
+ 		return -EINVAL;
+ 
+ 	ccu = filp->private_data;
+@@ -369,7 +379,7 @@ static int ccu_open(struct inode *inode, struct file *filp)
+ 	cdev = inode->i_cdev;
+ 	ccu = container_of(cdev, struct ccu_qup, cdev);
+ 	if (!ccu) {
+-		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, "Err to get the CCU\n");
++		pr_err("Failed to get CCU from cdev\n");
+ 		return -ENODEV;
+ 	}
+ 
+@@ -557,7 +567,7 @@ int ccu_power_on_off(struct ccu_qup *ccu, bool suspend)
+ 	struct i2c_adapter *adap = ccu->adap;
+ 	int ret;
+ 
+-	if (!adap)
++	if (!adap || !ccud)
+ 		return -EINVAL;
+ 
+ 	ret = ccu_on_off(adap, suspend, &ccu->ip_reset_in_progress);
+@@ -755,6 +765,11 @@ int ccu_qup_load_firmware(void)
+ {
+ 	int ret = 0;
+ 
++	if (!ccud) {
++		pr_err("%s: CCU device not initialized\n", __func__);
++		return -ENODEV;
++	}
++
+ 	if (ccud->fw_loaded) {
+ 		CCU_ERR_LOG(LOG_LVL_ERROR, ccud->dev, "Fw is already loaded it\n");
+ 		return 0;
+@@ -833,20 +848,29 @@ static inline int ccu_get_se_adapter(int fd, struct ccu_qup *ccu)
+ 	struct file *file;
+ 
+ 	file = fget(fd);
+-	if (!file && !file->private_data)
++	if (!file) {
++		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, "Invalid file descriptor\n");
+ 		return -ENODEV;
++	}
+ 
+-	ccu->client =  kzalloc(sizeof(*ccu->client), GFP_KERNEL);
++	if (!file->private_data) {
++		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, "File has no private data\n");
++		fput(file);
++		return -ENODEV;
++	}
++
++	ccu->client = file->private_data;
+ 	if (!ccu->client) {
+-		return -ENOMEM;
+-	} else {
+-		ccu->client = file->private_data;
+-		ccu->adap = ccu->client->adapter;
++		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, "Client is NULL\n");
+ 		fput(file);
++		return -ENODEV;
+ 	}
+ 
++	ccu->adap = ccu->client->adapter;
++	fput(file);
++
+ 	if (!ccu->adap) {
+-		pr_err("%s: Adap is NULL\n", __func__);
++		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, "Adapter is NULL\n");
+ 		return -ENODEV;
+ 	}
+ 
+@@ -872,7 +896,7 @@ static ssize_t ccu_config_write(struct file *filp, const char __user *buf,
+ {
+ 	struct ccu_qup *ccu;
+ 	struct ccu_qup_config cfg;
+-	int ret;
++	int ret = 0;
+ 
+ 	if (!filp || !buf || !len || !filp->private_data)
+ 		return -EINVAL;
+@@ -923,6 +947,7 @@ static ssize_t ccu_config_write(struct file *filp, const char __user *buf,
+ 		break;
+ 	case INTER_DELAY:
+ 		ccu_configure_inter_trans_delay(ccu->adap, ccu->cfg->delay);
++		ret = 0;
+ 		break;
+ 	case BUS_CLEAR:
+ 		ret = ccu_check_recover_bus(ccu->adap);
+@@ -946,6 +971,7 @@ static ssize_t ccu_config_write(struct file *filp, const char __user *buf,
+ 		return ret;
+ 	default:
+ 		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, "Invalid cmd:%d\n", ccu->cfg->cmd);
++		ret =  -EINVAL;
+ 		break;
+ 	}
+ 	kfree(ccu->cfg);
+@@ -1100,14 +1126,15 @@ static int ccu_get_configure_irq(struct platform_device *pdev, struct ccu_qup *c
+ 	irq_set_status_flags(ccu->ccu_qup0_irq, IRQ_NOAUTOEN);
+ 	ret = request_irq(ccu->ccu_qup0_irq, ccu_irq_handler, 0, "CCU_QUP0", ccu);
+ 	if (ret) {
+-		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, "Request IRQ failed\n");
++		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, "Request IRQ failed for QUP0\n");
+ 		return -EINVAL;
+ 	}
+ 
+ 	irq_set_status_flags(ccu->ccu_qup1_irq, IRQ_NOAUTOEN);
+ 	ret = request_irq(ccu->ccu_qup1_irq, ccu_irq_handler, 0, "CCU_QUP1", ccu);
+ 	if (ret) {
+-		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, "Request IRQ failed\n");
++		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, "Request IRQ failed for QUP1\n");
++		free_irq(ccu->ccu_qup0_irq, ccu);
+ 		return -EINVAL;
+ 	}
+ 
+@@ -1279,6 +1306,10 @@ static int ccu_qup_probe(struct platform_device *pdev)
+ 	INIT_LIST_HEAD(&ccu->response_list);
+ 	mutex_init(&ccu->read_lock);
+ 	ccu->gpi_wq = create_singlethread_workqueue("CCU_WQ");
++	if (!ccu->gpi_wq) {
++		CCU_ERR_LOG(LOG_LVL_ERROR, &pdev->dev, "Failed to create workqueue\n");
++		return -ENOMEM;
++	}
+ 	INIT_DELAYED_WORK(&ccu->get_child_dev_node, get_set_child_dev_node);
+ 
+ 	ret = ccu_get_configure_irq(pdev, ccu);
+diff --git a/include/trace/events/qup_trace_common.h b/include/trace/events/qup_trace_common.h
+index 7a7c4e4afd32..8b2f50938005 100644
+--- a/include/trace/events/qup_trace_common.h
++++ b/include/trace/events/qup_trace_common.h
+@@ -18,10 +18,14 @@ TRACE_EVENT(event_name, \
+ 		__dynamic_array(char, msg, MAX_MSG_LEN) \
+ 	), \
+ 	TP_fast_assign( \
++		int ret; \
+ 		__assign_str_len(name, name, strlen(name)); \
+-		WARN_ON_ONCE(vsnprintf(__get_dynamic_array(msg), \
++		ret = vsnprintf(__get_dynamic_array(msg), \
+ 			     MAX_MSG_LEN, vaf->fmt, \
+-			     *vaf->va) >= MAX_MSG_LEN); \
++			     *vaf->va); \
++		WARN_ON_ONCE(ret >= MAX_MSG_LEN); \
++		if (ret >= MAX_MSG_LEN) \
++			((char *)__get_dynamic_array(msg))[MAX_MSG_LEN - 1] = '\0'; \
+ 	), \
+ 	TP_printk("%s: %s", __get_str(name), __get_str(msg)) \
+ )
+@@ -63,4 +67,3 @@ DECLARE_EVENT_CLASS(class_name, \
+ )
+ 
+ #endif /* _TRACE_QUP_COMMON_H */
+-
+-- 
+2.34.1
+

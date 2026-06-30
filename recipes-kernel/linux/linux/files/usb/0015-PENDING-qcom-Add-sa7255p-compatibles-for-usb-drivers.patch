@@ -1,0 +1,64 @@
+From f158b1fe1906c6a44721dd7f5f1e512590e739b7 Mon Sep 17 00:00:00 2001
+From: Shazad Hussain <shazhuss@qti.qualcomm.com>
+Date: Mon, 22 Dec 2025 15:32:29 +0530
+Subject: [PATCH 2/2] PENDING: qcom: Add sa7255p compatibles for usb drivers
+
+Add sa7255p specific compatible for usb to accomodate scmi changes.
+
+Change-Id: Id3006cf880328005bf6cfc3bab8a8d85ba6262b4
+Signed-off-by: Shazad Hussain <shazhuss@qti.qualcomm.com>
+Signed-off-by: Sriram Dash <sriramd@qti.qualcomm.com>
+---
+ drivers/phy/qualcomm/phy-qcom-qmp-usb.c       | 3 +++
+ drivers/phy/qualcomm/phy-qcom-snps-femto-v2.c | 5 +++++
+ drivers/usb/dwc3/dwc3-qcom.c                  | 4 ++++
+ 3 files changed, 12 insertions(+)
+
+diff --git a/drivers/phy/qualcomm/phy-qcom-qmp-usb.c b/drivers/phy/qualcomm/phy-qcom-qmp-usb.c
+index 8f048e765a4d..b76698dbeb21 100644
+--- a/drivers/phy/qualcomm/phy-qcom-qmp-usb.c
++++ b/drivers/phy/qualcomm/phy-qcom-qmp-usb.c
+@@ -2190,6 +2190,9 @@ static const struct of_device_id qmp_usb_of_match_table[] = {
+ 	}, {
+ 		.compatible = "qcom,qcs8300-qmp-usb3-uni-phy",
+ 		.data = &sa8775p_usb3_uniphy_cfg,
++	}, {
++		.compatible = "qcom,sa7255p-qmp-usb3-uni-phy",
++		.data = &sa8255p_usb3_uniphy_cfg,
+ 	}, {
+ 		.compatible = "qcom,sa8775p-qmp-usb3-uni-phy",
+ 		.data = &sa8775p_usb3_uniphy_cfg,
+diff --git a/drivers/phy/qualcomm/phy-qcom-snps-femto-v2.c b/drivers/phy/qualcomm/phy-qcom-snps-femto-v2.c
+index 0937bd789f02..44269c576ec3 100644
+--- a/drivers/phy/qualcomm/phy-qcom-snps-femto-v2.c
++++ b/drivers/phy/qualcomm/phy-qcom-snps-femto-v2.c
+@@ -573,6 +573,11 @@ static const struct phy_ops qcom_snps_hsphy_gen_ops = {
+ };
+ 
+ static const struct of_device_id qcom_snps_hsphy_of_match_table[] = {
++	{
++		.compatible	= "qcom,sa7255p-usb-hs-phy",
++		.data		= &sa8255p_snps_hs_phy,
++
++	},
+ 	{
+ 		.compatible	= "qcom,sa8255p-usb-hs-phy",
+ 		.data		= &sa8255p_snps_hs_phy,
+diff --git a/drivers/usb/dwc3/dwc3-qcom.c b/drivers/usb/dwc3/dwc3-qcom.c
+index c4fb2201e70e..d7aeebd1e0ab 100644
+--- a/drivers/usb/dwc3/dwc3-qcom.c
++++ b/drivers/usb/dwc3/dwc3-qcom.c
+@@ -1545,6 +1545,10 @@ static const struct dev_pm_ops dwc3_qcom_dev_pm_ops = {
+ };
+ 
+ static const struct of_device_id dwc3_qcom_of_match[] = {
++	{
++		.compatible	= "qcom,sa7255p-dwc3",
++		.data		= &sa8255p_dwc3_qcom_priv_data,
++	},
+ 	{
+ 		.compatible	= "qcom,sa8255p-dwc3",
+ 		.data		= &sa8255p_dwc3_qcom_priv_data,
+-- 
+2.34.1
+

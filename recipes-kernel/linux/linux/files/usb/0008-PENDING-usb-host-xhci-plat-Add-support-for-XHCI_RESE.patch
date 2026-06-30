@@ -1,0 +1,51 @@
+From 226fdf033b927d429f2a8e29e722fd88060902f6 Mon Sep 17 00:00:00 2001
+From: Sriram Dash <quic_sriramd@quicinc.com>
+Date: Thu, 27 Feb 2025 15:46:38 +0530
+Subject: [PATCH 08/20] PENDING: usb: host: xhci-plat: Add support for
+ XHCI_RESET_ON_RESUME from parent
+
+When power is lost for the controller during APPS suspend, the
+controller generates a Host Controller Error (HCE) upon APPS
+resume, necessitating a complete reinitialization of the Host
+Controller (HC).
+
+Upstream commit 8b328f8002bcf29ef517ee4bf234e09aabec4d2e
+("xhci: re-initialize the HC during resume if HCE was set")
+addresses this issue by using the XHCI_RESET_ON_RESUME
+mechanism.
+
+For targets which require a complete shutdown during APPS
+suspend, the controller must be reinitialized during APPS
+resume.
+
+Currently, the XHCI_RESET_ON_RESUME quirk is managed by
+updating quirks from the xhci platform glue for specific
+targets. Drivers like dwc3/host.c add quirks using software
+nodes for the xhci device.
+
+Ensures that the xhci quirk is set from device properties
+if enabled by the parent like dwc3/host.c via software properties.
+
+Change-Id: I56263b3359446dd659c23cebe9a0948c1a6218a0
+Signed-off-by: Sriram Dash <quic_sriramd@quicinc.com>
+---
+ drivers/usb/host/xhci-plat.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/drivers/usb/host/xhci-plat.c b/drivers/usb/host/xhci-plat.c
+index 5df52c6ef6ea6..0f53fe26ccd95 100644
+--- a/drivers/usb/host/xhci-plat.c
++++ b/drivers/usb/host/xhci-plat.c
+@@ -201,6 +201,9 @@ static void xhci_quirk_init(struct platform_device *pdev, struct xhci_hcd *xhci)
+ 		if (device_property_read_bool(tmpdev, "xhci-sg-trb-cache-size-quirk"))
+ 			xhci->quirks |= XHCI_SG_TRB_CACHE_SIZE_QUIRK;
+ 
++		if (device_property_read_bool(tmpdev, "xhci-reset-on-resume"))
++			xhci->quirks |= XHCI_RESET_ON_RESUME;
++
+ 		device_property_read_u32(tmpdev, "imod-interval-ns",
+ 					 &xhci->imod_interval);
+ 	}
+-- 
+2.17.1
+

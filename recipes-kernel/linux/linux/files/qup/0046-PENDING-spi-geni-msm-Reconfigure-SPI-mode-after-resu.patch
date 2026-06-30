@@ -1,0 +1,41 @@
+From 3e709b428d3146f3ae73bc9b4f51cff06fc73cf4 Mon Sep 17 00:00:00 2001
+From: Praveen Talari <praveen.talari@oss.qualcomm.com>
+Date: Fri, 13 Mar 2026 10:34:35 +0530
+Subject: [PATCH] PENDING: spi: geni-msm: Reconfigure SPI mode after resume
+
+Initialize last_mode to an invalid value (0xFF) during system resume to
+ensure proper hardware reconfiguration.
+
+Previously, last_mode was reset to 0, which caused the driver to skip
+reconfiguration when the client requested SPI mode 0 (CPOL=0, CPHA=0).
+This led to incorrect hardware state after Deep Sleep Quick Boot (DSQB).
+Setting last_mode to 0xFF guarantees that any valid mode request after
+resume is treated as a change and triggers the necessary update.
+
+Change-Id: Ic89673d16f9c562fa99f45251298961268365387
+Signed-off-by: Praveen Talari <praveen.talari@oss.qualcomm.com>
+---
+ drivers/spi/spi-geni-qcom.c | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/spi/spi-geni-qcom.c b/drivers/spi/spi-geni-qcom.c
+index a822da072f4a..d0cd45036c2e 100644
+--- a/drivers/spi/spi-geni-qcom.c
++++ b/drivers/spi/spi-geni-qcom.c
+@@ -1437,7 +1437,12 @@ static int __maybe_unused spi_geni_resume(struct device *dev)
+ 	if (pm_suspend_target_state == PM_SUSPEND_MEM) {
+ 		dev_dbg(dev, "%s: In S2R\n", __func__);
+ 		mas->cur_xfer_mode = GENI_SE_INVALID;
+-		mas->last_mode = 0;
++
++		/*
++		 * Initialize last_mode to 0xFF during system resume
++		 * to force hardware reconfiguration after DSQB.
++		 */
++		mas->last_mode = 0xFF;
+ 		ret = spi_geni_init(mas);
+ 		if (ret)
+ 			return ret;
+-- 
+2.34.1
+

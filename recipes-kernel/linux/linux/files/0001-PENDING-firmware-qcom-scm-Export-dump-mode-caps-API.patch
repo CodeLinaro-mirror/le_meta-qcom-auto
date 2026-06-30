@@ -1,0 +1,91 @@
+From 7bdd175b99fa08bc656a1e95c294fd5299b68f6d Mon Sep 17 00:00:00 2001
+From: Sankalp Negi <snegi@qti.qualcomm.com>
+Date: Tue, 21 Apr 2026 04:46:54 -0700
+Subject: [PATCH] PENDING: firmware: qcom_scm: Export dump mode caps API
+
+Export qcom_scm_get_dump_mode_caps() to allow out-of-tree kernel modules
+to query TZ dump capabilities via SMC call 0x02000310
+(TZ_DUMP_SECURITY_ALLOWS_MEM_DUMP_ID).
+
+This is required by the qcom_dload_mode OOT driver to determine the
+correct TCSR_TCSR_BOOT_MISC_DETECT value at boot based on APDP/TZ policy.
+
+Change-Id: I0000000000000000000000000000000000000001
+Signed-off-by: Sankalp Negi <snegi@qti.qualcomm.com>
+---
+ drivers/firmware/qcom_scm.c            | 45 ++++++++++++++++++++++++++
+ include/linux/firmware/qcom/qcom_scm.h |  3 ++
+ 2 files changed, 48 insertions(+)
+
+diff --git a/drivers/firmware/qcom_scm.c b/drivers/firmware/qcom_scm.c
+index 7622218ae18d..a6aec333bb07 100644
+--- a/drivers/firmware/qcom_scm.c
++++ b/drivers/firmware/qcom_scm.c
+@@ -1107,6 +1107,51 @@ int qcom_scm_io_writel(phys_addr_t addr, unsigned int val)
+ }
+ EXPORT_SYMBOL_GPL(qcom_scm_io_writel);
+ 
++/**
++ * qcom_scm_get_dump_mode_caps() - Query TZ for supported dump capabilities.
++ *
++ * SMC ID: 0x02000310 (TZ_SVC_DUMP=0x03, cmd=0x10, 0 args)
++ *
++ * @dumps_allowed: 0=none, 1=SEC_DMP_ALLOWED, 2=NSEC_DMP_ALLOWED
++ *   Pertains only to full/offline dumps.
++ *   SEC_DMP_ALLOWED (1) is the superset, also implicitly permits minidump.
++ * @dload_cookie: 1 if DLOAD cookie is set in TCSR
++ * @apdp_flags: architecture-dependent minidump/APDP flags
++ *   Newer SoC family (bit31=1): bit1=MD_APPS_NSEC_SUBSYS_ENABLED (minidump gate)
++ *                               bit30=MD_TARGET_SUPPORTED_SUBSYS_ENABLED
++ *                               bit31=TARGET_FAMILY
++ *   Previous SoC family (bit31=0): bit1=SEC_DBG_ENABLE_OFFLINE_CRASH_DUMPS
++ *                                  bit5=SEC_DBG_ENABLE_APPS_ENCRYPTED_MINI_DUMPS
++ *
++ * Return: 0 on success, negative errno on failure.
++ */
++int qcom_scm_get_dump_mode_caps(u32 *dumps_allowed, u32 *dload_cookie,
++				u32 *apdp_flags)
++{
++	struct qcom_scm_desc desc = {
++		.svc     = 0x03,
++		.cmd     = 0x10,
++		.arginfo = QCOM_SCM_ARGS(0),
++		.owner   = ARM_SMCCC_OWNER_SIP,
++	};
++	struct qcom_scm_res res = {0};
++	int ret;
++
++	if (!__scm)
++		return -ENODEV;
++
++	ret = qcom_scm_call(__scm->dev, &desc, &res);
++	if (ret)
++		return ret;
++
++	*dumps_allowed = (u32)res.result[0];
++	*dload_cookie  = (u32)res.result[1];
++	*apdp_flags    = (u32)res.result[2];
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(qcom_scm_get_dump_mode_caps);
++
+ /**
+  * qcom_scm_restore_sec_cfg_available() - Check if secure environment
+  * supports restore security config interface.
+diff --git a/include/linux/firmware/qcom/qcom_scm.h b/include/linux/firmware/qcom/qcom_scm.h
+index d68b63a534f8..8606aebb53ce 100644
+--- a/include/linux/firmware/qcom/qcom_scm.h
++++ b/include/linux/firmware/qcom/qcom_scm.h
+@@ -145,6 +145,9 @@ int qcom_scm_pas_prepare_and_auth_reset(struct qcom_scm_pas_context *ctx);
+ extern int qcom_scm_io_readl(phys_addr_t addr, unsigned int *val);
+ extern int qcom_scm_io_writel(phys_addr_t addr, unsigned int val);
+ 
++extern int qcom_scm_get_dump_mode_caps(u32 *dumps_allowed, u32 *dload_cookie,
++				       u32 *apdp_flags);
++
+ extern bool qcom_scm_restore_sec_cfg_available(void);
+ extern int qcom_scm_restore_sec_cfg(u32 device_id, u32 spare);
+ int qcom_scm_set_gpu_smmu_aperture(unsigned int context_bank);
+-- 
+2.34.1

@@ -1,0 +1,419 @@
+From 9ffb03e0ca6dce261e2f995c46643ebc5193a13f Mon Sep 17 00:00:00 2001
+From: Aniket Randive <arandive@qti.qualcomm.com>
+Date: Fri, 16 May 2025 10:17:31 +0530
+Subject: [PATCH 06/13] i2c: Add validation checks and fix inter-frame delay
+ handling
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Add a check to reject transfers if the GPII number provided by
+the client is outside the valid range (0–14).
+
+Prevent transfers where the TX sub-packet length field is
+incorrectly set to a read message in multi random write
+scenarios, as this feature is only applicable to write transfers.
+
+Add a check to reject transfers where the TX packet length exceeds
+the actual transfer length in multi random write cases.
+
+Correct the bit size of the inter-frame delay field in the config
+TRE to 16 bits, as specified in the HPG.
+
+Ensure the oldest callback entry is sent first to the client.
+Also, introduce an alignment macro to eliminate structure padding
+issues, ensuring accurate callback data is passed to the client.
+
+Additionally, implement logic to convert the received inter-frame
+delay value into clock pulses based on the clock frequency,
+enabling accurate use of pre and post delay features.
+
+Change-Id: I1ae810d01d2ec42a30157d140269817e37ada378
+Signed-off-by: Aniket Randive <arandive@qti.qualcomm.com>
+---
+ drivers/dma/qcom/gpi.c                | 13 ++---
+ drivers/i2c/busses/i2c-qcom-geni.c    | 71 +++++++++++++++++++++++----
+ drivers/soc/qcom/qcom_ccu_qup.c       | 32 +++++++++---
+ include/linux/soc/qcom/qcom_ccu_qup.h |  6 ++-
+ include/uapi/linux/ccu_qup/ccu_qup.h  |  4 +-
+ 5 files changed, 99 insertions(+), 27 deletions(-)
+
+diff --git a/drivers/dma/qcom/gpi.c b/drivers/dma/qcom/gpi.c
+index a922b0421e73..bffd65d5707a 100644
+--- a/drivers/dma/qcom/gpi.c
++++ b/drivers/dma/qcom/gpi.c
+@@ -79,8 +79,8 @@
+ #define TRE_I2C_C0_TX_PACK	BIT(24)
+ #define TRE_I2C_C0_RX_PACK      BIT(25)
+ 
+-/* I2C Config WD1 */
+-#define TRE_I2C_C1_DELAY	GENMASK(21, 16)
++/* I2C Config0 WD1 */
++#define TRE_I2C_C0_DELAY	GENMASK(31, 16)
+ 
+ /* I2C GO WD0 */
+ #define TRE_I2C_GO_CMD          GENMASK(4, 0)
+@@ -1081,9 +1081,7 @@ static void gpi_process_ieob(struct gpii *gpii)
+ {
+ 	struct gchan *chan = &gpii->gchan[0];
+ 
+-	/* In CDM mode, client should clear the IEOB IRQ so skip it*/
+-	if (!chan->mode)
+-		gpi_write_reg(gpii, gpii->ieob_clr_reg, BIT(0));
++	gpi_write_reg(gpii, gpii->ieob_clr_reg, BIT(0));
+ 
+ 	gpi_config_interrupts(gpii, MASK_IEOB_SETTINGS, 0);
+ 	tasklet_hi_schedule(&gpii->ev_task);
+@@ -1153,6 +1151,7 @@ static void gpi_process_glob_err_irq(struct gpii *gpii)
+ 	u32 offset = GPII_n_CNTXT_GLOB_IRQ_STTS_OFFS
+ 			(gpii_id, gpii->gpi_dev->cfg.irq_off);
+ 	u32 irq_stts = gpi_read_reg(gpii, gpii->regs + offset);
++	u32 status = 0;
+ 
+ 	offset = GPII_n_CNTXT_GLOB_IRQ_CLR_OFFS(gpii_id, gpii->gpi_dev->cfg.irq_off);
+ 	gpi_write_reg(gpii, gpii->regs + offset, irq_stts);
+@@ -1165,6 +1164,8 @@ static void gpi_process_glob_err_irq(struct gpii *gpii)
+ 	}
+ 
+ 	offset = GPII_n_ERROR_LOG_OFFS(gpii_id, gpii->gpi_dev->cfg.irq_off);
++	status = gpi_read_reg(gpii, gpii->regs + offset);
++	dev_err(gpii->gpi_dev->dev, "GLOBAL Error LOG Reg:0x%x\n", status);
+ 	gpi_write_reg(gpii, gpii->regs + offset, 0);
+ }
+ 
+@@ -2343,7 +2344,7 @@ static int gpi_create_i2c_tre(struct gchan *chan, struct gpi_desc *desc,
+ 		tre->dword[0] |= u32_encode_bits(i2c->pack_enable, TRE_I2C_C0_TX_PACK);
+ 		tre->dword[0] |= u32_encode_bits(i2c->pack_enable, TRE_I2C_C0_RX_PACK);
+ 
+-		tre->dword[1] |= u32_encode_bits(i2c->delay, TRE_I2C_C1_DELAY);
++		tre->dword[1] |= u32_encode_bits(i2c->delay, TRE_I2C_C0_DELAY);
+ 
+ 		tre->dword[2] = u32_encode_bits(i2c->clk_div, TRE_C0_CLK_DIV);
+ 		tre->dword[2] |= u32_encode_bits(i2c->ccu_cfg.retry, TRE_C0_RETRY);
+diff --git a/drivers/i2c/busses/i2c-qcom-geni.c b/drivers/i2c/busses/i2c-qcom-geni.c
+index ec553f916619..4461f4988be1 100644
+--- a/drivers/i2c/busses/i2c-qcom-geni.c
++++ b/drivers/i2c/busses/i2c-qcom-geni.c
+@@ -112,6 +112,7 @@ struct geni_i2c_desc {
+ #define CCU_FRAME_COOKIE_SHFT	32
+ 
+ #define CCU_MAX_GPII		3
++#define CCU_MAX_GPII_NUM	14
+ #define REGULAR_GPII		0
+ #define MAX_NUM_MSGS		4096
+ #define MAX_NUM_FRAMES		4
+@@ -127,6 +128,9 @@ struct geni_i2c_desc {
+ #define CCU_GET_PKT_LEN(val)		((val & CCU_PKT_LEN_MASK) >> CCU_PKT_LEN_SHFT)
+ #define CCU_GET_FRAME_COOKIE(val)	((val & CCU_FRAME_COOKIE_MASK) >> CCU_FRAME_COOKIE_SHFT)
+ 
++#define NSEC_PER_SEC		1000000000L
++#define NSEC_PER_USEC		1000L
++
+ /*
+  * struct ccu_msg_info - represent single message
+  * @len: length of current message
+@@ -208,7 +212,7 @@ struct ccu_i2c_config {
+ 	struct ccu_msg_config *msg[MAX_NUM_MSGS];
+ 	int idx;
+ 	int mode;
+-	unsigned long inter_delay;
++	u16 inter_delay;
+ 	struct ccu_gpii_info gpi[CCU_MAX_GPII];
+ 	struct ccu_xfer_result result;
+ };
+@@ -603,7 +607,7 @@ static int geni_i2c_configure_ccu_mode(struct i2c_adapter *adap, int gpii_no,
+ 				int ch_type, bool mode)
+ {
+ 	struct geni_i2c_dev *gi2c;
+-	int idx = (gpii_no % CCU_MAX_GPII);
++	int idx;
+ 	int ret = 0;
+ 
+ 	if (!adap) {
+@@ -617,6 +621,12 @@ static int geni_i2c_configure_ccu_mode(struct i2c_adapter *adap, int gpii_no,
+ 		}
+ 	}
+ 
++	if (gpii_no > CCU_MAX_GPII_NUM) {
++		dev_err(gi2c->se.dev, "%s: Invalid request of GPII:%d\n", __func__, gpii_no);
++		return -EINVAL;
++	}
++	idx = (gpii_no % CCU_MAX_GPII);
++
+ 	if ((ch_type != 1 && ch_type != 2) || idx < 0) {
+ 		dev_err(gi2c->se.dev, "%s: Invalid request, ch_type:%d, mode:%d gpii_no:%d\n",
+ 			__func__, ch_type, mode, gpii_no);
+@@ -660,7 +670,7 @@ static int geni_i2c_gpii_reset(struct i2c_adapter *adap, int gpii_no,
+ 			bool premature_cancel)
+ {
+ 	struct geni_i2c_dev *gi2c;
+-	int idx = (gpii_no % CCU_MAX_GPII);
++	int idx = gpii_no % CCU_MAX_GPII;
+ 	int ret = 0;
+ 
+ 	if (!adap) {
+@@ -707,9 +717,10 @@ static int geni_i2c_gpii_reset(struct i2c_adapter *adap, int gpii_no,
+  *
+  * Return none.
+  */
+-static void geni_i2c_configure_pre_delay(struct i2c_adapter *adap, unsigned long time)
++static void geni_i2c_configure_pre_delay(struct i2c_adapter *adap, unsigned long delay)
+ {
+ 	struct geni_i2c_dev *gi2c;
++	unsigned int delay_cycle = 0;
+ 
+ 	if (!adap) {
+ 		pr_err("%s: Adap is NULL\n", __func__);
+@@ -722,7 +733,23 @@ static void geni_i2c_configure_pre_delay(struct i2c_adapter *adap, unsigned long
+ 		}
+ 	}
+ 
+-	gi2c->ccu.inter_delay = time;
++	/*
++	 * The inter-frame delay field in the Config TRE is limited to 16 bits,
++	 * which restricts the maximum number of clock pulses that can be used
++	 * to introduce a delay between transfers.
++	 */
++	if (((delay > 65535) && (gi2c->clk_freq_out == KHZ(1000))) ||
++		((delay > 163838) && (gi2c->clk_freq_out == KHZ(400))) ||
++		((delay > 655350) && (gi2c->clk_freq_out == KHZ(100)))) {
++			dev_err(gi2c->se.dev, "%s: Invalid delay:%d received for %d frequency\n",
++				__func__, delay, gi2c->clk_freq_out);
++			return;
++	}
++
++	delay_cycle = ((1*NSEC_PER_SEC)/gi2c->clk_freq_out);
++	gi2c->ccu.inter_delay = ((delay *NSEC_PER_USEC)/delay_cycle);
++	dev_dbg(gi2c->se.dev, "%s: Received delay in(Us): %d delay_cycle:%d\n",
++		__func__, delay, gi2c->ccu.inter_delay);
+ }
+ 
+ static void geni_i2c_err_misc(struct geni_i2c_dev *gi2c)
+@@ -1175,6 +1202,8 @@ static void  geni_i2c_release_buf(struct geni_i2c_dev *gi2c, int idx)
+ 		}
+ 		frame->msg[i].addr = 0;
+ 	}
++	memset(frame, 0, sizeof(*frame));
++
+ 	if (frame_idx >= MAX_NUM_FRAMES -1)
+ 		gi2c->ccu.gpi[idx].released_cnt = 0;
+ 	else
+@@ -1216,8 +1245,7 @@ static void i2c_gpi_cb_result(void *cb, const struct dmaengine_result *result)
+ 		gi2c->ccu.result.adap_nr = gi2c->adap.nr;
+ 		gi2c->ccu.result.frame_cookie =
+ 			gi2c->ccu.gpi[gpii_idx].frame[frame_idx].frame_cookie;
+-		if (!gi2c->err)
+-			gi2c->ccu.result.err_no = gi2c->err;
++		gi2c->ccu.result.err_no = gi2c->err;
+ 
+ 		i2c_trace_log(gi2c->se.dev, "CB Result is for i2c-%d GPII:%d Err:%d cookie:0x%x\n",
+ 					  gi2c->adap.nr, result->gpii_id, gi2c->err, gi2c->ccu.result.frame_cookie);
+@@ -1411,6 +1439,11 @@ static int geni_i2c_extract_frame_cfg(struct geni_i2c_dev *gi2c, struct i2c_msg
+ 		return -EINVAL;
+ 	}
+ 
++	if (msg_idx > MAX_NUM_MSGS) {
++		dev_err(gi2c->se.dev, "%s: Can't support %d no of msgs\n", __func__, msg_idx);
++		return -EINVAL;
++	}
++
+ 	msg_buf = kmemdup(msg->buf, CCU_DATA_OFFSET, GFP_KERNEL);
+ 	if (!msg_buf) {
+ 		dev_err(gi2c->se.dev, "%s:  Memory allocation failed\n", __func__);
+@@ -1428,6 +1461,12 @@ static int geni_i2c_extract_frame_cfg(struct geni_i2c_dev *gi2c, struct i2c_msg
+ 	data = *msg_buf;
+ 
+ 	gi2c->ccu.msg[msg_idx]->gpii_no = CCU_GET_GPII(data);
++	if (gi2c->ccu.msg[msg_idx]->gpii_no > CCU_MAX_GPII_NUM) {
++		dev_err(gi2c->se.dev, "%s: Invalid GPII number:%d", __func__,
++			gi2c->ccu.msg[msg_idx]->gpii_no);
++		return -EINVAL;
++	}
++
+ 	gi2c->ccu.msg[msg_idx]->priority = CCU_GET_PRIO(data);
+ 	gi2c->ccu.msg[msg_idx]->nop_frame = CCU_GET_NOP_FRAME(data);
+ 	gi2c->ccu.msg[msg_idx]->pre_delay = CCU_GET_INSERT_DELAY_BEFORE(data);
+@@ -1436,6 +1475,7 @@ static int geni_i2c_extract_frame_cfg(struct geni_i2c_dev *gi2c, struct i2c_msg
+ 	gi2c->ccu.msg[msg_idx]->ccu_last = CCU_GET_LAST(data);
+ 	gi2c->ccu.msg[msg_idx]->arb_lost_retry = CCU_GET_ARB_LOST_CNT(data);
+ 	gi2c->ccu.msg[msg_idx]->pkt_len = CCU_GET_PKT_LEN(data);
++
+ 	gpii_idx = gi2c->ccu.msg[msg_idx]->gpii_no % CCU_MAX_GPII;
+ 	frame_idx = gi2c->ccu.gpi[gpii_idx].recvd_cnt;
+ 	gi2c->ccu.gpi[gpii_idx].frame[frame_idx].async = CCU_GET_ASYNC(data);
+@@ -1448,7 +1488,7 @@ static int geni_i2c_extract_frame_cfg(struct geni_i2c_dev *gi2c, struct i2c_msg
+ 				  "GPII:%d Sync:%d Prio:%d Delay after:%d\n"
+ 				  "Delay Before:%d ch_last:%d ccu_last:%d\n"
+ 				  "arb_lost_retry:%d pkt_len:%d\n"
+-				  "cookie:0x%x\n", __func__, msg_idx,
++				  "cookie:0x%x Nop:%d\n", __func__, msg_idx,
+ 				  gi2c->ccu.msg[msg_idx]->gpii_no,
+ 				  gi2c->ccu.gpi[gpii_idx].frame[frame_idx].async,
+ 				  gi2c->ccu.msg[msg_idx]->priority,
+@@ -1458,7 +1498,8 @@ static int geni_i2c_extract_frame_cfg(struct geni_i2c_dev *gi2c, struct i2c_msg
+ 				  gi2c->ccu.msg[msg_idx]->ccu_last,
+ 				  gi2c->ccu.msg[msg_idx]->arb_lost_retry,
+ 				  gi2c->ccu.msg[msg_idx]->pkt_len,
+-				  gi2c->ccu.gpi[gpii_idx].frame[frame_idx].frame_cookie);
++				  gi2c->ccu.gpi[gpii_idx].frame[frame_idx].frame_cookie,
++				  gi2c->ccu.msg[msg_idx]->nop_frame);
+ 	kfree(msg_buf);
+ 	msg_buf = NULL;
+ 
+@@ -1514,6 +1555,18 @@ static int geni_i2c_gpi_xfer(struct geni_i2c_dev *gi2c, struct i2c_msg msgs[], i
+ 			idx = (gi2c->ccu.msg[i]->gpii_no % CCU_MAX_GPII);
+ 			frame = &gi2c->ccu.gpi[idx].frame[gi2c->ccu.gpi[idx].recvd_cnt];
+ 
++			if ((msgs[i].flags & I2C_M_RD) && (gi2c->ccu.msg[i]->pkt_len  > 0)){
++				dev_err(gi2c->se.dev, "Invalid Request for RD msg: Tx Sub pkt len:%d, msg:%d\n",
++					gi2c->ccu.msg[i]->pkt_len, i);
++					return -EINVAL;
++			}
++
++			if (gi2c->ccu.msg[i]->pkt_len > msgs[i].len) {
++				dev_err(gi2c->se.dev, "Invalid Request: msg[%d].len:%d, Tx sub pkt len:%d",
++					i, gi2c->cur->len, gi2c->ccu.msg[i]->pkt_len);
++				return -EINVAL;
++			}
++
+ 			if (gi2c->ccu.msg[i]->nop_frame) {
+ 				if (idx == REGULAR_GPII || i != 0) {
+ 					dev_err(gi2c->se.dev, "Invalid Request: idx:%d, msg:%d\n", idx, i);
+diff --git a/drivers/soc/qcom/qcom_ccu_qup.c b/drivers/soc/qcom/qcom_ccu_qup.c
+index 273309dc9a8f..35dd4be5efc8 100644
+--- a/drivers/soc/qcom/qcom_ccu_qup.c
++++ b/drivers/soc/qcom/qcom_ccu_qup.c
+@@ -30,7 +30,10 @@
+ #define GPII_14_IRQ		19
+ #define MAX_GPI_DEV		2
+ #define CCU_SYNC_TIMERS		20
++#define CCU_MAX_GPII		14
+ #define CCU_MAX_GPII_PER_SE	3
++#define CCU_MAX_QUP 2
++#define CCU_MAX_SE 5
+ 
+ struct ccu_qup *ccud;
+ 
+@@ -102,7 +105,7 @@ static ssize_t ccu_response_read(struct file *filp, char __user *buf,
+ 		return -EAGAIN;
+ 	}
+ 
+-	entry = list_last_entry(&ccu->response_list, struct ccu_response_data, list);
++	entry = list_first_entry(&ccu->response_list, struct ccu_response_data, list);
+ 	if (entry) {
+ 		ret = copy_to_user(buf, entry->res_buf,
+ 				   sizeof(struct ccu_xfer_result));
+@@ -229,12 +232,12 @@ int ccu_power_on_off(struct i2c_adapter *adap, bool suspend)
+ 	return 0;
+ }
+ 
+-void ccu_check_recover_bus(struct i2c_adapter *adap)
++int ccu_check_recover_bus(struct i2c_adapter *adap)
+ {
+ 	if (!adap)
+-		return;
++		return -EINVAL;
+ 
+-	ccu_recover(adap);
++	return ccu_recover(adap);
+ }
+ 
+ /*
+@@ -329,6 +332,16 @@ int ccu_sync_id_to_sync_ch_mapping(struct ccu_qup *ccu, struct sync_info sync[])
+ 		val = 0;
+ 		offset = 0;
+ 
++		if ((sync[i].qup_no > CCU_MAX_QUP) ||
++				(sync[i].se_no > CCU_MAX_SE) ||
++				(sync[i].sync_id > CCU_SYNC_TIMERS)) {
++			dev_err(ccu->dev,
++				"%s: Invalid request: QUP:%d SE:%d ID:%d\n",
++				__func__, sync[i].qup_no, sync[i].se_no,
++				sync[i].sync_id);
++			return -EINVAL;
++		}
++
+ 		qup_idx = sync[i].qup_no ? 1: 0;
+ 		if ((sync[i].sync_id % 4) == 0)
+ 			offset = 0;
+@@ -348,6 +361,9 @@ int ccu_sync_id_to_sync_ch_mapping(struct ccu_qup *ccu, struct sync_info sync[])
+ 		} else if (sync[i].sync_ch == 1) {
+ 			val = (1 << (sync[i].se_no + offset));
+ 			ccu_update_ch_id_mapping(ccu, qup_idx, i, val, true);
++		} else {
++			dev_err(ccu->dev, "%s Invalid sync ch:%d\n", __func__, sync[i].sync_ch);
++			return -EINVAL;
+ 		}
+ 	}
+ 
+@@ -423,7 +439,7 @@ int ccu_gpii_reset(struct i2c_adapter *adap, int gpii_no, bool partial,
+ {
+ 	int ret, i;
+ 
+-	if (!adap)
++	if (!adap || (gpii_no > CCU_MAX_GPII))
+ 		return -EINVAL;
+ 
+ 	if (partial) {
+@@ -538,13 +554,13 @@ static ssize_t ccu_config_write(struct file *filp, const char __user *buf,
+ 		ccu_configure_inter_trans_delay(ccu->adap, ccu->cfg->delay);
+ 		break;
+ 	case BUS_CLEAR:
+-		ccu_check_recover_bus(ccu->adap);
++		ret = ccu_check_recover_bus(ccu->adap);
+ 		break;
+ 	case POWER_ON:
+-		ccu_power_on_off(ccu->adap, false);
++		ret = ccu_power_on_off(ccu->adap, false);
+ 		break;
+ 	case POWER_OFF:
+-		ccu_power_on_off(ccu->adap, true);
++		ret = ccu_power_on_off(ccu->adap, true);
+ 		break;
+ 	default:
+ 		dev_err(ccu->dev, "Invalid cmd:%d\n", ccu->cfg->cmd);
+diff --git a/include/linux/soc/qcom/qcom_ccu_qup.h b/include/linux/soc/qcom/qcom_ccu_qup.h
+index d34ecb65bf1e..f799e3d64464 100644
+--- a/include/linux/soc/qcom/qcom_ccu_qup.h
++++ b/include/linux/soc/qcom/qcom_ccu_qup.h
+@@ -78,7 +78,7 @@ struct ccu_xfer_result {
+ 	u8 adap_nr;
+ 	u32 frame_cookie;
+ 	int err_no;
+-};
++}__attribute__((packed));
+ 
+ /*
+  * struct ccu_qup - Structre is for ccu_qup info
+@@ -169,7 +169,9 @@ int ccu_configure_mode(struct i2c_adapter *adap, struct ccu_qup_config *cfg);
+ 
+ int ccu_qup_load_firmware(void);
+ 
+-void ccu_configure_inter_trans_delay(struct i2c_adapter *adap, unsigned long time);
++void ccu_configure_inter_trans_delay(struct i2c_adapter *adap, unsigned long delay);
++
++int ccu_check_recover_bus(struct i2c_adapter *adap);
+ 
+ void ccu_update_xfer_result(struct ccu_xfer_result *result);
+ 
+diff --git a/include/uapi/linux/ccu_qup/ccu_qup.h b/include/uapi/linux/ccu_qup/ccu_qup.h
+index f9f91c654719..5a475439c343 100644
+--- a/include/uapi/linux/ccu_qup/ccu_qup.h
++++ b/include/uapi/linux/ccu_qup/ccu_qup.h
+@@ -48,11 +48,11 @@ enum cmd_type {
+  */
+ struct ccu_qup_client_data {
+ 	__u8 gpii_no;
+-	__u32 adap_nr;
++	__u8 adap_nr;
+ 	__u32 frame_cookie;
+ 	int err_no;
+ 	__u32 reserved[10];
+-};
++}__attribute__((packed));
+ 
+ /*
+  * struct sync_info - This structure is used to pass the data which can be
+-- 
+2.34.1
+

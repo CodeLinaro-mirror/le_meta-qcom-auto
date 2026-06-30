@@ -1,0 +1,91 @@
+From 3cc4ec6a2f1bfea71ad7f2d910ab732c82046753 Mon Sep 17 00:00:00 2001
+From: Praveen Talari <praveen.talari@oss.qualcomm.com>
+Date: Sat, 13 Sep 2025 16:32:32 +0530
+Subject: [PATCH 03/19] UPSTREAM: kfifo: introduce and use kfifo_skip_count()
+
+kfifo_skip_count() is an extended version of kfifo_skip(), accepting
+also count. This will be useful in the serial code later.
+
+Now, it can be used to implement both kfifo_skip() and
+kfifo_dma_out_finish(). In the latter, 'len' only needs to be divided by
+'type' size (as it was until now).
+
+And stop using statement expressions when the return value is cast to
+'void'. Use classic 'do {} while (0)' instead.
+
+Note: perhaps we should skip 'count' records for the 'recsize' case, but
+the original (kfifo_dma_out_finish()) used to skip only one record. So
+this is kept unchanged and 'count' is still ignored in the recsize case.
+
+Change-Id: Ia442994ef36c29d5b5bbaccd5cca5103dfd5f2bc
+Signed-off-by: Jiri Slaby (SUSE) <jirislaby@kernel.org>
+Cc: Stefani Seibold <stefani@seibold.net>
+Cc: Andrew Morton <akpm@linux-foundation.org>
+Link:
+https://lore.kernel.org/r/20240405060826.2521-3-jirislaby@kernel.org
+Signed-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>
+Signed-off-by: Praveen Talari <praveen.talari@oss.qualcomm.com>
+---
+ include/linux/kfifo.h | 31 +++++++++++++++----------------
+ 1 file changed, 15 insertions(+), 16 deletions(-)
+
+diff --git a/include/linux/kfifo.h b/include/linux/kfifo.h
+index 0b35a41440ff..234bd2aef5ba 100644
+--- a/include/linux/kfifo.h
++++ b/include/linux/kfifo.h
+@@ -304,19 +304,25 @@ __kfifo_uint_must_check_helper( \
+ )
+ 
+ /**
+- * kfifo_skip - skip output data
++ * kfifo_skip_count - skip output data
+  * @fifo: address of the fifo to be used
++ * @count: count of data to skip
+  */
+-#define	kfifo_skip(fifo) \
+-(void)({ \
++#define	kfifo_skip_count(fifo, count) do { \
+ 	typeof((fifo) + 1) __tmp = (fifo); \
+ 	const size_t __recsize = sizeof(*__tmp->rectype); \
+ 	struct __kfifo *__kfifo = &__tmp->kfifo; \
+ 	if (__recsize) \
+ 		__kfifo_skip_r(__kfifo, __recsize); \
+ 	else \
+-		__kfifo->out++; \
+-})
++		__kfifo->out += (count); \
++} while(0)
++
++/**
++ * kfifo_skip - skip output data
++ * @fifo: address of the fifo to be used
++ */
++#define	kfifo_skip(fifo)	kfifo_skip_count(fifo, 1)
+ 
+ /**
+  * kfifo_peek_len - gets the size of the next fifo record
+@@ -790,17 +796,10 @@ __kfifo_int_must_check_helper( \
+  * Note that with only one concurrent reader and one concurrent
+  * writer, you don't need extra locking to use these macros.
+  */
+-#define kfifo_dma_out_finish(fifo, len) \
+-(void)({ \
+-	typeof((fifo) + 1) __tmp = (fifo); \
+-	unsigned int __len = (len); \
+-	const size_t __recsize = sizeof(*__tmp->rectype); \
+-	struct __kfifo *__kfifo = &__tmp->kfifo; \
+-	if (__recsize) \
+-		__kfifo_dma_out_finish_r(__kfifo, __recsize); \
+-	else \
+-		__kfifo->out += __len / sizeof(*__tmp->type); \
+-})
++#define kfifo_dma_out_finish(fifo, len) do { \
++	typeof((fifo) + 1) ___tmp = (fifo); \
++	kfifo_skip_count(___tmp, (len) / sizeof(*___tmp->type)); \
++} while (0)
+ 
+ /**
+  * kfifo_out_peek - gets some data from the fifo
+-- 
+2.34.1
+

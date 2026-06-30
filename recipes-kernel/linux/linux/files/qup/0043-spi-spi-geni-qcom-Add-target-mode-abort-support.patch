@@ -1,0 +1,110 @@
+From 4a86cfa5566c18d427f607b5fbd00afd2aa1363b Mon Sep 17 00:00:00 2001
+From: Praveen Talari <praveen.talari@oss.qualcomm.com>
+Date: Thu, 18 Dec 2025 17:07:10 +0530
+Subject: [PATCH 1/3] spi: spi-geni-qcom: Add target mode abort support
+
+Add support for SPI target (slave) mode operation to the GENI QCOM SPI
+driver. The driver now detects target mode early via the "spi-slave"
+device property and allocates the appropriate controller type using
+devm_spi_alloc_target() for target mode or devm_spi_alloc_host() for
+host mode.
+
+A new spi_geni_target_abort() function handles target mode abort
+operations with proper command abort sequence using geni_se_abort_m_cmd(),
+DMA TX/RX FSM reset handling for active transfers, and transfer
+finalization with error reporting. The timeout handling in
+handle_se_timeout() is simplified by removing unnecessary goto and
+directly returning when cancel sequence is not supported.
+
+When operating in target mode, the target_abort callback is assigned
+to enable proper cleanup during abort scenarios. These changes ensure
+the driver operates correctly in both host and target modes while
+maintaining proper error handling.
+
+Change-Id: Idad1783e952f57e1ac6fa8aea8ecd6fb3c32ce38
+Signed-off-by: Praveen Talari <praveen.talari@oss.qualcomm.com>
+---
+ drivers/spi/spi-geni-qcom.c | 32 +++++++++++++++++++++++++-------
+ 1 file changed, 25 insertions(+), 7 deletions(-)
+
+diff --git a/drivers/spi/spi-geni-qcom.c b/drivers/spi/spi-geni-qcom.c
+index a822da072f4a..432cda1f8822 100644
+--- a/drivers/spi/spi-geni-qcom.c
++++ b/drivers/spi/spi-geni-qcom.c
+@@ -195,7 +195,7 @@ static void handle_se_timeout(struct spi_controller *spi,
+ 		 * doesn`t support CMD Cancel sequnece
+ 		 */
+ 		spin_unlock_irq(&mas->lock);
+-		goto reset_if_dma;
++		goto abort;
+ 	}
+ 
+ 	reinit_completion(&mas->cancel_done);
+@@ -206,6 +206,7 @@ static void handle_se_timeout(struct spi_controller *spi,
+ 	if (time_left)
+ 		goto reset_if_dma;
+ 
++abort:
+ 	spin_lock_irq(&mas->lock);
+ 	reinit_completion(&mas->abort_done);
+ 	geni_se_abort_m_cmd(se);
+@@ -279,6 +280,17 @@ static void spi_geni_handle_err(struct spi_controller *spi, struct spi_message *
+ 	}
+ }
+ 
++static int spi_geni_target_abort(struct spi_controller *spi)
++{
++	if (!spi->cur_msg)
++		return 0;
++
++	handle_se_timeout(spi, spi->cur_msg);
++	spi_finalize_current_transfer(spi);
++	dev_dbg(&spi->dev, "Target abort sequence completed\n");
++	return 0;
++}
++
+ static bool spi_geni_is_abort_still_pending(struct spi_geni_master *mas)
+ {
+ 	struct geni_se *se = &mas->se;
+@@ -1216,6 +1228,16 @@ static int spi_geni_probe(struct platform_device *pdev)
+ 	struct spi_geni_master *mas;
+ 	void __iomem *base;
+ 	struct device *dev = &pdev->dev;
++	bool target_mode;
++
++	target_mode = device_property_read_bool(dev, "spi-slave");
++	if (target_mode)
++		spi = devm_spi_alloc_target(dev, sizeof(*mas));
++	else
++		spi = devm_spi_alloc_host(dev, sizeof(*mas));
++
++	if (!spi)
++		return -ENOMEM;
+ 
+ 	irq = platform_get_irq(pdev, 0);
+ 	if (irq < 0)
+@@ -1229,10 +1251,6 @@ static int spi_geni_probe(struct platform_device *pdev)
+ 	if (IS_ERR(base))
+ 		return PTR_ERR(base);
+ 
+-	spi = devm_spi_alloc_host(dev, sizeof(*mas));
+-	if (!spi)
+-		return -ENOMEM;
+-
+ 	platform_set_drvdata(pdev, spi);
+ 	mas = spi_controller_get_devdata(spi);
+ 	mas->irq = irq;
+@@ -1315,8 +1333,8 @@ static int spi_geni_probe(struct platform_device *pdev)
+ 	if (ret)
+ 		goto spi_geni_pm_domain_detach;
+ 
+-	if (device_property_read_bool(&pdev->dev, "spi-slave"))
+-		spi->target = true;
++	if (spi->target)
++		spi->target_abort = spi_geni_target_abort;
+ 
+ 	mas->cur_xfer_mode = GENI_SE_INVALID;
+ 
+-- 
+2.34.1
+
