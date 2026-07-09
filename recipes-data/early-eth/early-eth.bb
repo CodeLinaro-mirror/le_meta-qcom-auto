@@ -21,8 +21,8 @@ USERADD_PARAM:${PN} = "--no-create-home -g early-eth --shell /bin/false early-et
 
 do_install:append() {
     install -d ${D}${systemd_system_unitdir}
-    install -m 0644 ${WORKDIR}/early_eth0.service ${D}${systemd_unitdir}/system/early_eth0.service
-    install -m 0644 ${WORKDIR}/early_eth1.service ${D}${systemd_unitdir}/system/early_eth1.service
+    install -m 0644 ${UNPACKDIR}/early_eth0.service ${D}${systemd_unitdir}/system/early_eth0.service
+    install -m 0644 ${UNPACKDIR}/early_eth1.service ${D}${systemd_unitdir}/system/early_eth1.service
 }
 
 do_install:append:sa8775() {
@@ -31,8 +31,8 @@ do_install:append:sa8775() {
 
 do_install:append:sa7255() {
     install -d ${D}${bindir}
-    install -m 0755 ${WORKDIR}/early_eth0_sa7255.sh ${D}${bindir}/early_eth0_sa7255.sh
-    install -m 0644 ${WORKDIR}/early_eth0_sa7255.service ${D}${systemd_unitdir}/system/early_eth0_sa7255.service
+    install -m 0755 ${UNPACKDIR}/early_eth0_sa7255.sh ${D}${bindir}/early_eth0_sa7255.sh
+    install -m 0644 ${UNPACKDIR}/early_eth0_sa7255.service ${D}${systemd_unitdir}/system/early_eth0_sa7255.service
 }
 
 SYSTEMD_SERVICE:${PN} = "\

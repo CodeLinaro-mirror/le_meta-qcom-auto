@@ -8,7 +8,7 @@ DEPENDS += "agm ar-acdbdata ar-osal ar-pal expat gsl-fe-noship spf system-media 
 SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/pal/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/pal;usehead=1"
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/pal/plugins/controls"
+S = "${UNPACKDIR}/vendor/qcom/opensource/pal/plugins/controls"
 
 inherit autotools pkgconfig
 

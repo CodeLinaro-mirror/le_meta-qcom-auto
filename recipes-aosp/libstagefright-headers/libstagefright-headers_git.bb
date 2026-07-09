@@ -8,7 +8,7 @@ LIC_FILES_CHKSUM = "file://NOTICE;md5=a3fcbe20ea5ac731ed3aa15fe59ba20a"
 
 SRC_URI = "${PATH_TO_REPO}/frameworks/.git;protocol=${PROTO};destsuffix=frameworks;usehead=1"
 SRCREV = "${AUTOREV}"
-S = "${WORKDIR}/frameworks"
+S = "${UNPACKDIR}/frameworks"
 
 do_configure[noexec] = "1"
 do_compile[noexec] = "1"

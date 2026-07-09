@@ -19,8 +19,8 @@ do_install() {
 
   install -d ${D}${systemd_system_unitdir}
 
-  install -m 0755 ${WORKDIR}/gvm-net-config.sh ${D}${bindir}/gvm-net-config.sh
-  install -m 0644 ${WORKDIR}/gvm-net-config.service ${D}${systemd_unitdir}/system/gvm-net-config.service
+  install -m 0755 ${UNPACKDIR}/gvm-net-config.sh ${D}${bindir}/gvm-net-config.sh
+  install -m 0644 ${UNPACKDIR}/gvm-net-config.service ${D}${systemd_unitdir}/system/gvm-net-config.service
 
 }
 

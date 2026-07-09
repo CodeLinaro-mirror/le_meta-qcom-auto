@@ -11,7 +11,7 @@ SRC_URI = "\
 "
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/audiolite/devicetree"
+S = "${UNPACKDIR}/vendor/qcom/opensource/audiolite/devicetree"
 
 inherit qti-techpack
 

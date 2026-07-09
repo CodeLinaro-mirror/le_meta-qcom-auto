@@ -11,5 +11,5 @@ do_compile[noexec] = "1"
 
 do_install() {
     install -d ${D}${sysconfdir}/udev/rules.d/
-    install -m 0644 ${WORKDIR}/71-weston-drm-q.rules ${D}${sysconfdir}/udev/rules.d/71-weston-drm-q.rules
+    install -m 0644 ${UNPACKDIR}/71-weston-drm-q.rules ${D}${sysconfdir}/udev/rules.d/71-weston-drm-q.rules
 }

@@ -21,7 +21,7 @@ CFLAGS += "\
     -I${STAGING_LIBDIR}/glib-2.0/glib \
 "
 
-S = "${WORKDIR}/vendor/qcom/opensource/avb-utils"
+S = "${UNPACKDIR}/vendor/qcom/opensource/avb-utils"
 
 do_install() {
     install -d ${D}/${libdir}

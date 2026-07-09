@@ -11,7 +11,7 @@ SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/aurix-can-kernel/.git;protocol
 
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/aurix-can-kernel"
+S = "${UNPACKDIR}/vendor/qcom/opensource/aurix-can-kernel"
 
 inherit module module-sign kernel-arch qperf ${@oe.utils.ifelse(d.getVar('PREFERRED_PROVIDER_virtual/kernel') == 'linux-msm',"qti-kernel-arch-clang", "")}
 INHIBIT_PACKAGE_STRIP = "1"

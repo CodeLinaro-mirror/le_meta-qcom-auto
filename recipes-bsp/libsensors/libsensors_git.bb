@@ -15,7 +15,7 @@ SRC_URI = "\
 "
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/hardware/qcom/sensors"
+S = "${UNPACKDIR}/hardware/qcom/sensors"
 
 inherit autotools-brokensep pkgconfig useradd
 
@@ -24,11 +24,11 @@ EXTRA_OECONF = "--with-glib"
 do_install:append() {
     if ${@bb.utils.contains('DISTRO_FEATURES', 'systemd', 'true', 'false', d)}; then
         install -d ${D}${sysconfdir}/udev/rules.d/
-        install -m 0444 ${WORKDIR}/61-sensor.rules ${D}${sysconfdir}/udev/rules.d/61-sensor.rules
-        install -m 0444 ${WORKDIR}/61-iio.rules ${D}${sysconfdir}/udev/rules.d/61-iio.rules
+        install -m 0444 ${UNPACKDIR}/61-sensor.rules ${D}${sysconfdir}/udev/rules.d/61-sensor.rules
+        install -m 0444 ${UNPACKDIR}/61-iio.rules ${D}${sysconfdir}/udev/rules.d/61-iio.rules
         install -d ${D}${sysconfdir}/udev/scripts/
-        install -m 0555 ${WORKDIR}/sensors.sh ${D}${sysconfdir}/udev/scripts/sensors.sh
-        install -m 0555 ${WORKDIR}/iio.sh ${D}${sysconfdir}/udev/scripts/iio.sh
+        install -m 0555 ${UNPACKDIR}/sensors.sh ${D}${sysconfdir}/udev/scripts/sensors.sh
+        install -m 0555 ${UNPACKDIR}/iio.sh ${D}${sysconfdir}/udev/scripts/iio.sh
     fi
 }
 

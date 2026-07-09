@@ -13,6 +13,6 @@ PR = "r1"
 SRC_URI = "${CLO_LA_GIT}/platform/system/libufdt;protocol=https;branch=lv-blast-tools.lnx.1.0;destsuffix=system/libufdt"
 SRCREV = "981c03825c6bb469e0fabeb3d0fd9279bbd8e087"
 
-S = "${WORKDIR}/system/libufdt"
+S = "${UNPACKDIR}/system/libufdt"
 
 inherit autotools pkgconfig native

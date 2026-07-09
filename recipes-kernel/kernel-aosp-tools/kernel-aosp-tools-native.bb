@@ -13,7 +13,7 @@ SRC_URI = "${BASE_GIT_PATH}/build/kernel/.git;protocol=${PROTO};destsuffix=${BAS
 
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}"
+S = "${UNPACKDIR}"
 
 inherit native
 

@@ -26,12 +26,12 @@ do_configure[noexec] = "1"
 do_compile[noexec] = "1"
 
 do_install() {
-    install -m 0644 ${WORKDIR}/system.prop -D ${D}/build.prop
+    install -m 0644 ${UNPACKDIR}/system.prop -D ${D}/build.prop
     # Remove empty lines and lines starting with '#'
     sed -i -e 's/#.*$//' -e '/^$/d' ${D}/build.prop
 
-    install -m 0755 ${WORKDIR}/persist-prop.sh -D ${D}${base_sbindir}/persist-prop.sh
-    install -m 0644 ${WORKDIR}/persist-prop.service -D ${D}/${systemd_unitdir}/system/persist-prop.service
+    install -m 0755 ${UNPACKDIR}/persist-prop.sh -D ${D}${base_sbindir}/persist-prop.sh
+    install -m 0644 ${UNPACKDIR}/persist-prop.service -D ${D}/${systemd_unitdir}/system/persist-prop.service
 }
 
 PACKAGE_ARCH = "${MACHINE_ARCH}"

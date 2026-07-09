@@ -6,7 +6,7 @@ FILES:${PN} += "${sysconfdir}/systemd/network/99-default.link.d/10-eth-mac-polic
 
 do_install:append() {
         install -d ${D}${sysconfdir}/systemd/network/99-default.link.d/
-        install -m 0644 ${WORKDIR}/10-eth-mac-policy.conf \
+        install -m 0644 ${UNPACKDIR}/10-eth-mac-policy.conf \
                 ${D}${sysconfdir}/systemd/network/99-default.link.d/
 
         rm ${D}${systemd_unitdir}/network/80-wired.network

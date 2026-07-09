@@ -14,7 +14,7 @@ SRC_URI = "${CLO_LA_GIT}/platform/system/core;name=core;protocol=https;branch=ao
 "
 SRCREV = "db5a18a5fac8ac58177e87fc5e7e0033aa514aef"
 
-S = "${WORKDIR}/git/libsparse"
+S = "${UNPACKDIR}/git/libsparse"
 
 inherit autotools pkgconfig
 

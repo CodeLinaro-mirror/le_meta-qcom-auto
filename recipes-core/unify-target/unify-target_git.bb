@@ -20,7 +20,7 @@ SRC_URI:append = " file://dual-la-gvm.target"
 SRC_URI:append = " file://dual-lv-gvm.target"
 SRC_URI:append = " file://single-lv-gvm.target"
 
-S = "${WORKDIR}"
+S = "${UNPACKDIR}"
 
 inherit systemd
 

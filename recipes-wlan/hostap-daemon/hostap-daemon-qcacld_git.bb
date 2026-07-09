@@ -9,7 +9,7 @@ DESCRIPTION = "Hostapd (host access point daemon) is a user space daemon \
                "
 HOMEPAGE = "https://git.codelinaro.org/"
 LICENSE = "BSD-2-Clause"
-LIC_FILES_CHKSUM = "file://${WORKDIR}/${TARGET_DIR}external/wpa_supplicant_8/COPYING;md5=5ebcb90236d1ad640558c3d3cd3035df"
+LIC_FILES_CHKSUM = "file://${UNPACKDIR}/${TARGET_DIR}external/wpa_supplicant_8/COPYING;md5=5ebcb90236d1ad640558c3d3cd3035df"
 
 DEPENDS += "libnl openssl pkgconfig"
 SRC_URI = "${PATH_TO_REPO}/${TARGET_DIR}external/wpa_supplicant_8/.git;protocol=${PROTO};destsuffix=${TARGET_DIR}external/wpa_supplicant_8;usehead=1 \
@@ -17,12 +17,12 @@ SRC_URI = "${PATH_TO_REPO}/${TARGET_DIR}external/wpa_supplicant_8/.git;protocol=
 SRCREV = "${AUTOREV}"
 PR = "r4.2"
 
-S = "${WORKDIR}/${TARGET_DIR}external/wpa_supplicant_8/hostapd"
+S = "${UNPACKDIR}/${TARGET_DIR}external/wpa_supplicant_8/hostapd"
 
 inherit autotools-brokensep linux-kernel-base pkgconfig
 
 do_configure() {
-    install -m 0644 ${WORKDIR}/defconfig-qcacld .config
+    install -m 0644 ${UNPACKDIR}/defconfig-qcacld .config
     echo "CFLAGS +=\"-I${STAGING_INCDIR}/libnl3\"" >> .config
 }
 do_install() {

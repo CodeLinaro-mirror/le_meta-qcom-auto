@@ -7,7 +7,7 @@ LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/GPL-2.0-only;m
 SRC_URI = "${PATH_TO_REPO}/${TARGET_DIR}vendor/qcom/opensource/display-drivers/.git;protocol=${PROTO};destsuffix=${TARGET_DIR}vendor/qcom/opensource/display-drivers;usehead=1"
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/${TARGET_DIR}vendor/qcom/opensource/display-drivers/include/uapi"
+S = "${UNPACKDIR}/${TARGET_DIR}vendor/qcom/opensource/display-drivers/include/uapi"
 
 
 DRM_UAPI_HEADERS = "\

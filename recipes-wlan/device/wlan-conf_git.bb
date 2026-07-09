@@ -19,7 +19,7 @@ SRC_URI = "${PATH_TO_REPO}/${TARGET_DIR}device/qcom/wlan/.git;protocol=${PROTO};
 SRCREV = "${AUTOREV}"
 PR = "r0"
 
-S = "${WORKDIR}/${TARGET_DIR}device"
+S = "${UNPACKDIR}/${TARGET_DIR}device"
 
 do_install(){
     install -d ${D}${sysconfdir}/misc/wifi

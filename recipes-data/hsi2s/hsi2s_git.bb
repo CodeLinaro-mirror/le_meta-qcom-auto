@@ -9,9 +9,9 @@ SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/hsi2s-kernel/.git;protocol=${P
 
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/hsi2s-kernel"
+S = "${UNPACKDIR}/vendor/qcom/opensource/hsi2s-kernel"
 
-TECHPACK_MODULE_OUT = "${WORKDIR}/vendor/qcom/opensource/hsi2s-kernel"
+TECHPACK_MODULE_OUT = "${UNPACKDIR}/vendor/qcom/opensource/hsi2s-kernel"
 TECHPACK_MODULES = "${@bb.utils.contains('BASEMACHINE', 'sa81x5', 'hsi2s.ko', 'driver/hsi2s.ko', d)}"
 
 inherit qti-techpack module module-sign ${@oe.utils.ifelse(d.getVar('PREFERRED_PROVIDER_virtual/kernel') == 'linux-msm',"qti-kernel-arch-clang", "")}

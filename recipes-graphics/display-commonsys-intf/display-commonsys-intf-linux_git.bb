@@ -15,7 +15,7 @@ SRC_URI = "${PATH_TO_REPO}/${TARGET_DIR}vendor/qcom/opensource/commonsys-intf/di
 SRCREV = "${AUTOREV}"
 
 
-S = "${WORKDIR}/${TARGET_DIR}vendor/qcom/opensource/commonsys-intf/display"
+S = "${UNPACKDIR}/${TARGET_DIR}vendor/qcom/opensource/commonsys-intf/display"
 
 
 inherit autotools pkgconfig
@@ -28,9 +28,9 @@ LDFLAGS += "-llog -lutils -lcutils"
 CPPFLAGS += "-DTARGET_HEADLESS"
 CPPFLAGS += "-DVENUS_COLOR_FORMAT"
 CPPFLAGS += "-DPAGE_SIZE=4096"
-CPPFLAGS += "-I${WORKDIR}/${TARGET_DIR}vendor/qcom/opensource/commonsys-intf/display/gralloc"
-CPPFLAGS += "-I${WORKDIR}/${TARGET_DIR}vendor/qcom/opensource/commonsys-intf/display/libqdmetadata"
-CPPFLAGS += "-I${WORKDIR}/${TARGET_DIR}vendor/qcom/opensource/commonsys-intf/display/include"
+CPPFLAGS += "-I${UNPACKDIR}/${TARGET_DIR}vendor/qcom/opensource/commonsys-intf/display/gralloc"
+CPPFLAGS += "-I${UNPACKDIR}/${TARGET_DIR}vendor/qcom/opensource/commonsys-intf/display/libqdmetadata"
+CPPFLAGS += "-I${UNPACKDIR}/${TARGET_DIR}vendor/qcom/opensource/commonsys-intf/display/include"
 
 do_install:append() {
     install -d ${D}${includedir}

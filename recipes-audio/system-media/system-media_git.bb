@@ -12,6 +12,6 @@ SRC_URI = "${PATH_TO_REPO}/frameworks/.git;protocol=${PROTO};destsuffix=framewor
 
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/frameworks/system/media"
+S = "${UNPACKDIR}/frameworks/system/media"
 
 inherit autotools pkgconfig

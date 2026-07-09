@@ -15,7 +15,7 @@ SRC_URI = "${PATH_TO_REPO}/bootable/bootloader/edk2/.git;protocol=${PROTO};dests
 
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/bootable/bootloader/edk2"
+S = "${UNPACKDIR}/bootable/bootloader/edk2"
 
 inherit deploy
 

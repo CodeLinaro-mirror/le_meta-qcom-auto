@@ -12,7 +12,7 @@ SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/agm/.git;protocol=${PROTO};des
 
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/agm"
+S = "${UNPACKDIR}/vendor/qcom/opensource/agm"
 
 do_install:append () {
     install -m 0644 ${S}/ipc/DBus/config/agm-dbus.conf -D ${D}${sysconfdir}/dbus-1/system.d/agm-dbus.conf

@@ -17,7 +17,7 @@ USERADD_PARAM:${PN} = "--no-create-home -g setup-network-param --shell /bin/fals
 do_install() {
   if ${@bb.utils.contains('DISTRO_FEATURES', 'systemd', 'true', 'false', d)}; then
     install -d ${D}${sysconfdir}/sysctl.d
-    install -m 0644 ${WORKDIR}/101-sysctl.conf ${D}${sysconfdir}/sysctl.d/101-sysctl.conf
+    install -m 0644 ${UNPACKDIR}/101-sysctl.conf ${D}${sysconfdir}/sysctl.d/101-sysctl.conf
   fi
 }
 

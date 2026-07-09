@@ -14,13 +14,13 @@ PR = "r1"
 SRC_URI = "${PATH_TO_REPO}/system/core/.git;protocol=${PROTO};destsuffix=system/core;usehead=1"
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/system/core/libutils"
+S = "${UNPACKDIR}/system/core/libutils"
 
 inherit autotools pkgconfig
 
 EXTRA_OECONF += "\
-    --with-system-core-includes=${WORKDIR}/system/core/include \
-    --with-liblog-includes=${WORKDIR}/system/core/liblog \
+    --with-system-core-includes=${UNPACKDIR}/system/core/include \
+    --with-liblog-includes=${UNPACKDIR}/system/core/liblog \
 "
 
 BBCLASSEXTEND = "native"

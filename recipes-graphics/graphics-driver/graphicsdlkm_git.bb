@@ -10,9 +10,9 @@ SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/graphics-kernel/.git;protocol=
 
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/graphics-kernel"
+S = "${UNPACKDIR}/vendor/qcom/opensource/graphics-kernel"
 
-TECHPACK_MODULE_OUT = "${WORKDIR}/graphics-kernel"
+TECHPACK_MODULE_OUT = "${UNPACKDIR}/graphics-kernel"
 TECHPACK_MODULES = "msm_kgsl.ko"
 TECHPACK_HEADERS = "${S}/include/uapi"
 

@@ -13,7 +13,7 @@ SRC_URI = "\
 
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/frameworks/camera_metadata"
+S = "${UNPACKDIR}/frameworks/camera_metadata"
 
 inherit autotools pkgconfig
 

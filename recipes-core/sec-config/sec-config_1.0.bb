@@ -14,5 +14,5 @@ do_configure[noexec] = "1"
 do_compile[noexec] = "1"
 
 do_install() {
-    install -m 0444 ${WORKDIR}/sec_config -D ${D}${sysconfdir}/sec_config
+    install -m 0444 ${UNPACKDIR}/sec_config -D ${D}${sysconfdir}/sec_config
 }

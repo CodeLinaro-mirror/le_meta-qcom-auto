@@ -16,7 +16,7 @@ PR = "r1"
 
 SRC_URI = "${PATH_TO_REPO}/gstreamer/gst-plugins-qti-oss/.git;protocol=${PROTO};destsuffix=gstreamer/gst-plugins-qti-oss;usehead=1"
 SRCREV = "${AUTOREV}"
-S = "${WORKDIR}/gstreamer/gst-plugins-qti-oss/secure-app"
+S = "${UNPACKDIR}/gstreamer/gst-plugins-qti-oss/secure-app"
 
 inherit autotools-brokensep pkgconfig
 

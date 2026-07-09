@@ -15,7 +15,7 @@ SRC_URI:append = " file://audio.sh"
 SRC_URI:append = " file://audio_early.sh"
 SRC_URI:append = " file://msm-audio-node.rules"
 
-S = "${WORKDIR}"
+S = "${UNPACKDIR}"
 
 inherit update-rc.d systemd
 

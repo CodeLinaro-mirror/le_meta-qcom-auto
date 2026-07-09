@@ -14,10 +14,10 @@ REQUIRED_DISTRO_FEATURES:remove = "opengl"
 do_install() {
     # Install systemd unit files
     if ${@bb.utils.contains('DISTRO_FEATURES', 'systemd', 'true', 'false', d)}; then
-        install -m 644 -p -D ${WORKDIR}/weston.service_caf ${D}${systemd_system_unitdir}/weston.service
-        install -m 644 -p -D ${WORKDIR}/weston.socket ${D}${systemd_system_unitdir}/weston.socket
+        install -m 644 -p -D ${UNPACKDIR}/weston.service_caf ${D}${systemd_system_unitdir}/weston.service
+        install -m 644 -p -D ${UNPACKDIR}/weston.socket ${D}${systemd_system_unitdir}/weston.socket
         if ${@bb.utils.contains('DISTRO_FEATURES', 'early_init', 'true', 'false', d)}; then
-            install -m 644 -p -D ${WORKDIR}/weston_early.service_caf ${D}${systemd_system_unitdir}/weston.service
+            install -m 644 -p -D ${UNPACKDIR}/weston_early.service_caf ${D}${systemd_system_unitdir}/weston.service
         fi
     fi
     if ${@bb.utils.contains('MACHINE_FEATURES', 'qti-umd', 'true', 'false', d)}; then
@@ -30,10 +30,10 @@ do_install() {
         sed -i '/Environment/a\Slice=pvm.slice' ${D}${systemd_system_unitdir}/weston.service
     fi
     if [ "${@bb.utils.filter('DISTRO_FEATURES', 'pam', d)}" ]; then
-        install -D -p -m0644 ${WORKDIR}/weston-autologin ${D}${sysconfdir}/pam.d/weston-autologin
+        install -D -p -m0644 ${UNPACKDIR}/weston-autologin ${D}${sysconfdir}/pam.d/weston-autologin
     fi
 
-    install -D -p -m0644 ${WORKDIR}/weston.ini_caf ${D}${sysconfdir}/xdg/weston/weston.ini
+    install -D -p -m0644 ${UNPACKDIR}/weston.ini_caf ${D}${sysconfdir}/xdg/weston/weston.ini
     # Install reuqire-input=false in weston.ini
     if ${@bb.utils.contains('MACHINE_FEATURES', 'qti-hypervisor', 'true', 'false', d)}; then
         sed -i -e '/\[core\]/a require-input=false' ${D}${sysconfdir}/xdg/weston/weston.ini
@@ -44,7 +44,7 @@ do_install() {
 
     # Install display udev rule
     install -d ${D}${sysconfdir}/udev/rules.d/
-    install -m 0644 ${WORKDIR}/msm-display-node.rules ${D}${sysconfdir}/udev/rules.d/msm-display-node.rules
+    install -m 0644 ${UNPACKDIR}/msm-display-node.rules ${D}${sysconfdir}/udev/rules.d/msm-display-node.rules
 
     # Install pm module for umd
     if ${@bb.utils.contains('MACHINE_FEATURES', 'qti-umd', 'true', 'false', d)}; then

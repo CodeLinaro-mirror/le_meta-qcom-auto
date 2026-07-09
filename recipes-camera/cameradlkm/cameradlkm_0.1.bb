@@ -11,9 +11,9 @@ SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/ais-kernel/.git;protocol=${PRO
 
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/ais-kernel"
+S = "${UNPACKDIR}/vendor/qcom/opensource/ais-kernel"
 
-TECHPACK_MODULE_OUT = "${WORKDIR}/ais-kernel"
+TECHPACK_MODULE_OUT = "${UNPACKDIR}/ais-kernel"
 TECHPACK_MODULES = "ais.ko"
 TECHPACK_HEADERS = "${S}/include/uapi"
 TECHPACK_MAKE_ARGS = "${@bb.utils.contains_any('PREFERRED_VERSION_linux-msm', '5.15 6.1', "${EXTRA_OEMAKE} QTI_TECHPACK=true", "", d)}"

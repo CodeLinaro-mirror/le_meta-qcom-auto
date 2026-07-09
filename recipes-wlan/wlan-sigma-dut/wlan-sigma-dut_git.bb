@@ -19,7 +19,7 @@ DEPENDS += "libnl"
 SRC_URI = "${PATH_TO_REPO}/${TARGET_DIR}wlan/utils/sigma-dut/.git;protocol=${PROTO};destsuffix=${TARGET_DIR}wlan/utils/sigma-dut;usehead=1"
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/${TARGET_DIR}wlan/utils/sigma-dut"
+S = "${UNPACKDIR}/${TARGET_DIR}wlan/utils/sigma-dut"
 
 inherit autotools-brokensep pkgconfig
 

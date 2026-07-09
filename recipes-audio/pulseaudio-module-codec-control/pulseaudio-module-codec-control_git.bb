@@ -7,7 +7,7 @@ DEPENDS += "audio-hal-plugin-noship glib-2.0 pulseaudio"
 
 SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/mm-audio/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/mm-audio;usehead=1"
 SRCREV = "${AUTOREV}"
-S = "${WORKDIR}/vendor/qcom/opensource/mm-audio/pulseaudio-module-codec-control"
+S = "${UNPACKDIR}/vendor/qcom/opensource/mm-audio/pulseaudio-module-codec-control"
 
 inherit autotools-brokensep pkgconfig
 

@@ -7,7 +7,7 @@ do_compile:append:gen5 () {
     # single-lv-gvm.
     rm -rf ${S}/out/Build
     oe_runmake -f makefile all "EXTRA_STATIC_CMDLINE=gvmconfig=single-lv-gvm"
-    cp -f ${S}/../abl.elf ${WORKDIR}/abl-single-lv-gvm.elf
+    cp -f ${S}/../abl.elf ${UNPACKDIR}/abl-single-lv-gvm.elf
 
     rm -rf ${S}/out/Build
     oe_runmake -f makefile all
@@ -15,7 +15,7 @@ do_compile:append:gen5 () {
 
 do_deploy:append:gen5 () {
     mv ${S}/../abl.elf ${S}/../abl.elf.bak
-    cp ${WORKDIR}/abl-single-lv-gvm.elf ${S}/../abl.elf
+    cp ${UNPACKDIR}/abl-single-lv-gvm.elf ${S}/../abl.elf
 
     ${SIGNING_FUNCTION}
 

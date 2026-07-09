@@ -12,7 +12,7 @@ SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/audio-kernel-ar/.git;protocol=
 
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/audio-kernel-ar"
+S = "${UNPACKDIR}/vendor/qcom/opensource/audio-kernel-ar"
 
 EXTRA_OEMAKE:sa81x5 += "TARGET_SUPPORT=sa8155"
 EXTRA_OEMAKE:quin-gvm-gen4-2 += "TARGET_SUPPORT=no AUTO_GVM=yes"
@@ -39,7 +39,7 @@ MODULES = "\
         soc/pinctrl_lpi_dlkm.ko \
 "
 
-TECHPACK_MODULE_OUT = "${WORKDIR}/audio-kernel-ar"
+TECHPACK_MODULE_OUT = "${UNPACKDIR}/audio-kernel-ar"
 TECHPACK_MODULES = "${MODULES}"
 TECHPACK_HEADERS = "${S}/include/uapi"
 TECHPACK_HEADERS_OUT = "audio-kernel-ar/audio"
@@ -49,7 +49,7 @@ inherit ${@bb.utils.contains('PREFERRED_VERSION_linux-msm', '5.4', "module modul
 
 do_configure() {
     if ${@bb.utils.contains('PREFERRED_VERSION_linux-msm', '5.4', 'true', 'false', d)}; then
-        cp -f ${WORKDIR}/vendor/qcom/opensource/audio-kernel-ar/Makefile.am ${WORKDIR}/vendor/qcom/opensource/audio-kernel-ar/Makefile
+        cp -f ${UNPACKDIR}/vendor/qcom/opensource/audio-kernel-ar/Makefile.am ${UNPACKDIR}/vendor/qcom/opensource/audio-kernel-ar/Makefile
     fi
 }
 
@@ -61,9 +61,9 @@ do_install:append() {
     fi
 
     if ${@bb.utils.contains('DISTRO_FEATURES', 'systemd', 'true', 'false', d)}; then
-        install -m 0755 ${WORKDIR}/audio_load.conf -D ${D}${sysconfdir}/modules-load.d/audio_load.conf
+        install -m 0755 ${UNPACKDIR}/audio_load.conf -D ${D}${sysconfdir}/modules-load.d/audio_load.conf
     else
-        install -m 0755 ${WORKDIR}/audio_load.conf -D ${D}${sysconfdir}/modules/audio_load.conf
+        install -m 0755 ${UNPACKDIR}/audio_load.conf -D ${D}${sysconfdir}/modules/audio_load.conf
     fi
 
     install -d ${D}${nonarch_base_libdir}/modules/${KERNEL_VERSION}/extra

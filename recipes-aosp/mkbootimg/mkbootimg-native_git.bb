@@ -9,7 +9,7 @@ PROVIDES = "mkbootimg-native"
 SRC_URI = "${PATH_TO_REPO}/system/core/.git;protocol=${PROTO};destsuffix=system/core;usehead=1"
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/system/core/mkbootimg"
+S = "${UNPACKDIR}/system/core/mkbootimg"
 
 inherit native
 

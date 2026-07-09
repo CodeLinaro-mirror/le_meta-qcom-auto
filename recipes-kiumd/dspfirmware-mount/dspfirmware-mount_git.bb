@@ -10,7 +10,7 @@ SRC_URI = "\
 "
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/kiumd/dspfirmware-mount"
+S = "${UNPACKDIR}/vendor/qcom/opensource/kiumd/dspfirmware-mount"
 inherit systemd
 
 SYSTEMD_SERVICE:${PN} = "usr-lib-firmware-qcom.automount usr-lib-firmware-qcom.mount"
@@ -26,7 +26,7 @@ do_install:append() {
 
     install -d -p ${D}/vendor/dsp
 
-    install -m 0644 ${WORKDIR}/mnt_fs.conf -D ${D}${libdir}/modules-load.d/mnt_fs.conf
+    install -m 0644 ${UNPACKDIR}/mnt_fs.conf -D ${D}${libdir}/modules-load.d/mnt_fs.conf
     install -m 0644 ${S}/vendor-dsp.mount -D ${D}${systemd_unitdir}/system/vendor-dsp.mount
     install -m 0644 ${S}/vendor-dsp.automount -D ${D}${systemd_unitdir}/system/vendor-dsp.automount
 

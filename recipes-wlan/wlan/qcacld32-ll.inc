@@ -17,7 +17,7 @@ WLAN_PLATFORM_CFG = "\
                    "
 EXTRA_OEMAKE:append = " ${WLAN_PLATFORM_CFG} "
 
-_LINUX_BUILD_TOP = "${WORKDIR}/wlan"
+_LINUX_BUILD_TOP = "${UNPACKDIR}/wlan"
 
 do_unpack[deptask] = "do_populate_sysroot"
 do_compile:prepend() {

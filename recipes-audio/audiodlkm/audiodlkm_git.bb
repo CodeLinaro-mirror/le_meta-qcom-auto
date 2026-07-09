@@ -9,7 +9,7 @@ DEPENDS += "virtual/kernel"
 SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/audio-kernel/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/audio-kernel;usehead=1"
 SRC_URI:append = " file://audio_load.conf"
 SRCREV = "${AUTOREV}"
-S = "${WORKDIR}/vendor/qcom/opensource/audio-kernel"
+S = "${UNPACKDIR}/vendor/qcom/opensource/audio-kernel"
 
 EXTRA_OEMAKE += "TARGET_SUPPORT=${@bb.utils.contains('BASEMACHINE', 'sa81x5', 'sa8155', '${BASEMACHINE}', d)}"
 EXTRA_OEMAKE += "AR_SUPPORT=${@bb.utils.contains('MACHINE_FEATURES', 'qti-audio-ar', 'yes', 'no', d)}"
@@ -26,7 +26,7 @@ MODULES = "\
         asoc/machine_dlkm.ko \
         soc/snd_event_dlkm.ko \
 "
-TECHPACK_MODULE_OUT = "${@bb.utils.contains('PREFERRED_VERSION_linux-msm', '5.15', "${WORKDIR}/audio-kernel", "", d)}"
+TECHPACK_MODULE_OUT = "${@bb.utils.contains('PREFERRED_VERSION_linux-msm', '5.15', "${UNPACKDIR}/audio-kernel", "", d)}"
 TECHPACK_MODULES = "${@bb.utils.contains('PREFERRED_VERSION_linux-msm', '5.15', "${MODULES}", "", d)}"
 TECHPACK_HEADERS = "${S}/include/uapi/audio"
 TECHPACK_HEADERS_OUT = "audio-kernel/audio"
@@ -36,7 +36,7 @@ inherit ${@bb.utils.contains('PREFERRED_VERSION_linux-msm', '5.15', "qti-techpac
 
 do_configure() {
     if ${@bb.utils.contains('PREFERRED_VERSION_linux-msm', '5.4', 'true', 'false', d)}; then
-        cp -f ${WORKDIR}/vendor/qcom/opensource/audio-kernel/Makefile.am ${WORKDIR}/vendor/qcom/opensource/audio-kernel/Makefile
+        cp -f ${UNPACKDIR}/vendor/qcom/opensource/audio-kernel/Makefile.am ${UNPACKDIR}/vendor/qcom/opensource/audio-kernel/Makefile
     fi
 }
 
@@ -53,9 +53,9 @@ o/linux/mfd/wcd9xxx"
         process_headers "${S}/include/uapi/audio/sound" "${D}${includedir}/audio-kernel/audio/sound"
     fi
     if ${@bb.utils.contains('DISTRO_FEATURES', 'systemd', 'true', 'false', d)}; then
-        install -m 0755 ${WORKDIR}/audio_load.conf -D ${D}${sysconfdir}/modules-load.d/audio_load.conf
+        install -m 0755 ${UNPACKDIR}/audio_load.conf -D ${D}${sysconfdir}/modules-load.d/audio_load.conf
     else
-        install -m 0755 ${WORKDIR}/audio_load.conf -D ${D}${sysconfdir}/modules/audio_load.conf
+        install -m 0755 ${UNPACKDIR}/audio_load.conf -D ${D}${sysconfdir}/modules/audio_load.conf
     fi
 
     install -d ${D}${nonarch_base_libdir}/modules/${KERNEL_VERSION}/extra

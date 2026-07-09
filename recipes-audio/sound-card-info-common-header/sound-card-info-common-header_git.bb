@@ -7,7 +7,7 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/${LICENSE};md5=7a434440b651f4a4
 SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/audio-virtio-be/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/audio-virtio-be/sound_card_info_util_header;subpath=sound_card_info_util_header;usehead=1"
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/audio-virtio-be/sound_card_info_util_header"
+S = "${UNPACKDIR}/vendor/qcom/opensource/audio-virtio-be/sound_card_info_util_header"
 
 inherit cmake pkgconfig
 

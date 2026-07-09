@@ -9,7 +9,7 @@ LIC_FILES_CHKSUM = "file://NOTICE;md5=c1a3ff0b97f199c7ebcfdd4d3fed238e"
 SRC_URI = "${PATH_TO_REPO}/system/core/.git;protocol=${PROTO};destsuffix=system/core;usehead=1"
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/system/core"
+S = "${UNPACKDIR}/system/core"
 
 do_configure[noexec] = "1"
 do_compile[noexec] = "1"

@@ -17,7 +17,7 @@ SRC_URI = "\
 "
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/external/open-avb"
+S = "${UNPACKDIR}/external/open-avb"
 
 inherit systemd pkgconfig
 

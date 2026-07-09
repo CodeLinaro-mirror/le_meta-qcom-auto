@@ -1,3 +1,3 @@
 do_install:prepend() {
-  sed -i 's/\[^\%](%%)/[^\%]?(%%)/g' ${WORKDIR}/systemctl
+  sed -i 's/\[^\%](%%)/[^\%]?(%%)/g' ${UNPACKDIR}/systemctl
 }

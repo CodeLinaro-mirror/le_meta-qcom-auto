@@ -22,6 +22,6 @@ do_configure[noexec] = "1"
 do_compile[noexec] = "1"
 
 do_install() {
-    install -D -m 0755 ${WORKDIR}/memory-hotplug.sh ${D}${bindir}/memory-hotplug.sh
-    install -D -m 0644 ${WORKDIR}/${MEMORY_SERVICE} ${D}${systemd_unitdir}/system/memory-hotplug.service
+    install -D -m 0755 ${UNPACKDIR}/memory-hotplug.sh ${D}${bindir}/memory-hotplug.sh
+    install -D -m 0644 ${UNPACKDIR}/${MEMORY_SERVICE} ${D}${systemd_unitdir}/system/memory-hotplug.service
 }

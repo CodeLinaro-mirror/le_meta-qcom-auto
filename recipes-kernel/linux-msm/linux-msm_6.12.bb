@@ -14,7 +14,7 @@ DEPENDS += "elfutils-native kern-tools-native mkbootimg-native mkdtimg-native op
 
 SRC_URI = "file://kernel-${PREFERRED_VERSION_linux-msm}/kernel_platform/common"
 
-S = "${WORKDIR}/kernel-${PREFERRED_VERSION_linux-msm}/kernel_platform/common"
+S = "${UNPACKDIR}/kernel-${PREFERRED_VERSION_linux-msm}/kernel_platform/common"
 
 KERNEL_BUILD_VARIANT = "${@bb.utils.contains_any('VARIANT', 'perf user', '', 'debug-', d)}"
 KERNEL_OUT_VARIANT = "${@bb.utils.contains_any('VARIANT', 'perf user', '', 'debug_', d)}"

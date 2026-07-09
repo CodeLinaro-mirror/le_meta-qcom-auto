@@ -9,7 +9,6 @@ LIC_FILES_CHKSUM = "file://LICENSE;md5=eb21481ad45c5578ae8c8d37b8c8d76d"
 PV = "1.5+git${SRCPV}"
 SRC_URI = "git://github.com/compuphase/minIni.git;branch=master;protocol=https"
 SRCREV = "1bb6557030964c921da374e6541e6acb965588e2"
-S = "${WORKDIR}/git"
 
 inherit pkgconfig
 do_compile() {

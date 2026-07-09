@@ -17,8 +17,8 @@ inherit systemd
 do_install() {
   install -d ${D}${systemd_system_unitdir}
   install -d ${D}${bindir}
-  install -m 0755 ${WORKDIR}/setup-network.sh ${D}${bindir}/setup-network.sh
-  install -m 0644 ${WORKDIR}/setup-network.service ${D}${systemd_unitdir}/system/
+  install -m 0755 ${UNPACKDIR}/setup-network.sh ${D}${bindir}/setup-network.sh
+  install -m 0644 ${UNPACKDIR}/setup-network.service ${D}${systemd_unitdir}/system/
 }
 
 SYSTEMD_SERVICE:${PN} = "setup-network.service"

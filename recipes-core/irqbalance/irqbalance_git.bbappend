@@ -7,7 +7,7 @@ SYSTEMD_AUTO_ENABLE:irqbalance = "enable"
 
 do_install:append() {
     install -d ${D}${sysconfdir}/systemd/system/irqbalanced.service.d
-    install -m 0644 ${WORKDIR}/irqbalanced.conf -D ${D}${sysconfdir}/systemd/system/irqbalanced.service.d/99irqbalanced.conf
-    install -m 0755 ${WORKDIR}/set_irq_bal_level.sh -D ${D}${bindir}/set_irq_bal_level.sh
+    install -m 0644 ${UNPACKDIR}/irqbalanced.conf -D ${D}${sysconfdir}/systemd/system/irqbalanced.service.d/99irqbalanced.conf
+    install -m 0755 ${UNPACKDIR}/set_irq_bal_level.sh -D ${D}${bindir}/set_irq_bal_level.sh
 }
 

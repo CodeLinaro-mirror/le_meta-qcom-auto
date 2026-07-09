@@ -19,7 +19,7 @@ SRC_URI = "\
 
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/safelinux-system-cfg"
+S = "${UNPACKDIR}/vendor/qcom/opensource/safelinux-system-cfg"
 
 inherit systemd
 
@@ -29,15 +29,15 @@ do_install:append() {
     install -m 0755 ${S}/modules-autoload-config/i2cdev.conf -D ${D}${libdir}/modules-load.d/i2cdev.conf
     install -m 0755 ${S}/modules-autoload-config/spidev.conf -D ${D}${libdir}/modules-load.d/spidev.conf
     install -m 0755 ${S}/modules-autoload-config/pinctrl_scmi.conf -D ${D}${libdir}/modules-load.d/pinctrl_scmi.conf
-    install -m 0755 ${WORKDIR}/vfio.conf -D ${D}${libdir}/modules-load.d/vfio.conf
-    install -m 0755 ${WORKDIR}/vfio_param.conf -D ${D}${sysconfdir}/modprobe.d/vfio.conf
+    install -m 0755 ${UNPACKDIR}/vfio.conf -D ${D}${libdir}/modules-load.d/vfio.conf
+    install -m 0755 ${UNPACKDIR}/vfio_param.conf -D ${D}${sysconfdir}/modprobe.d/vfio.conf
 
     install -d ${D}${bindir}
     install -m 0644 ${S}/vfio-device-probe/vfio-device-probe.service -D ${D}${systemd_unitdir}/system/vfio-device-probe.service
     install -m 0755 ${S}/vfio-device-probe/vfio-device-bind.sh -D ${D}${bindir}/vfio-device-bind.sh
 
-    install -m 0755 ${WORKDIR}/vm_net.conf -D ${D}${libdir}/modules-load.d/vm_net.conf
-    install -m 0755 ${WORKDIR}/vmm_pwr_key.conf -D ${D}${libdir}/modules-load.d/vmm_pwr_key.conf
+    install -m 0755 ${UNPACKDIR}/vm_net.conf -D ${D}${libdir}/modules-load.d/vm_net.conf
+    install -m 0755 ${UNPACKDIR}/vmm_pwr_key.conf -D ${D}${libdir}/modules-load.d/vmm_pwr_key.conf
     if ${@bb.utils.contains('MACHINE_FEATURES', 'early-ramdisk-init', 'true', 'false', d)}; then
         sed -i '/After=systemd-modules-load.service/d' ${D}${systemd_unitdir}/system/vfio-device-probe.service
         sed -i 's#/usr/bin/vfio-device-bind.sh#/bin/echo "vfio already run in early-ramdisk"#g' ${D}${systemd_unitdir}/system/vfio-device-probe.service

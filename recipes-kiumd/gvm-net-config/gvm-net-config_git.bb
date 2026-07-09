@@ -13,7 +13,7 @@ SRC_URI = "\
 "
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/kiumd/gvm_net_config"
+S = "${UNPACKDIR}/vendor/qcom/opensource/kiumd/gvm_net_config"
 
 inherit systemd
 

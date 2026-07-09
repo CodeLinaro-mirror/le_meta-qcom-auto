@@ -11,7 +11,6 @@ SRC_URI:append = " file://0001-Port-open-dice-project-to-Linux-environment.patch
 
 SRCREV = "49a4204a6596363b9c35bde51c2ba048252b4772"
 
-S = "${WORKDIR}/git"
 
 inherit pkgconfig
 

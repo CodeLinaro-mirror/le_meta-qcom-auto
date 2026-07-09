@@ -17,14 +17,14 @@ USERADD_PACKAGES += "${PN}"
 
 # Add format definition for pid file generation
 do_configure:prepend () {
-    sed -i '$ a printf_fmt_pid=jd' ${WORKDIR}/config.linux
+    sed -i '$ a printf_fmt_pid=jd' ${UNPACKDIR}/config.linux
 }
 
 do_install:append () {
     # Remove unneccessary bashisms script
     rm -rf ${D}${libexecdir}/pcp/bin/pmlogger_daily_report
     # Add PMIE configure file to monitor CPU usage
-    install -m 0644 ${WORKDIR}/cpu_usage_monitor ${D}${localstatedir}/lib/pcp/config/pmie/cpu_usage_monitor
+    install -m 0644 ${UNPACKDIR}/cpu_usage_monitor ${D}${localstatedir}/lib/pcp/config/pmie/cpu_usage_monitor
 }
 
 # Remove unneccessary services for only cpu usage monitor

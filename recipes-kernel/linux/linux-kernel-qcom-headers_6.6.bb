@@ -11,7 +11,7 @@ DEPENDS += "bison-native rsync-native unifdef-native"
 PROVIDES += "virtual/kernel-headers"
 
 S = "${STAGING_KERNEL_DIR}"
-B = "${WORKDIR}/build"
+B = "${UNPACKDIR}/build"
 
 inherit linux-kernel-base kernel-arch
 

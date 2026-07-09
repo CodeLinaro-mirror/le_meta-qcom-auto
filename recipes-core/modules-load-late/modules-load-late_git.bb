@@ -13,7 +13,7 @@ SRC_URI = "\
 
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}"
+S = "${UNPACKDIR}"
 
 inherit systemd useradd
 

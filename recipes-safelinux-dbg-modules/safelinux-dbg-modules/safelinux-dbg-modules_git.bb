@@ -10,7 +10,7 @@ SYSTEMD_AUTO_ENABLE:${PN} = "enable"
 SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/safelinux-dbg-modules/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/safelinux-dbg-modules;usehead=1"
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/safelinux-dbg-modules"
+S = "${UNPACKDIR}/vendor/qcom/opensource/safelinux-dbg-modules"
 
 TECHPACK_MODULES = "minidump/minidump.ko \
                     kaslr_store/kaslr_store.ko \
@@ -31,7 +31,7 @@ QCOM_DCC_CONF:gen5 = "qcom_dcc_sa8797.conf"
 do_install:append() {
     install -d ${D}${nonarch_base_libdir}/modules/${KERNEL_VERSION}/extra/
     install -d ${D}${libdir}/modules-load.d/
-    install -m 0755 ${WORKDIR}/vendor/qcom/opensource/safelinux-dbg-modules/extern_dbg_mod.conf -D ${D}${libdir}/modules-load.d/extern_dbg_mod.conf
+    install -m 0755 ${UNPACKDIR}/vendor/qcom/opensource/safelinux-dbg-modules/extern_dbg_mod.conf -D ${D}${libdir}/modules-load.d/extern_dbg_mod.conf
 
     install -d ${D}${bindir}
     install -m 0755 ${S}/qcom_dcc/qcom_dcc_config.sh -D ${D}${bindir}/qcom_dcc_config.sh

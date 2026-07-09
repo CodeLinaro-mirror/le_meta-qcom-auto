@@ -10,7 +10,6 @@ SRC_URI = "git://github.com/Debian/devscripts.git;protocol=https;branch=master"
 
 SRCREV = "d6f7f6927cc1035ca3fb7ab6ab86b3c7430e6d00"
 
-S = "${WORKDIR}/git"
 
 do_configure[noexec] = "1"
 do_compile[noexec] = "1"

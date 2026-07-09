@@ -8,7 +8,6 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/${LICENSE};md5=801f80980d171dd6
 
 SRC_URI = "${CLO_LE_GIT}/platform/external/sos;protocol=https;branch=main;destsuffix=git"
 SRCREV = "77e4bdff5ee01355ebcde7759524034aafd65b18"
-S = "${WORKDIR}/git"
 
 inherit setuptools3
 

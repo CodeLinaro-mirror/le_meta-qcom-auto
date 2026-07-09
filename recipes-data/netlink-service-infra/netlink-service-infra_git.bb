@@ -9,7 +9,7 @@ SRC_URI:append = " \
     file://0001-PATCH-meta-qti-bsp-Add-the-netlink-service.patch \
     file://netlink-service.service \
 "
-S = "${WORKDIR}"
+S = "${UNPACKDIR}"
 
 inherit cmake systemd
 
@@ -17,7 +17,7 @@ do_configure:prepend() {
     cd ${S}
     rm -f ${S}/meta-qti-base/recipes-data/netlink-service-infra/files/CMakeLists.txt
     rm -f ${S}/meta-qti-base/recipes-data/netlink-service-infra/files/netlink-service.c
-    patch -p1 < ${WORKDIR}/0001-PATCH-meta-qti-bsp-Add-the-netlink-service.patch || exit 1
+    patch -p1 < ${UNPACKDIR}/0001-PATCH-meta-qti-bsp-Add-the-netlink-service.patch || exit 1
     mv ${S}/meta-qti-base/recipes-data/netlink-service-infra/files/CMakeLists.txt ${S}/CMakeLists.txt
     mv ${S}/meta-qti-base/recipes-data/netlink-service-infra/files/netlink-service.c ${S}/netlink-service.c
 }
@@ -34,7 +34,7 @@ do_install() {
     install -d ${D}${bindir}
     install -m 0755 ${B}/netlink-service ${D}${bindir}/netlink-service
     install -d ${D}${systemd_system_unitdir}
-    install -m 0644 ${WORKDIR}/netlink-service.service ${D}${systemd_system_unitdir}/netlink-service.service
+    install -m 0644 ${UNPACKDIR}/netlink-service.service ${D}${systemd_system_unitdir}/netlink-service.service
 }
 
 SYSTEMD_SERVICE:${PN} = "netlink-service.service"

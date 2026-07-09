@@ -31,26 +31,26 @@ USERADD_PARAM:${PN} = "--no-create-home -g setup-qos --shell /bin/false setup-qo
 do_install:gen5() {
   if ${@bb.utils.contains('DISTRO_FEATURES', 'systemd', 'true', 'false', d)}; then
     install -d ${D}${sysconfdir}/initscripts
-    install -m 0755 ${WORKDIR}/setup_eth.sh ${D}${sysconfdir}/initscripts
-    install -m 0755 ${WORKDIR}/config.ini ${D}${sysconfdir}/initscripts
+    install -m 0755 ${UNPACKDIR}/setup_eth.sh ${D}${sysconfdir}/initscripts
+    install -m 0755 ${UNPACKDIR}/config.ini ${D}${sysconfdir}/initscripts
 
     install -d ${D}${systemd_system_unitdir}
-    install -m 0644 ${WORKDIR}/setup_eth0.service ${D}${systemd_unitdir}/system/
-    install -m 0644 ${WORKDIR}/setup_eth1.service ${D}${systemd_unitdir}/system/
+    install -m 0644 ${UNPACKDIR}/setup_eth0.service ${D}${systemd_unitdir}/system/
+    install -m 0644 ${UNPACKDIR}/setup_eth1.service ${D}${systemd_unitdir}/system/
 
-    install -D -m 644 ${WORKDIR}/net.conf ${D}${sysconfdir}/tmpfiles.d/net.conf
+    install -D -m 644 ${UNPACKDIR}/net.conf ${D}${sysconfdir}/tmpfiles.d/net.conf
   fi
 }
 
 do_install() {
   if ${@bb.utils.contains('DISTRO_FEATURES', 'systemd', 'true', 'false', d)}; then
     install -d ${D}${sysconfdir}/initscripts
-    install -m 0755 ${WORKDIR}/setup_eth_sa8775.sh ${D}${sysconfdir}/initscripts/setup_eth.sh
-    install -m 0755 ${WORKDIR}/config_sa8775.ini ${D}${sysconfdir}/initscripts/config.ini
+    install -m 0755 ${UNPACKDIR}/setup_eth_sa8775.sh ${D}${sysconfdir}/initscripts/setup_eth.sh
+    install -m 0755 ${UNPACKDIR}/config_sa8775.ini ${D}${sysconfdir}/initscripts/config.ini
 
     install -d ${D}${systemd_system_unitdir}
-    install -m 0644 ${WORKDIR}/setup_eth0_sa8775.service ${D}${systemd_unitdir}/system/setup_eth0.service
-    install -m 0644 ${WORKDIR}/setup_eth1_sa8775.service ${D}${systemd_unitdir}/system/setup_eth1.service
+    install -m 0644 ${UNPACKDIR}/setup_eth0_sa8775.service ${D}${systemd_unitdir}/system/setup_eth0.service
+    install -m 0644 ${UNPACKDIR}/setup_eth1_sa8775.service ${D}${systemd_unitdir}/system/setup_eth1.service
   fi
 }
 

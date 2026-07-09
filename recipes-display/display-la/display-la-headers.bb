@@ -6,7 +6,7 @@ LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/${LICENSE};md5
 
 SRC_URI = "${PATH_TO_REPO}/hardware/qcom/display/.git;protocol=${PROTO};destsuffix=hardware/qcom/display;usehead=1"
 SRCREV = "${AUTOREV}"
-S = "${WORKDIR}/hardware/qcom/display"
+S = "${UNPACKDIR}/hardware/qcom/display"
 
 do_configure[noexec] = "1"
 do_compile[noexec] = "1"

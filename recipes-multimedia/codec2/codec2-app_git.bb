@@ -10,7 +10,7 @@ DEPENDS += "codec2"
 
 SRC_URI = "${PATH_TO_REPO}/gstreamer/gst-plugins-qti-oss/.git;protocol=${PROTO};destsuffix=gstreamer/gst-plugins-qti-oss;usehead=1"
 SRCREV = "${AUTOREV}"
-S = "${WORKDIR}/gstreamer/gst-plugins-qti-oss/codec2-app"
+S = "${UNPACKDIR}/gstreamer/gst-plugins-qti-oss/codec2-app"
 
 inherit cmake systemd useradd
 

@@ -27,8 +27,8 @@ _WLAN_CTRL_NAME = "wlan"
 FW_PATH_NAME = "qcn7605"
 FIRMWARE_PATH = "${D}${nonarch_base_libdir}/firmware/wlan/qca_cld/${_MODNAME}"
 
-S1 = "${WORKDIR}/${TARGET_DIR}wlan/qca-wifi-host-cmn"
-S = "${WORKDIR}/${TARGET_DIR}wlan/qcacld-3.0"
+S1 = "${UNPACKDIR}/${TARGET_DIR}wlan/qca-wifi-host-cmn"
+S = "${UNPACKDIR}/${TARGET_DIR}wlan/qcacld-3.0"
 
 # Explicitly disable HL to enable LL as current WLAN driver is not having
 # simultaneous support of HL and LL.
@@ -71,8 +71,8 @@ do_install() {
     install -d ${WLAN_KO}/wlan
     install -m 0644 ${S}/${_MODNAME}.ko ${WLAN_KO}/wlan/
 
-    install -D -m 0644 ${WORKDIR}/${TARGET_DIR}device/qcom/wlan/msm_auto/WCNSS_qcom_cfg_qcn7605.ini ${FIRMWARE_PATH}/WCNSS_qcom_cfg.ini
-    install -D -m 0644 ${WORKDIR}/${TARGET_DIR}device/qcom/wlan/msm_auto/wlan_mac.bin ${FIRMWARE_PATH}/wlan_mac.bin
+    install -D -m 0644 ${UNPACKDIR}/${TARGET_DIR}device/qcom/wlan/msm_auto/WCNSS_qcom_cfg_qcn7605.ini ${FIRMWARE_PATH}/WCNSS_qcom_cfg.ini
+    install -D -m 0644 ${UNPACKDIR}/${TARGET_DIR}device/qcom/wlan/msm_auto/wlan_mac.bin ${FIRMWARE_PATH}/wlan_mac.bin
 
     install -d ${D}${nonarch_base_libdir}/firmware/${FW_PATH_NAME}/
     ln -sf /firmware/image/${FW_PATH_NAME}/amss.bin ${D}${nonarch_base_libdir}/firmware/${FW_PATH_NAME}/

@@ -10,9 +10,9 @@ SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/video-driver/.git;protocol=${P
 
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/video-driver"
+S = "${UNPACKDIR}/vendor/qcom/opensource/video-driver"
 
-TECHPACK_MODULE_OUT = "${WORKDIR}/vendor/qcom/opensource/video-driver-out"
+TECHPACK_MODULE_OUT = "${UNPACKDIR}/vendor/qcom/opensource/video-driver-out"
 TECHPACK_MODULES = "${@bb.utils.contains('MACHINE_FEATURES', 'qti-hypervisor', '', 'msm-vidc.ko',d)}"
 TECHPACK_HEADERS = "${S}/include/uapi"
 

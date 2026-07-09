@@ -10,7 +10,7 @@ LIC_FILES_CHKSUM = "\
 SRC_URI = "${PATH_TO_REPO}/external/vhost-device/.git;protocol=${PROTO};destsuffix=external/vhost-device;usehead=1"
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/external/vhost-device"
+S = "${UNPACKDIR}/external/vhost-device"
 CARGO_SRC_DIR = "vhost-device-i2c"
 
 inherit cargo systemd

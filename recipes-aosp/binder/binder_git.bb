@@ -15,7 +15,7 @@ SRC_URI = "\
 "
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/frameworks/binder"
+S = "${UNPACKDIR}/frameworks/binder"
 
 inherit autotools pkgconfig systemd useradd
 
@@ -50,12 +50,12 @@ CFLAGS += "-I${STAGING_INCDIR}/libselinux"
 do_install:append() {
     if ${@bb.utils.contains('DISTRO_FEATURES', 'systemd', 'true', 'false', d)}; then
         install -d ${D}/${sysconfdir}/initscripts/
-        install -m 0755 ${WORKDIR}/create-binder.sh -D ${D}${sysconfdir}/initscripts/create-binder
+        install -m 0755 ${UNPACKDIR}/create-binder.sh -D ${D}${sysconfdir}/initscripts/create-binder
         install -d ${D}${systemd_unitdir}/system/
-        install -m 0644 ${WORKDIR}/servicemanager.service -D ${D}${systemd_unitdir}/system/servicemanager.service
-        install -m 0644 ${WORKDIR}/create-binder.service -D ${D}${systemd_unitdir}/system/create-binder.service
+        install -m 0644 ${UNPACKDIR}/servicemanager.service -D ${D}${systemd_unitdir}/system/servicemanager.service
+        install -m 0644 ${UNPACKDIR}/create-binder.service -D ${D}${systemd_unitdir}/system/create-binder.service
         if ${@bb.utils.contains('DISTRO_FEATURES', 'qti-vndbinder', 'true', 'false', d)}; then
-            install -m 0644 ${WORKDIR}/vndservicemanager.service -D ${D}${systemd_unitdir}/system/vndservicemanager.service
+            install -m 0644 ${UNPACKDIR}/vndservicemanager.service -D ${D}${systemd_unitdir}/system/vndservicemanager.service
         fi
         if ${@bb.utils.contains('DISTRO_FEATURES', 'smack', 'true', 'false', d)}; then
             #Add capabilities for create-binder.service to set smack lable

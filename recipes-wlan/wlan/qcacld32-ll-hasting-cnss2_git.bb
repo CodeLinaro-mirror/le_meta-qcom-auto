@@ -30,8 +30,8 @@ _MODNAME = "qca6390"
 FW_PATH_NAME = "qca6390"
 FIRMWARE_PATH = "${D}${nonarch_base_libdir}/firmware/wlan/qca_cld/${_MODNAME}"
 
-S1 = "${WORKDIR}/${TARGET_DIR}wlan/qca-wifi-host-cmn"
-S = "${WORKDIR}/${TARGET_DIR}wlan/qcacld-3.0"
+S1 = "${UNPACKDIR}/${TARGET_DIR}wlan/qca-wifi-host-cmn"
+S = "${UNPACKDIR}/${TARGET_DIR}wlan/qcacld-3.0"
 
 inherit systemd
 
@@ -112,8 +112,8 @@ EXTRA_OEMAKE:append:quin-gvm-lemans = " WLAN_CFG_OVERRIDE=${_WLAN_CFG_OVERRIDE_G
 EXTRA_OEMAKE:append:quin-gvm-monaco = " WLAN_CFG_OVERRIDE=${_WLAN_CFG_OVERRIDE_GVM}"
 
 do_configure:append() {
-    sed -i -e 's/^gEnableConcurrentSTA=wlan1/gEnableConcurrentSTA=wlan3/g' ${WORKDIR}/${TARGET_DIR}device/qcom/wlan/msm_auto/WCNSS_qcom_cfg_qca6390.ini
-    sed -i '1 i\host_log_custom_nl_proto=1' ${WORKDIR}/${TARGET_DIR}device/qcom/wlan/msm_auto/WCNSS_qcom_cfg_qca6390.ini
+    sed -i -e 's/^gEnableConcurrentSTA=wlan1/gEnableConcurrentSTA=wlan3/g' ${UNPACKDIR}/${TARGET_DIR}device/qcom/wlan/msm_auto/WCNSS_qcom_cfg_qca6390.ini
+    sed -i '1 i\host_log_custom_nl_proto=1' ${UNPACKDIR}/${TARGET_DIR}device/qcom/wlan/msm_auto/WCNSS_qcom_cfg_qca6390.ini
 }
 
 SYSTEMD_SERVICE:${PN} = "qca6390-module-load.service"
@@ -131,11 +131,11 @@ do_install() {
     install -d ${WLAN_KO}/wlan
     install -m 0644 ${S}/${_MODNAME}.ko ${WLAN_KO}/wlan/
 
-    install -D -m 0644 ${WORKDIR}/${TARGET_DIR}device/qcom/wlan/msm_auto/WCNSS_qcom_cfg_qca6390.ini ${FIRMWARE_PATH}/WCNSS_qcom_cfg.ini
-    install -D -m 0644 ${WORKDIR}/${TARGET_DIR}device/qcom/wlan/msm_auto/wlan_mac_hst_2.bin ${FIRMWARE_PATH}/wlan_mac.bin
+    install -D -m 0644 ${UNPACKDIR}/${TARGET_DIR}device/qcom/wlan/msm_auto/WCNSS_qcom_cfg_qca6390.ini ${FIRMWARE_PATH}/WCNSS_qcom_cfg.ini
+    install -D -m 0644 ${UNPACKDIR}/${TARGET_DIR}device/qcom/wlan/msm_auto/wlan_mac_hst_2.bin ${FIRMWARE_PATH}/wlan_mac.bin
     install -d ${D}${bindir}
-    install -D -m 0755 ${WORKDIR}/qca6390_load.sh ${D}${bindir}/qca6390_load.sh
-    install -D -m 0755 ${WORKDIR}/qca6390_load.sh ${D}${bindir}/qca6390_unload.sh
+    install -D -m 0755 ${UNPACKDIR}/qca6390_load.sh ${D}${bindir}/qca6390_load.sh
+    install -D -m 0755 ${UNPACKDIR}/qca6390_load.sh ${D}${bindir}/qca6390_unload.sh
 
     install -d ${D}${nonarch_base_libdir}/firmware/${FW_PATH_NAME}/
     ln -sf /firmware/image/${FW_PATH_NAME}/amss.bin ${D}${nonarch_base_libdir}/firmware/${FW_PATH_NAME}/
@@ -148,7 +148,7 @@ do_install() {
     # Install systemd service file
     if ${@bb.utils.contains('DISTRO_FEATURES','systemd','true','false',d)}; then
         install -d ${D}${systemd_unitdir}/system/
-        install -m 0644 ${WORKDIR}/qca6390-module-load.service -D ${D}${systemd_unitdir}/system/qca6390-module-load.service
+        install -m 0644 ${UNPACKDIR}/qca6390-module-load.service -D ${D}${systemd_unitdir}/system/qca6390-module-load.service
     fi
 }
 

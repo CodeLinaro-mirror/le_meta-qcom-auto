@@ -11,7 +11,7 @@ DISPLAY_DIR:sa7255 = "${TARGET_DIR}display/display-hal"
 
 SRC_URI = "${PATH_TO_REPO}/${DISPLAY_DIR}/.git;protocol=${PROTO};destsuffix=${DISPLAY_DIR};usehead=1"
 SRCREV = "${AUTOREV}"
-S = "${WORKDIR}/${DISPLAY_DIR}"
+S = "${UNPACKDIR}/${DISPLAY_DIR}"
 
 do_configure[noexec] = "1"
 do_compile[noexec] = "1"

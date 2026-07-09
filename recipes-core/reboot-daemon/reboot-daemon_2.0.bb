@@ -11,7 +11,7 @@ SRC_URI = "\
 
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/mdm-ss-mgr/reboot-daemon"
+S = "${UNPACKDIR}/mdm-ss-mgr/reboot-daemon"
 
 inherit autotools-brokensep systemd
 
@@ -23,5 +23,5 @@ CFLAGS:append = " -D_GNU_SOURCE \
 do_install:append() {
     install -m 0755 ${S}/reboot-daemon -D ${D}/sbin/reboot-daemon
     install -d ${D}${systemd_unitdir}/system/
-    install -m 0644 ${WORKDIR}/reboot-daemon.service -D ${D}${systemd_unitdir}/system/reboot-daemon.service
+    install -m 0644 ${UNPACKDIR}/reboot-daemon.service -D ${D}${systemd_unitdir}/system/reboot-daemon.service
 }

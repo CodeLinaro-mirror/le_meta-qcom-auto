@@ -10,7 +10,7 @@ SRC_URI = "\
 
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/${TARGET_DIR}vendor/qcom/opensource/virtio-video"
+S = "${UNPACKDIR}/${TARGET_DIR}vendor/qcom/opensource/virtio-video"
 
 
 do_configure[noexec] = "1"

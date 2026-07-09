@@ -10,7 +10,7 @@ PROVIDES = "hsi2s-test"
 SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/hsi2s-kernel/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/hsi2s-kernel;usehead=1"
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/hsi2s-kernel/test/generic"
+S = "${UNPACKDIR}/vendor/qcom/opensource/hsi2s-kernel/test/generic"
 
 inherit autotools-brokensep
 

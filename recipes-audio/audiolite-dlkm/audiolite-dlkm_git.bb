@@ -10,7 +10,7 @@ SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/audiolite/.git;protocol=${PROT
 
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/audiolite/test_drivers/pvm"
+S = "${UNPACKDIR}/vendor/qcom/opensource/audiolite/test_drivers/pvm"
 
 TECHPACK_MODULES = "\
     ipcc_shmem_test_module.ko \

@@ -27,11 +27,11 @@ do_install:append:sa8775() {
   install -d ${D}${systemd_system_unitdir}
 
   if ${@bb.utils.contains('MACHINE_FEATURES', 'qti-vmm', 'true', 'false', d)}; then
-      install -m 0755 ${WORKDIR}/setup-network-host-gunyah-vmm_sa8775.sh ${D}${bindir}/setup-network-host.sh
-      install -m 0644 ${WORKDIR}/setup-network-host-gunyah-vmm.service ${D}${systemd_unitdir}/system/setup-network-host.service
+      install -m 0755 ${UNPACKDIR}/setup-network-host-gunyah-vmm_sa8775.sh ${D}${bindir}/setup-network-host.sh
+      install -m 0644 ${UNPACKDIR}/setup-network-host-gunyah-vmm.service ${D}${systemd_unitdir}/system/setup-network-host.service
   else
-      install -m 0755 ${WORKDIR}/setup-network-host-gunyah.sh ${D}${bindir}/setup-network-host.sh
-      install -m 0644 ${WORKDIR}/setup-network-host-gunyah.service ${D}${systemd_unitdir}/system/setup-network-host.service
+      install -m 0755 ${UNPACKDIR}/setup-network-host-gunyah.sh ${D}${bindir}/setup-network-host.sh
+      install -m 0644 ${UNPACKDIR}/setup-network-host-gunyah.service ${D}${systemd_unitdir}/system/setup-network-host.service
   fi
 }
 
@@ -40,11 +40,11 @@ do_install:append:sa7255() {
   install -d ${D}${systemd_system_unitdir}
 
   if ${@bb.utils.contains('MACHINE_FEATURES', 'qti-vmm', 'true', 'false', d)}; then
-      install -m 0755 ${WORKDIR}/setup-network-host-gunyah-vmm_sa7255.sh ${D}${bindir}/setup-network-host.sh
-      install -m 0644 ${WORKDIR}/setup-network-host-gunyah-vmm.service ${D}${systemd_unitdir}/system/setup-network-host.service
+      install -m 0755 ${UNPACKDIR}/setup-network-host-gunyah-vmm_sa7255.sh ${D}${bindir}/setup-network-host.sh
+      install -m 0644 ${UNPACKDIR}/setup-network-host-gunyah-vmm.service ${D}${systemd_unitdir}/system/setup-network-host.service
   else
-      install -m 0755 ${WORKDIR}/setup-network-host-gunyah.sh ${D}${bindir}/setup-network-host.sh
-      install -m 0644 ${WORKDIR}/setup-network-host-gunyah.service ${D}${systemd_unitdir}/system/setup-network-host.service
+      install -m 0755 ${UNPACKDIR}/setup-network-host-gunyah.sh ${D}${bindir}/setup-network-host.sh
+      install -m 0644 ${UNPACKDIR}/setup-network-host-gunyah.service ${D}${systemd_unitdir}/system/setup-network-host.service
   fi
 }
 
@@ -53,12 +53,12 @@ do_install:append:gen5() {
   install -d ${D}${bindir}
   install -d ${D}${systemd_system_unitdir}
 
-  install -m 0755 ${WORKDIR}/setup-network-host-gunyah-vmm_gen5.sh ${D}${bindir}/setup-network-host-vmm.sh
-  install -m 0644 ${WORKDIR}/setup-network-host-gunyah-vmm_gen5.service ${D}${systemd_unitdir}/system/setup-network-host-vmm.service
-  install -m 0755 ${WORKDIR}/setup-network-host-gunyah_gen5.sh ${D}${bindir}/setup-network-host.sh
-  install -m 0644 ${WORKDIR}/setup-network-host-gunyah_gen5.service ${D}${systemd_unitdir}/system/setup-network-host.service
+  install -m 0755 ${UNPACKDIR}/setup-network-host-gunyah-vmm_gen5.sh ${D}${bindir}/setup-network-host-vmm.sh
+  install -m 0644 ${UNPACKDIR}/setup-network-host-gunyah-vmm_gen5.service ${D}${systemd_unitdir}/system/setup-network-host-vmm.service
+  install -m 0755 ${UNPACKDIR}/setup-network-host-gunyah_gen5.sh ${D}${bindir}/setup-network-host.sh
+  install -m 0644 ${UNPACKDIR}/setup-network-host-gunyah_gen5.service ${D}${systemd_unitdir}/system/setup-network-host.service
 
-  install -m 0755 ${WORKDIR}/gvm_net_run.sh ${D}${bindir}/gvm_net_run.sh
+  install -m 0755 ${UNPACKDIR}/gvm_net_run.sh ${D}${bindir}/gvm_net_run.sh
 }
 
 SYSTEMD_SERVICE:${PN} = "setup-network-host.service"

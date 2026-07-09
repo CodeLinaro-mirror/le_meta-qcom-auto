@@ -9,9 +9,9 @@ SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/qcx-kernel/.git;protocol=${PRO
 
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/qcx-kernel"
+S = "${UNPACKDIR}/vendor/qcom/opensource/qcx-kernel"
 
-TECHPACK_MODULE_OUT = "${WORKDIR}/qcx-kernel"
+TECHPACK_MODULE_OUT = "${UNPACKDIR}/qcx-kernel"
 TECHPACK_MODULES = "camera.ko"
 TECHPACK_HEADERS = "${S}/include/uapi"
 

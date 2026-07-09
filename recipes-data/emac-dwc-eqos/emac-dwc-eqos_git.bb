@@ -21,7 +21,7 @@ SRC_URI:append = " file://setup_avtp_routing_le"
 SRC_URI:append = " file://emac_dwc_eqos.service"
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/data-kernel/drivers/emac-dwc-eqos"
+S = "${UNPACKDIR}/data-kernel/drivers/emac-dwc-eqos"
 
 EXTRA_OEMAKE += "LBITS=32"
 EXTRA_OEMAKE += "DWC_ETH_QOS_ENABLE_ETHTOOL=1"
@@ -30,12 +30,12 @@ EXTRA_OEMAKE += "${@bb.utils.contains('MACHINE_FEATURES', 'ipa-offload', 'CONFIG
 do_install() {
     module_do_install
     install -d ${D}${sysconfdir}/init.d
-    install -m 0755 ${WORKDIR}/emac_dwc_eqos_start_stop_le ${D}${sysconfdir}/init.d
-    install -m 0755 ${WORKDIR}/setup_avtp_routing_le ${D}${sysconfdir}/init.d
+    install -m 0755 ${UNPACKDIR}/emac_dwc_eqos_start_stop_le ${D}${sysconfdir}/init.d
+    install -m 0755 ${UNPACKDIR}/setup_avtp_routing_le ${D}${sysconfdir}/init.d
 
     if ${@bb.utils.contains('DISTRO_FEATURES', 'systemd', 'true', 'false', d)}; then
         install -d ${D}${systemd_unitdir}/system/
-        install -m 0644 ${WORKDIR}/emac_dwc_eqos.service -D ${D}${systemd_unitdir}/system/emac_dwc_eqos.service
+        install -m 0644 ${UNPACKDIR}/emac_dwc_eqos.service -D ${D}${systemd_unitdir}/system/emac_dwc_eqos.service
         install -d ${D}${systemd_unitdir}/system/multi-user.target.wants/
         # enable the service for multi-user.target
         ln -sf ${systemd_unitdir}/system/emac_dwc_eqos.service \

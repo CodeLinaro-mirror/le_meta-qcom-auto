@@ -11,7 +11,7 @@ SRC_URI = "\
 "
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/pal"
+S = "${UNPACKDIR}/vendor/qcom/opensource/pal"
 
 inherit autotools pkgconfig
 
@@ -27,7 +27,7 @@ MIXER_PATHS_XML:quin-gvm-monaco = "mixer_paths_gvmauto7255_adp_star.xml"
 
 do_install:append() {
     install -d ${D}${sysconfdir}
-    install -m 0644 ${WORKDIR}/mixer_paths-dpk.xml ${D}${sysconfdir}/${MIXER_PATHS_XML}
+    install -m 0644 ${UNPACKDIR}/mixer_paths-dpk.xml ${D}${sysconfdir}/${MIXER_PATHS_XML}
 }
 
 PACKAGE_ARCH = "${MACHINE_ARCH}"

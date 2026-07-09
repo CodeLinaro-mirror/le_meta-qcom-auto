@@ -32,7 +32,7 @@ do_install:append(){
         install -d ${D}/boot/early-ramdisk
     fi
 
-    install -m 0644 ${WORKDIR}/fstab ${D}${sysconfdir}/fstab
+    install -m 0644 ${UNPACKDIR}/fstab ${D}${sysconfdir}/fstab
 
     # Replace persist/home bind if read-only is not enabled
     if ${@bb.utils.contains('IMAGE_FEATURES', 'read-only-rootfs', 'false', 'true', d)}; then
@@ -44,7 +44,7 @@ do_install:append(){
 
     # Install login wrapper to enable user login for busybox sh
     if ${@bb.utils.contains('DISTRO_FEATURES', 'selinux', 'true', 'false', d)}; then
-        install -m 0755 ${WORKDIR}/sh_login ${D}${base_bindir}/sh_login
+        install -m 0755 ${UNPACKDIR}/sh_login ${D}${base_bindir}/sh_login
         echo '/bin/sh_login' >> ${D}${sysconfdir}/shells
     fi
 }
@@ -52,8 +52,8 @@ do_install:append(){
 do_install:append:gvm-gen4-5() {
     install -d ${D}/uni/hqx/etc
     install -d ${D}/uni/hgy/etc
-    install -m 0644 ${WORKDIR}/hqx/fstab ${D}/uni/hqx/etc/fstab
-    install -m 0644 ${WORKDIR}/hgy/fstab ${D}/uni/hgy/etc/fstab
+    install -m 0644 ${UNPACKDIR}/hqx/fstab ${D}/uni/hqx/etc/fstab
+    install -m 0644 ${UNPACKDIR}/hgy/fstab ${D}/uni/hgy/etc/fstab
 
     # Replace persist/home bind if read-only is not enabled
     if ${@bb.utils.contains('IMAGE_FEATURES', 'read-only-rootfs', 'false', 'true', d)}; then

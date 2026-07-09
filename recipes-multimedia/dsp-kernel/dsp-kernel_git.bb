@@ -7,7 +7,7 @@ LIC_FILES_CHKSUM = "file://${QTI_LICENSE_DIR}/${LICENSE};md5=8afb6abdac9a14cb18a
 SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/dsp-kernel/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/dsp-kernel;usehead=1"
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/dsp-kernel"
+S = "${UNPACKDIR}/vendor/qcom/opensource/dsp-kernel"
 
 TECHPACK_MODULES = "frpc-adsprpc.ko cdsp-loader.ko"
 
