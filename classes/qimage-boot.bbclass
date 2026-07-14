@@ -126,16 +126,16 @@ BOOT_RAMDISK_IMG ?= "${@bb.utils.contains('MACHINE_FEATURES', 'early-ramdisk-ini
 python do_makeboot () {
     import subprocess
 
-    mkboot_bin_path = d.getVar('STAGING_BINDIR_NATIVE', True) + "/scripts/mkbootimg.py"
+    mkboot_bin_path = d.getVar('STAGING_BINDIR_NATIVE') + "/scripts/mkbootimg.py"
 
-    kernel_path = d.getVar('DEPLOY_DIR_IMAGE', True) + "/" + d.getVar('KERNEL_IMAGETYPE', True)
-    dtb_path = d.getVar('DEPLOY_DIR_IMAGE', True) + "/dtbs/dtb.img"
-    header_version = d.getVar('KERNEL_IMAGE_HEADER_VERSION', True)
-    cmdline = "\"" + d.getVar('KERNEL_CMD_PARAMS', True) + "\""
-    pagesize = d.getVar('PAGE_SIZE', True)
-    base = d.getVar('KERNEL_BASE', True)
-    ramdisk = d.getVar('BOOT_RAMDISK_IMG', True)
-    output = d.getVar('BOOTIMAGE_TARGET', True)
+    kernel_path = d.getVar('DEPLOY_DIR_IMAGE') + "/" + d.getVar('KERNEL_IMAGETYPE')
+    dtb_path = d.getVar('DEPLOY_DIR_IMAGE') + "/dtbs/dtb.img"
+    header_version = d.getVar('KERNEL_IMAGE_HEADER_VERSION')
+    cmdline = "\"" + d.getVar('KERNEL_CMD_PARAMS') + "\""
+    pagesize = d.getVar('PAGE_SIZE')
+    base = d.getVar('KERNEL_BASE')
+    ramdisk = d.getVar('BOOT_RAMDISK_IMG')
+    output = d.getVar('BOOTIMAGE_TARGET')
 
     # cmd to make boot.img
     cmd = mkboot_bin_path + " --kernel %s --dtb %s --cmdline %s --pagesize %s --base %s --header_version %s --ramdisk %s --output %s" \

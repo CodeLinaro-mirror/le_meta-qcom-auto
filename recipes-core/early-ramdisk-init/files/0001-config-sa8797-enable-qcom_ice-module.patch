@@ -1,0 +1,28 @@
+From 6a73c4117f33dd9619a82dc51e5108782b95b7c1 Mon Sep 17 00:00:00 2001
+From: Venkatakrishnaiah Pari <vpari@qti.qualcomm.com>
+Date: Sat, 25 Apr 2026 21:48:21 -0700
+Subject: [PATCH] config:sa8797: enable qcom_ice module
+
+Add qcom_ice modules
+
+Upstream-Status: Inappropriate
+Signed-off-by: Venkatakrishnaiah Pari <vpari@qti.qualcomm.com>
+---
+ conf/sa8797/01-base.conf | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/conf/sa8797/01-base.conf b/conf/sa8797/01-base.conf
+index 5d263b4..d9d5a34 100644
+--- a/conf/sa8797/01-base.conf
++++ b/conf/sa8797/01-base.conf
+@@ -5,6 +5,7 @@
+ kernel/drivers/phy/qualcomm/phy-qcom-qmp-ufs.ko
+ kernel/drivers/ufs/core/ufshcd-core.ko
+ kernel/drivers/ufs/host/ufshcd-pltfrm.ko
++kernel/drivers/soc/qcom/qcom_ice.ko
+ :kernel/drivers/dma/qcom/gpi.ko
+ kernel/drivers/ufs/host/ufs-qcom.ko
+ @dm_create_tasklet
+-- 
+2.34.1
+

@@ -1,0 +1,2477 @@
+From 1a2c065fd3c8da7694fb46b7f2eb685ca80b0141 Mon Sep 17 00:00:00 2001
+From: Venkatakrishnaiah Pari <vpari@qti.qualcomm.com>
+Date: Fri, 17 Jul 2026 11:18:33 -0700
+Subject: [PATCH] oot-dtbo: enable for nord
+
+Add out-of-tree devicetree overlay support for the sa8797 (nord)
+target. Strip the devicetree/Makefile down to the nord overlay entry
+only, removing unrelated multi-platform dtb/dtbo entries, and add the
+nord-ride overlay source along with its vfio device tree include and
+associated dt-bindings headers (IPCC and shared memory) required for
+the sa8797p platform.
+
+Signed-off-by: Venkatakrishnaiah Pari <vpari@qti.qualcomm.com>
+---
+ devicetree/Makefile                           |   92 +-
+ devicetree/nord-ride_overlay.dtso             |   51 +
+ .../oot-dt-bindings/qcom-ipcc-sa8797p.h       |  164 ++
+ .../oot-dt-bindings/qcom-shmem-sa8797p.h      |   34 +
+ devicetree/sa8797p-vfio.dtsi                  | 2074 +++++++++++++++++
+ 5 files changed, 2327 insertions(+), 88 deletions(-)
+ create mode 100644 devicetree/nord-ride_overlay.dtso
+ create mode 100644 devicetree/oot-dt-bindings/qcom-ipcc-sa8797p.h
+ create mode 100644 devicetree/oot-dt-bindings/qcom-shmem-sa8797p.h
+ create mode 100644 devicetree/sa8797p-vfio.dtsi
+
+diff --git a/devicetree/Makefile b/devicetree/Makefile
+index e365223..b469b56 100644
+--- a/devicetree/Makefile
++++ b/devicetree/Makefile
+@@ -1,93 +1,9 @@
+ # SPDX-License-Identifier: GPL-2.0
++# sa8797 (nord) out-of-tree device tree overlays for LY.AU.0.3.0 porting
++# Stripped to sa8797 target only; original multi-platform entries removed.
+ 
+-ifneq ($(QCLINUX_BUILD), true)
+-# RH Kernel Case
+-dtb-y += sa8775p_overlay_rh.dtbo
+-dtb-y += sa8775p-v3_overlay_rh.dtbo
+-dtb-y += sa8770p-ride/sa8770p-ride.dtb
+-dtb-y += sa8775p-ride-mx/sa8775p-ride-mx_rh.dtb
+-dtb-y += sa8650p-ride/sa8650p-ride.dtb
+-dtb-y += sa8255p-ride/sa8255p-ride.dtb
+-dtb-$(CONFIG_ARCH_SA7255) += sa7255p-ride/sa7255p-ride_rh.dtb
+-dtb-$(CONFIG_ARCH_SA7255) += sa8620p-ride/sa8620p-ride_rh.dtb
+-dtb-y += sa8775p_overlay_pcie_ep_rh.dtbo
+-dtb-y += sa8775p-fw-managed-tmp.dtb
+-ifeq ($(shell uname -i), aarch64)
+-dtb-y += sa8775p-qvp/native/sa8775p-qvp.dtb
+-else
+-dtb-y += sa8775p-qvp/sa8775p-qvp_rh.dtb
+-endif
+-else
+-# QCLinux Kernel Case
+-dtb-y += sa8620p-ride/sa8620p-ride.dtb
+-dtb-y += sa8620p-ride/sa8620p-ride-v3.dtb
+-dtb-y += sa8620p-ride/sa8620p-ride_pcie_ep.dtb
+-dtb-y += sa8775p_overlay.dtbo
+-dtb-y += sa8650p-ride/sa8650p_overlay.dtbo
+-dtb-y += sa8650p-ride/sa8650p-v3_overlay.dtbo
+-dtb-y += sa8775p-ride-mx/sa8775p-ride-mx.dtb
+-dtb-y += sa8650p-ride-mx/sa8650p-ride-mx.dtb
+-dtb-y += sa7255p-ride/sa7255p_overlay.dtbo
+-dtb-y += sa7255p-ride/sa7255p-v3_overlay.dtbo
+-dtb-y += sa7255p-ride/sa7255p_overlay_pcie_ep.dtbo
+-dtb-y += sa8775p-v3_overlay.dtbo
+-dtb-y += sa8255p-ride/sa8255p_overlay.dtbo
+-dtb-y += sa8255p-ride/sa8255p-v3_overlay.dtbo
+-dtb-y += sa8255p-ride/sa8255p_overlay_pcie_ep.dtbo
+-dtb-y += sa8650p-ride/sa8650p_overlay_pcie_ep.dtbo
+-dtb-y += sa8775p_overlay_pcie_ep.dtbo
+-dtb-y += sa8255p-qvp/sa8255p-qvp.dtb
+-dtb-y += sa8775p-qvp/sa8775p-qvp.dtb
+-dtb-y += sa8775p-sw-eth-phy_overlay.dtbo
+-dtb-y += sa8255p-ride/sa8255p-sw-eth-phy_overlay.dtbo
+-dtb-y += sa8650p-ride/sa8650p-sw-eth-phy_overlay.dtbo
+-dtb-y += sa7255p-ride/sa7255p-sw-eth-phy_overlay.dtbo
+-dtb-y += sa8620p-ride/sa8620p-sw-eth-phy.dtb
+-dtb-y += sa7255p-ride/sa7255p-vm_overlay.dtbo
+-dtb-y += sa7255p-ride/sa7255p-vm-v3_overlay.dtbo
+-dtb-y += sa7255p-ride/sa7255p-vm-sw-eth-phy_overlay.dtbo
+-dtb-y += sa7255p-ride/sa7255p-vm_overlay_pcie_ep.dtbo
+-dtb-y += sa8255p-ride/sa8255p-vm_overlay.dtbo
+-dtb-y += sa8255p-ride/sa8255p-vm-v3_overlay.dtbo
+-dtb-y += sa8255p-ride/sa8255p-vm_overlay_pcie_ep.dtbo
+-dtb-y += sa8255p-ride/sa8255p-vm-sw-eth-phy_overlay.dtbo
+-ifeq ($(QCVIRTIO), true)
+-dtb-y += sa8255p-ride/sa8255p-vm-agl_overlay.dtbo
+-dtb-y += sa8255p-ride/sa8255p-vm-v3-agl_overlay.dtbo
+-dtb-y += sa8255p-ride/sa8255p-vm-agl_overlay_pcie_ep.dtbo
+-dtb-y += sa8255p-ride/sa8255p-vm-sw-eth-phy-agl_overlay.dtbo
+-endif
+-dtb-y += sa8775p-vm_overlay.dtbo
+-dtb-y += sa8775p-vm-v3_overlay.dtbo
+-dtb-y += sa8775p-vm_overlay_pcie_ep.dtbo
+-dtb-y += sa8775p-vm-sw-eth-phy_overlay.dtbo
+-dtb-y += sa8650p-ride/sa8650p-ride-mx_overlay.dtbo
+-dtb-y += sa8650p-ride/sa8650p-ddr-12gb_overlay.dtbo
+-dtb-y += sa8650p-ride/sa8650p-ddr-18gb_overlay.dtbo
+-dtb-y += sa8650p-ride/sa8650p-ddr-24gb_overlay.dtbo
+-dtb-y += sa8650p-ride/sa8650p-ddr-36gb_overlay.dtbo
+-ifeq ($(QCVIRTIO), true)
+-dtb-y += sa8775p-vm-trout_overlay.dtbo
+-dtb-y += sa8775p-vm-v3-trout_overlay.dtbo
+-dtb-y += sa8775p-vm-trout_overlay_pcie_ep.dtbo
+-dtb-y += sa8775p-vm-sw-eth-phy-trout_overlay.dtbo
+-endif
+-endif
+-
+-#DDR Overlay
+-# 0gvm: pvm only; 1gvm: single LAGVM; no mention gvm: multigvm LAGVM + LVGVM
+-dtb-y += sa7255p-ride/sa7255p-ddr-12gb_overlay.dtbo
+-dtb-y += sa8255p-ride/sa8255p-ddr-12gb_overlay.dtbo
+-dtb-y += sa8255p-ride/sa8255p-ddr-36gb_overlay.dtbo
+-dtb-y += sa8775p-ddr-36gb_overlay.dtbo
+-
+-dtb-y += sa7255p-ride/sa7255p-ddr-0gvm-12gb_overlay.dtbo
+-dtb-y += sa7255p-ride/sa7255p-ddr-1gvm-12gb_overlay.dtbo
+-dtb-y += sa8255p-ride/sa8255p-ddr-0gvm-12gb_overlay.dtbo
+-dtb-y += sa8255p-ride/sa8255p-ddr-0gvm-36gb_overlay.dtbo
+-dtb-y += sa8255p-ride/sa8255p-ddr-1gvm-36gb_overlay.dtbo
+-dtb-y += sa8775p-ddr-0gvm-36gb_overlay.dtbo
+-dtb-y += sa8775p-ddr-1gvm-36gb_overlay.dtbo
++# sa8797 (nord) device tree overlays
++dtb-y += nord-ride_overlay.dtbo
+ 
+ #include common target file
+ include $(PWD)/Makefile.common
+diff --git a/devicetree/nord-ride_overlay.dtso b/devicetree/nord-ride_overlay.dtso
+new file mode 100644
+index 0000000..6e0acf7
+--- /dev/null
++++ b/devicetree/nord-ride_overlay.dtso
+@@ -0,0 +1,51 @@
++// SPDX-License-Identifier: BSD-3-Clause
++/*
++ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
++ */
++
++/dts-v1/;
++/plugin/;
++
++#include "sa8797p-vfio.dtsi"
++
++/ {
++	model = "Qualcomm Technologies, Inc. nord ride";
++	compatible = "qcom,nord-ride", "qcom,nord";
++
++	#address-cells = <2>;
++	#size-cells = <2>;
++	
++};
++
++&soc {
++	kaslr_store {
++		compatible = "qcom,kaslr-off-store";
++		reg = <0x0 0x146806d0 0x0 0xc>;
++	};
++
++	dload_mode {
++		compatible = "qcom,dload-mode";
++	};
++
++	dload_type {
++		compatible = "qcom,msm-imem-dload-type";
++		reg = <0x0 0x1468001c 0x0 0x4>;
++	};
++
++	kiumd {
++		compatible = "qcom,kiumd";
++		qcom,dev-name = "kiumd";
++		status = "ok";
++	};
++
++	mini_dump_mode {
++		compatible = "qcom,minidump";
++		status = "ok";
++	};
++
++	scm_user_intf_device {
++		compatible = "qcom,scm-user-intf";
++		scm_dev = "scm";
++		status = "ok";
++	};
++};
+diff --git a/devicetree/oot-dt-bindings/qcom-ipcc-sa8797p.h b/devicetree/oot-dt-bindings/qcom-ipcc-sa8797p.h
+new file mode 100644
+index 0000000..4e104be
+--- /dev/null
++++ b/devicetree/oot-dt-bindings/qcom-ipcc-sa8797p.h
+@@ -0,0 +1,164 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++/*
++ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
++ */
++
++#ifndef __DT_BINDINGS_MAILBOX_IPCC_SA8797P_H
++#define __DT_BINDINGS_MAILBOX_IPCC_SA8797P_H
++
++/* Physical client IDs */
++#define IPCC_MPROC_AOP			0
++#define IPCC_MPROC_TZ			1
++#define IPCC_MPROC_ADSP0		2
++#define IPCC_MPROC_NSP0			3
++#define IPCC_MPROC_NSP1			4
++#define IPCC_MPROC_NSP2			5
++#define IPCC_MPROC_NSP3			6
++#define IPCC_MPROC_APSS_NS0		7
++#define IPCC_MPROC_APSS_NS1		8
++#define IPCC_MPROC_APSS_NS2		9
++#define IPCC_MPROC_APSS_NS3		10
++#define IPCC_MPROC_ADSP1		11
++#define IPCC_MPROC_ADSP2		12
++#define IPCC_MPROC_APSS_NS4		13
++#define IPCC_MPROC_DUMMY		14
++#define IPCC_MPROC_SOCCP		15
++#define IPCC_MPROC_CPUCP		16
++#define IPCC_MPROC_A78CSS		17
++#define IPCC_MPROC_TMESS		18
++#define IPCC_MPROC_SAIL0		19
++#define IPCC_MPROC_SAIL1		20
++#define IPCC_MPROC_SAIL2		21
++#define IPCC_MPROC_SAIL3		22
++#define IPCC_MPROC_SAIL4		23
++#define IPCC_MPROC_SAIL5		24
++
++#define IPCC_COMPUTE_L0_ADSP0		0
++#define IPCC_COMPUTE_L0_NSP0		1
++#define IPCC_COMPUTE_L0_NSP1		2
++#define IPCC_COMPUTE_L0_NSP2		3
++#define IPCC_COMPUTE_L0_NSP3		4
++#define IPCC_COMPUTE_L0_APSS_NS0	5
++#define IPCC_COMPUTE_L0_GPU0		6
++#define IPCC_COMPUTE_L0_APSS_NS1	7
++#define IPCC_COMPUTE_L0_APSS_NS2	8
++#define IPCC_COMPUTE_L0_APSS_NS3	9
++#define IPCC_COMPUTE_L0_CVP		10
++#define IPCC_COMPUTE_L0_ICP0		11
++#define IPCC_COMPUTE_L0_ICP1		12
++#define IPCC_COMPUTE_L0_VPU		13
++#define IPCC_COMPUTE_L0_DPU0		14
++#define IPCC_COMPUTE_L0_DPU1		15
++#define IPCC_COMPUTE_L0_ADSP1		16
++#define IPCC_COMPUTE_L0_ADSP2		17
++#define IPCC_COMPUTE_L0_APSS_NS4	18
++#define IPCC_COMPUTE_L0_DUMMY		19
++#define IPCC_COMPUTE_L0_SOCCP		20
++#define IPCC_COMPUTE_L0_SAIL0		21
++#define IPCC_COMPUTE_L0_SAIL1		22
++#define IPCC_COMPUTE_L0_SAIL2		23
++#define IPCC_COMPUTE_L0_SAIL3		24
++#define IPCC_COMPUTE_L0_SAIL4		25
++#define IPCC_COMPUTE_L0_SAIL5		26
++#define IPCC_COMPUTE_L0_IPA		27
++#define IPCC_COMPUTE_L0_GPU1		28
++
++#define IPCC_COMPUTE_L1_ADSP0		0
++#define IPCC_COMPUTE_L1_NSP0		1
++#define IPCC_COMPUTE_L1_NSP1		2
++#define IPCC_COMPUTE_L1_NSP2		3
++#define IPCC_COMPUTE_L1_NSP3		4
++#define IPCC_COMPUTE_L1_APSS_NS0	5
++#define IPCC_COMPUTE_L1_GPU0		6
++#define IPCC_COMPUTE_L1_APSS_NS1	7
++#define IPCC_COMPUTE_L1_APSS_NS2	8
++#define IPCC_COMPUTE_L1_APSS_NS3	9
++#define IPCC_COMPUTE_L1_CVP		10
++#define IPCC_COMPUTE_L1_ICP0		11
++#define IPCC_COMPUTE_L1_ICP1		12
++#define IPCC_COMPUTE_L1_VPU		13
++#define IPCC_COMPUTE_L1_DPU0		14
++#define IPCC_COMPUTE_L1_DPU1		15
++#define IPCC_COMPUTE_L1_ADSP1		16
++#define IPCC_COMPUTE_L1_ADSP2		17
++#define IPCC_COMPUTE_L1_APSS_NS4	18
++#define IPCC_COMPUTE_L1_DUMMY		19
++#define IPCC_COMPUTE_L1_SOCCP		20
++#define IPCC_COMPUTE_L1_SAIL0		21
++#define IPCC_COMPUTE_L1_SAIL1		22
++#define IPCC_COMPUTE_L1_SAIL2		23
++#define IPCC_COMPUTE_L1_SAIL3		24
++#define IPCC_COMPUTE_L1_SAIL4		25
++#define IPCC_COMPUTE_L1_SAIL5		26
++#define IPCC_COMPUTE_L1_IPA		27
++#define IPCC_COMPUTE_L1_GPU1		28
++
++#define IPCC_PERIPH_ADSP0		0
++#define IPCC_PERIPH_NSP0		1
++#define IPCC_PERIPH_NSP1		2
++#define IPCC_PERIPH_NSP2		3
++#define IPCC_PERIPH_NSP3		4
++#define IPCC_PERIPH_APSS_NS0		5
++#define IPCC_PERIPH_PCIE0		6
++#define IPCC_PERIPH_PCIE1		7
++#define IPCC_PERIPH_APSS_NS1		8
++#define IPCC_PERIPH_APSS_NS2		9
++#define IPCC_PERIPH_APSS_NS3		10
++#define IPCC_PERIPH_ADSP1		11
++#define IPCC_PERIPH_ADSP2		12
++#define IPCC_PERIPH_APSS_NS4		13
++#define IPCC_PERIPH_DUMMY		14
++
++#define IPCC_FENCE_ADSP0		0
++#define IPCC_FENCE_NSP0			1
++#define IPCC_FENCE_NSP1			2
++#define IPCC_FENCE_NSP2			3
++#define IPCC_FENCE_NSP3			4
++#define IPCC_FENCE_APSS_NS0		5
++#define IPCC_FENCE_GPU0			6
++#define IPCC_FENCE_APSS_NS1		7
++#define IPCC_FENCE_APSS_NS2		8
++#define IPCC_FENCE_APSS_NS3		9
++#define IPCC_FENCE_CVP			10
++#define IPCC_FENCE_ICP0			11
++#define IPCC_FENCE_ICP1			12
++#define IPCC_FENCE_CAM_ENG0		13
++#define IPCC_FENCE_CAM_ENG1		14
++#define IPCC_FENCE_CAM_ENG2		15
++#define IPCC_FENCE_CAM_ENG3		16
++#define IPCC_FENCE_CAM_ENG4		17
++#define IPCC_FENCE_CAM_ENG5		18
++#define IPCC_FENCE_CAM_ENG6		19
++#define IPCC_FENCE_CAM_ENG7		20
++#define IPCC_FENCE_CAM_ENG8		21
++#define IPCC_FENCE_CAM_ENG9		22
++#define IPCC_FENCE_CAM_ENG10		23
++#define IPCC_FENCE_CAM_ENG11		24
++#define IPCC_FENCE_CAM_ENG12		25
++#define IPCC_FENCE_VPU			26
++#define IPCC_FENCE_DPU0			27
++#define IPCC_FENCE_DPU1			28
++#define IPCC_FENCE_ADSP1		29
++#define IPCC_FENCE_ADSP2		30
++#define IPCC_FENCE_APSS_NS4		31
++#define IPCC_FENCE_DUMMY		32
++#define IPCC_FENCE_SOCCP		33
++#define IPCC_FENCE_IPA			34
++#define IPCC_FENCE_GPU1			35
++
++/* Signal IDs for COMPUTE_L0 protocol */
++#define IPCC_COMPUTE_L0_SIGNAL_IPCLITE_MSG		0
++#define IPCC_COMPUTE_L0_SIGNAL_IPCLITE_MEM_INIT		1
++#define IPCC_COMPUTE_L0_SIGNAL_IPCLITE_VERSION		2
++#define IPCC_COMPUTE_L0_SIGNAL_IPCLITE_TEST		3
++#define IPCC_COMPUTE_L0_SIGNAL_IPCLITE_SSR		4
++#define IPCC_COMPUTE_L0_SIGNAL_IPCLITE_DEBUG		5
++
++#define IPCC_COMPUTE_L0_SIGNAL_MAX			32 /* Used by driver only */
++#define IPCC_COMPUTE_L1_SIGNAL_MAX			32 /* Used by driver only */
++
++#define IPCC_MPROC_SIGNAL_SCMI_A2P		5
++#define IPCC_MPROC_SIGNAL_SCMI_P2A		6
++
++#endif
++
+diff --git a/devicetree/oot-dt-bindings/qcom-shmem-sa8797p.h b/devicetree/oot-dt-bindings/qcom-shmem-sa8797p.h
+new file mode 100644
+index 0000000..47ee2b2
+--- /dev/null
++++ b/devicetree/oot-dt-bindings/qcom-shmem-sa8797p.h
+@@ -0,0 +1,34 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++/*
++ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
++ */
++
++#ifndef __DT_BINDINGS_SHARED_MEMORY_SA8797P_H
++#define __DT_BINDINGS_SHARED_MEMORY_SA8797P_H
++
++/* VMIDs */
++#define AC_VM_CDSP_Q6_ELF_00		0x4E
++#define AC_VM_CDSP_Q6_ELF_01		0x4F
++#define AC_VM_CDSP_Q6_ELF_10		0x50
++#define AC_VM_CDSP_Q6_ELF_11		0x51
++
++#define AC_VM_HPASS0_COMPUTE_Q6_ELF	0x54
++#define AC_VM_HPASS1_COMPUTE_Q6_ELF	0x27
++#define AC_VM_HPASS2_COMPUTE_Q6_ELF	0x4D
++#define AC_VM_GVM_1			0x34
++#define AC_VM_CP_B			0x9
++#define AC_VM_CP_P			0xA
++#define AC_VM_CP_NP			0xB
++
++#define AC_VM_HPASS0_AUDIO_Q6_ELF	0x55
++#define AC_VM_HPASS1_AUDIO_Q6_ELF	0x5
++#define AC_VM_HPASS2_AUDIO_Q6_ELF	0x3B
++
++/* Access permissions */
++#define QCOM_PERM_READ			0x4
++#define QCOM_PERM_WRITE			0x2
++#define QCOM_PERM_EXEC			0x1
++#define QCOM_PERM_RW			0x6
++#define QCOM_PERM_RWX			0x7
++
++#endif
+diff --git a/devicetree/sa8797p-vfio.dtsi b/devicetree/sa8797p-vfio.dtsi
+new file mode 100644
+index 0000000..2100711
+--- /dev/null
++++ b/devicetree/sa8797p-vfio.dtsi
+@@ -0,0 +1,2074 @@
++//SPDX-License-Identifier: BSD-3-Clause
++/*
++* Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
++*/
++
++#include <dt-bindings/interrupt-controller/arm-gic.h>
++#include <dt-bindings/interrupt-controller/irq.h>
++#include <oot-dt-bindings/qcom-ipcc-sa8797p.h>
++
++&soc {
++	scm_user_intf_device {
++		compatible = "qcom,scm-user-intf";
++		scm_dev = "scm";
++		status = "ok";
++	};
++
++	vfio_timer@17813000 {
++		compatible = "qcom,vfio-platform";
++		interrupts = <GIC_SPI 39 IRQ_TYPE_LEVEL_HIGH>;
++		reg = <0x00 0x17813000 0x0 0x1000>;
++		iommus = <&apps_smmu_0 0x1980 0x0>;
++		qcom,iommu-dma-addr-pool = <0x0 0x60002000 0x0 0x1FFFE000>;
++		dma-coherent;
++	};
++
++	safety-ddr@82010000 {
++		compatible = "qcom,vdev-device";
++		reg = <0x0 0x82010000 0x0 0x10000>,
++			  <0x0 0x09185000 0x0 0x1000>,
++			  <0x0 0x87200000 0x0 0x1000>,
++			  <0x0 0x87ADB000 0x0 0x1000>,
++			  <0x0 0x01F76000 0x0 0x3000>,
++			  <0x0 0x1F73000  0x0 0x1000>,
++			  <0x0 0x210AF000 0x0 0x4000000>,
++			  <0x0 0x17F60000 0x0 0x2000>,
++			  <0x0 0x19AA0000 0x0 0x2000>,
++			  <0x0 0x87ADA000 0x0 0x2000>,
++			  <0x0 0x01F97000 0x0 0x1000>,
++			  <0x0 0x87AE3000 0x0 0x2000>;
++		interrupts-extended = <&ipcc2 IPCC_COMPUTE_L1_SAIL0 1 IRQ_TYPE_LEVEL_HIGH>;
++	};
++
++	apss-stl@8400000 {
++		compatible = "qcom,vdev-device";
++		reg = <0x0 0x08400000 0x0 0x1000>;
++	};
++
++	umd_nsp_drv@1f012000 {
++		compatible = "qcom,vdev-device";
++		reg = <0x0 0x1F012000 0x0 0x1000>,
++				<0x0 0x1F412000 0x0 0x1000>,
++				<0x0 0x1F812000 0x0 0x1000>,
++				<0x0 0x1FC12000 0x0 0x1000>,
++				<0x0 0x05710000 0x0 0x1000>;
++
++		interrupts = <GIC_SPI 946 IRQ_TYPE_LEVEL_HIGH>,
++					<GIC_SPI 499 IRQ_TYPE_LEVEL_HIGH>,
++					<GIC_SPI 945 IRQ_TYPE_LEVEL_HIGH>,
++					<GIC_SPI 500 IRQ_TYPE_LEVEL_HIGH>,
++					<GIC_SPI 944 IRQ_TYPE_LEVEL_HIGH>,
++					<GIC_SPI 501 IRQ_TYPE_LEVEL_HIGH>,
++					<GIC_SPI 943 IRQ_TYPE_LEVEL_HIGH>,
++					<GIC_SPI 505 IRQ_TYPE_LEVEL_HIGH>,
++					<GIC_SPI 160 IRQ_TYPE_LEVEL_HIGH>;
++	};
++
++	umd_firmware_vm@d77d0000 {
++		compatible = "qcom,vdev-device";
++		reg = <0x0 0xd77d0000 0x0 0x20000>;
++	};
++
++	umd_glink@9007000 {
++		compatible = "qcom,vdev-device";
++		reg = <0x0 0x9007000 0x0 0x1000>,
++		    <0x0 0x89B00000 0x0 0x400000>,
++		    <0x0 0x01FD4000 0x0 0x1000>;
++		interrupts-extended =
++			<&ipcc0 IPCC_MPROC_ADSP0 0 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 0 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 0 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 0 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 0 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 0 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 0 IRQ_TYPE_LEVEL_HIGH>;
++	};
++
++	umd_pil@9007000 {
++		compatible = "qcom,vdev-device";
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 2 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 2 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 2 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 2 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 2 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 2 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 2 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_AOP  0 IRQ_TYPE_LEVEL_HIGH>,
++			<&intc GIC_SPI 159 IRQ_TYPE_EDGE_RISING>,
++			<&intc GIC_SPI 155 IRQ_TYPE_EDGE_RISING>,
++			<&intc GIC_SPI 178 IRQ_TYPE_EDGE_RISING>;
++
++		memory-region = <&pil_umd_reserved
++			&hpass_dsp0_mem
++			&hpass_dsp0_dtb_mem
++			&hpass_dsp1_mem
++			&hpass_dsp1_dtb_mem
++			&hpass_dsp2_mem
++			&hpass_dsp2_dtb_mem
++			&cdsp0_mem
++			&q6_cdsp0_dtb_mem
++			&cdsp1_mem
++			&q6_cdsp1_dtb_mem
++			&cdsp2_mem
++			&q6_cdsp2_dtb_mem
++			&cdsp3_mem
++			&q6_cdsp3_dtb_mem
++			&gpu_microcode_mem
++			&gpu_microcode_2_mem
++			&soccp_mem
++			&video_mem
++			&cvp_mem
++			&camera_icp_1_mem
++			&camera_icp_2_mem>;
++
++		reg = <0x0 0x9007000 0x0 0x1000>,
++		    <0x0 0x89B00000 0x0 0x400000>,
++		    <0x0 0x01FD4000 0x0 0x1000>,
++		    <0x0 0x8c900000 0x0 0x800000>,
++		    <0x0 0x14680000 0x0 0x1000>,
++		    <0x0 0xc300000 0x0 0x1000>;
++	};
++
++	umd_ipclite@89f00000 {
++		compatible = "qcom,vdev-device";
++		memory-region = <&global_sync_mem>;
++		reg = <0x0 0x89f00000 0x0 0x400000>,
++			<0x0 0x90c5000 0x0 0x1000>,
++			<0x0 0x1f4a000 0x0 0x1000>,
++			<0x0 0x1f4b000 0x0 0x1000>,
++			<0x0 0x9305000 0x0 0x1000>;
++
++		interrupts-extended = <&ipcc1 IPCC_COMPUTE_L0_APSS_NS0 IPCC_COMPUTE_L0_SIGNAL_IPCLITE_MSG IRQ_TYPE_EDGE_RISING>,
++			<&ipcc1 IPCC_COMPUTE_L0_APSS_NS0 IPCC_COMPUTE_L0_SIGNAL_IPCLITE_MEM_INIT IRQ_TYPE_EDGE_RISING>,
++			<&ipcc1 IPCC_COMPUTE_L0_APSS_NS0 IPCC_COMPUTE_L0_SIGNAL_IPCLITE_VERSION IRQ_TYPE_EDGE_RISING>,
++			<&ipcc1 IPCC_COMPUTE_L0_APSS_NS0 IPCC_COMPUTE_L0_SIGNAL_IPCLITE_TEST IRQ_TYPE_EDGE_RISING>,
++			<&ipcc1 IPCC_COMPUTE_L0_APSS_NS0 IPCC_COMPUTE_L0_SIGNAL_IPCLITE_SSR IRQ_TYPE_EDGE_RISING>,
++			<&ipcc1 IPCC_COMPUTE_L0_APSS_NS0 IPCC_COMPUTE_L0_SIGNAL_IPCLITE_DEBUG IRQ_TYPE_EDGE_RISING>,
++			<&ipcc1 IPCC_COMPUTE_L0_NSP0 IPCC_COMPUTE_L0_SIGNAL_IPCLITE_MSG IRQ_TYPE_EDGE_RISING>,
++			<&ipcc1 IPCC_COMPUTE_L0_NSP0 IPCC_COMPUTE_L0_SIGNAL_IPCLITE_MEM_INIT IRQ_TYPE_EDGE_RISING>,
++			<&ipcc1 IPCC_COMPUTE_L0_NSP0 IPCC_COMPUTE_L0_SIGNAL_IPCLITE_VERSION IRQ_TYPE_EDGE_RISING>,
++			<&ipcc1 IPCC_COMPUTE_L0_NSP0 IPCC_COMPUTE_L0_SIGNAL_IPCLITE_TEST IRQ_TYPE_EDGE_RISING>,
++			<&ipcc1 IPCC_COMPUTE_L0_NSP0 IPCC_COMPUTE_L0_SIGNAL_IPCLITE_SSR IRQ_TYPE_EDGE_RISING>,
++			<&ipcc1 IPCC_COMPUTE_L0_NSP0 IPCC_COMPUTE_L0_SIGNAL_IPCLITE_DEBUG IRQ_TYPE_EDGE_RISING>,
++			<&ipcc1 IPCC_COMPUTE_L0_NSP1 IPCC_COMPUTE_L0_SIGNAL_IPCLITE_MSG IRQ_TYPE_EDGE_RISING>,
++			<&ipcc1 IPCC_COMPUTE_L0_NSP1 IPCC_COMPUTE_L0_SIGNAL_IPCLITE_MEM_INIT IRQ_TYPE_EDGE_RISING>,
++			<&ipcc1 IPCC_COMPUTE_L0_NSP1 IPCC_COMPUTE_L0_SIGNAL_IPCLITE_VERSION IRQ_TYPE_EDGE_RISING>,
++			<&ipcc1 IPCC_COMPUTE_L0_NSP1 IPCC_COMPUTE_L0_SIGNAL_IPCLITE_TEST IRQ_TYPE_EDGE_RISING>,
++			<&ipcc1 IPCC_COMPUTE_L0_NSP1 IPCC_COMPUTE_L0_SIGNAL_IPCLITE_SSR IRQ_TYPE_EDGE_RISING>,
++			<&ipcc1 IPCC_COMPUTE_L0_NSP1 IPCC_COMPUTE_L0_SIGNAL_IPCLITE_DEBUG IRQ_TYPE_EDGE_RISING>,
++			<&ipcc1 IPCC_COMPUTE_L0_NSP2 IPCC_COMPUTE_L0_SIGNAL_IPCLITE_MSG IRQ_TYPE_EDGE_RISING>,
++			<&ipcc1 IPCC_COMPUTE_L0_NSP2 IPCC_COMPUTE_L0_SIGNAL_IPCLITE_MEM_INIT IRQ_TYPE_EDGE_RISING>,
++			<&ipcc1 IPCC_COMPUTE_L0_NSP2 IPCC_COMPUTE_L0_SIGNAL_IPCLITE_VERSION IRQ_TYPE_EDGE_RISING>,
++			<&ipcc1 IPCC_COMPUTE_L0_NSP2 IPCC_COMPUTE_L0_SIGNAL_IPCLITE_TEST IRQ_TYPE_EDGE_RISING>,
++			<&ipcc1 IPCC_COMPUTE_L0_NSP2 IPCC_COMPUTE_L0_SIGNAL_IPCLITE_SSR IRQ_TYPE_EDGE_RISING>,
++			<&ipcc1 IPCC_COMPUTE_L0_NSP2 IPCC_COMPUTE_L0_SIGNAL_IPCLITE_DEBUG IRQ_TYPE_EDGE_RISING>,
++			<&ipcc1 IPCC_COMPUTE_L0_NSP3 IPCC_COMPUTE_L0_SIGNAL_IPCLITE_MSG IRQ_TYPE_EDGE_RISING>,
++			<&ipcc1 IPCC_COMPUTE_L0_NSP3 IPCC_COMPUTE_L0_SIGNAL_IPCLITE_MEM_INIT IRQ_TYPE_EDGE_RISING>,
++			<&ipcc1 IPCC_COMPUTE_L0_NSP3 IPCC_COMPUTE_L0_SIGNAL_IPCLITE_VERSION IRQ_TYPE_EDGE_RISING>,
++			<&ipcc1 IPCC_COMPUTE_L0_NSP3 IPCC_COMPUTE_L0_SIGNAL_IPCLITE_TEST IRQ_TYPE_EDGE_RISING>,
++			<&ipcc1 IPCC_COMPUTE_L0_NSP3 IPCC_COMPUTE_L0_SIGNAL_IPCLITE_SSR IRQ_TYPE_EDGE_RISING>,
++			<&ipcc1 IPCC_COMPUTE_L0_NSP3 IPCC_COMPUTE_L0_SIGNAL_IPCLITE_DEBUG IRQ_TYPE_EDGE_RISING>,
++			<&ipcc1 IPCC_COMPUTE_L0_ICP0 IPCC_COMPUTE_L0_SIGNAL_IPCLITE_MSG IRQ_TYPE_EDGE_RISING>,
++			<&ipcc1 IPCC_COMPUTE_L0_ICP0 IPCC_COMPUTE_L0_SIGNAL_IPCLITE_MEM_INIT IRQ_TYPE_EDGE_RISING>,
++			<&ipcc1 IPCC_COMPUTE_L0_ICP0 IPCC_COMPUTE_L0_SIGNAL_IPCLITE_VERSION IRQ_TYPE_EDGE_RISING>,
++			<&ipcc1 IPCC_COMPUTE_L0_ICP0 IPCC_COMPUTE_L0_SIGNAL_IPCLITE_TEST IRQ_TYPE_EDGE_RISING>,
++			<&ipcc1 IPCC_COMPUTE_L0_ICP0 IPCC_COMPUTE_L0_SIGNAL_IPCLITE_SSR IRQ_TYPE_EDGE_RISING>,
++			<&ipcc1 IPCC_COMPUTE_L0_ICP0 IPCC_COMPUTE_L0_SIGNAL_IPCLITE_DEBUG IRQ_TYPE_EDGE_RISING>,
++			<&ipcc1 IPCC_COMPUTE_L0_ICP1 IPCC_COMPUTE_L0_SIGNAL_IPCLITE_MSG IRQ_TYPE_EDGE_RISING>,
++			<&ipcc1 IPCC_COMPUTE_L0_ICP1 IPCC_COMPUTE_L0_SIGNAL_IPCLITE_MEM_INIT IRQ_TYPE_EDGE_RISING>,
++			<&ipcc1 IPCC_COMPUTE_L0_ICP1 IPCC_COMPUTE_L0_SIGNAL_IPCLITE_VERSION IRQ_TYPE_EDGE_RISING>,
++			<&ipcc1 IPCC_COMPUTE_L0_ICP1 IPCC_COMPUTE_L0_SIGNAL_IPCLITE_TEST IRQ_TYPE_EDGE_RISING>,
++			<&ipcc1 IPCC_COMPUTE_L0_ICP1 IPCC_COMPUTE_L0_SIGNAL_IPCLITE_SSR IRQ_TYPE_EDGE_RISING>,
++			<&ipcc1 IPCC_COMPUTE_L0_ICP1 IPCC_COMPUTE_L0_SIGNAL_IPCLITE_DEBUG IRQ_TYPE_EDGE_RISING>;
++	};
++
++	umd_llcc@20400000 {
++		compatible = "qcom,vdev-device";
++		interrupts = <GIC_SPI 580 IRQ_TYPE_LEVEL_HIGH>,
++				<GIC_SPI 340 IRQ_TYPE_LEVEL_HIGH>,
++				<GIC_SPI 80 IRQ_TYPE_LEVEL_HIGH>;
++		reg = <0x0 0x20400000 0x0 0x100000>,
++		    <0x0 0x20600000 0x0 0x100000>,
++		    <0x0 0x89B00000 0x0 0x400000>,
++		    <0x0 0x01FD4000 0x0 0x1000>,
++		    <0x0 0x210AF000 0x0 0x400000>,
++		    <0x0 0x17F60000 0x0 0x1000>;
++	};
++
++	cdsp0_cb@1 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x1 0x0 0x0>,
++		    <0x0 0x9007000 0x0 0x1000>;
++                interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x0301 0x0040>,
++		       <&apps_smmu_2 0x0341 0x0040>,
++		       <&apps_smmu_2 0x0361 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	cdsp0_cb@2 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x2 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++                interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x0302 0x0040>,
++		       <&apps_smmu_2 0x0342 0x0040>,
++		       <&apps_smmu_2 0x0362 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	cdsp0_cb@3 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x3 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++                interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x0303 0x0040>,
++		       <&apps_smmu_2 0x0343 0x0040>,
++		       <&apps_smmu_2 0x0363 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	cdsp0_cb@4 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x4 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++                interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x0304 0x0040>,
++		       <&apps_smmu_2 0x0344 0x0040>,
++		       <&apps_smmu_2 0x0364 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	cdsp0_cb@5 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x5 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++                interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x0305 0x0000>,
++		       <&apps_smmu_2 0x0345 0x0020>,
++		       <&apps_smmu_2 0x0365 0x0020>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	cdsp0_cb@6 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x6 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++                interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x0306 0x0040>,
++		       <&apps_smmu_2 0x0346 0x0040>,
++		       <&apps_smmu_2 0x0366 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	cdsp0_cb@7 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x7 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++                interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x0307 0x0040>,
++		       <&apps_smmu_2 0x0347 0x0040>,
++		       <&apps_smmu_2 0x0367 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	cdsp0_cb@8 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x8 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++                interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x0308 0x0040>,
++		       <&apps_smmu_2 0x0348 0x0040>,
++		       <&apps_smmu_2 0x0368 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	cdsp0_cb@9 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x9 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x0309 0x0040>,
++		       <&apps_smmu_2 0x0349 0x0040>,
++		       <&apps_smmu_2 0x0369 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	cdsp0_cb@a {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0xa 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x030a 0x0040>,
++		       <&apps_smmu_2 0x034a 0x0040>,
++		       <&apps_smmu_2 0x036a 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	cdsp0_cb@b {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0xb 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x030b 0x0040>,
++		       <&apps_smmu_2 0x034b 0x0040>,
++		       <&apps_smmu_2 0x036b 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	cdsp0_cb@c {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0xc 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x030c 0x0040>,
++		       <&apps_smmu_2 0x034c 0x0040>,
++		       <&apps_smmu_2 0x036c 0x0000>;
++		qcom,iommu-dma-addr-range = <0x4 0x0 0x80 0x0>;
++		qcom,iova-align-shift-max = <30>;
++		dma-coherent;
++	};
++
++	cdsp0_cb@d {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0xd 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x030d 0x0000>,
++		       <&apps_smmu_2 0x034d 0x0020>,
++		       <&apps_smmu_2 0x036d 0x0020>;
++		qcom,iommu-dma-addr-range = <0x4 0x0 0x80 0x0>;
++		qcom,iova-align-shift-max = <30>;
++		dma-coherent;
++	};
++
++	cdsp1_cb@1 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x1 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++                interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x0701 0x0040>,
++		       <&apps_smmu_2 0x0741 0x0040>,
++		       <&apps_smmu_2 0x0761 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	cdsp1_cb@2 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x2 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++                interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x0702 0x0040>,
++		       <&apps_smmu_2 0x0742 0x0040>,
++		       <&apps_smmu_2 0x0762 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	cdsp1_cb@3 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x3 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++                interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x0703 0x0040>,
++		       <&apps_smmu_2 0x0743 0x0040>,
++		       <&apps_smmu_2 0x0763 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	cdsp1_cb@4 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x4 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++                interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x0704 0x0040>,
++		       <&apps_smmu_2 0x0744 0x0040>,
++		       <&apps_smmu_2 0x0764 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	cdsp1_cb@5 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x5 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++                interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x0705 0x0000>,
++		       <&apps_smmu_2 0x0745 0x0020>,
++		       <&apps_smmu_2 0x0765 0x0020>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	cdsp1_cb@6 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x6 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++                interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x0706 0x0040>,
++		       <&apps_smmu_2 0x0746 0x0040>,
++		       <&apps_smmu_2 0x0766 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	cdsp1_cb@7 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x7 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++                interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x0707 0x0040>,
++		       <&apps_smmu_2 0x0747 0x0040>,
++		       <&apps_smmu_2 0x0767 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	cdsp1_cb@8 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x8 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++                interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x0708 0x0040>,
++		       <&apps_smmu_2 0x0748 0x0040>,
++		       <&apps_smmu_2 0x0768 0x0000>;
++                qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	cdsp1_cb@9 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x9 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x0709 0x0040>,
++		       <&apps_smmu_2 0x0749 0x0040>,
++		       <&apps_smmu_2 0x0769 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	cdsp1_cb@a {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0xa 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x070a 0x0040>,
++		       <&apps_smmu_2 0x074a 0x0040>,
++		       <&apps_smmu_2 0x076a 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	cdsp1_cb@b {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0xb 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x070b 0x0040>,
++		       <&apps_smmu_2 0x074b 0x0040>,
++		       <&apps_smmu_2 0x076b 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	cdsp1_cb@c {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0xc 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x070c 0x0040>,
++		       <&apps_smmu_2 0x074c 0x0040>,
++		       <&apps_smmu_2 0x076c 0x0000>;
++		qcom,iommu-dma-addr-range = <0x4 0x0 0x80 0x0>;
++		qcom,iova-align-shift-max = <30>;
++		dma-coherent;
++	};
++
++	cdsp1_cb@d {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0xd 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x070d 0x0000>,
++		       <&apps_smmu_2 0x074d 0x0020>,
++		       <&apps_smmu_2 0x076d 0x0020>;
++		qcom,iommu-dma-addr-range = <0x4 0x0 0x80 0x0>;
++		qcom,iova-align-shift-max = <30>;
++		dma-coherent;
++	};
++
++	cdsp2_cb@1 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x1 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++                interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x0B01 0x0040>,
++		       <&apps_smmu_2 0x0B41 0x0040>,
++		       <&apps_smmu_2 0x0B61 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	cdsp2_cb@2 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x2 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++                interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x0B02 0x0040>,
++		       <&apps_smmu_2 0x0B42 0x0040>,
++		       <&apps_smmu_2 0x0B62 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	cdsp2_cb@3 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x3 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++                interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x0B03 0x0040>,
++		       <&apps_smmu_2 0x0B43 0x0040>,
++		       <&apps_smmu_2 0x0B63 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	cdsp2_cb@4 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x4 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++                interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x0B04 0x0040>,
++		       <&apps_smmu_2 0x0B44 0x0040>,
++		       <&apps_smmu_2 0x0B64 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	cdsp2_cb@5 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x5 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++                interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x0B05 0x0000>,
++		       <&apps_smmu_2 0x0B45 0x0020>,
++		       <&apps_smmu_2 0x0B65 0x0020>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	cdsp2_cb@6 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x6 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++                interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x0B06 0x0040>,
++		       <&apps_smmu_2 0x0B46 0x0040>,
++		       <&apps_smmu_2 0x0B66 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	cdsp2_cb@7 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x7 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++                interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x0B07 0x0040>,
++		       <&apps_smmu_2 0x0B47 0x0040>,
++		       <&apps_smmu_2 0x0B67 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	cdsp2_cb@8 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x8 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++                interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x0B08 0x0040>,
++		       <&apps_smmu_2 0x0B48 0x0040>,
++		       <&apps_smmu_2 0x0B68 0x0000>;
++                qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	cdsp2_cb@9 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x9 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x0B09 0x0040>,
++		       <&apps_smmu_2 0x0B49 0x0040>,
++		       <&apps_smmu_2 0x0B69 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	cdsp2_cb@a {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0xa 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x0B0a 0x0040>,
++		       <&apps_smmu_2 0x0B4a 0x0040>,
++		       <&apps_smmu_2 0x0B6a 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	cdsp2_cb@b {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0xb 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x0B0b 0x0040>,
++		       <&apps_smmu_2 0x0B4b 0x0040>,
++		       <&apps_smmu_2 0x0B6b 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	cdsp2_cb@c {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0xc 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x0B0c 0x0040>,
++		       <&apps_smmu_2 0x0B4c 0x0040>,
++		       <&apps_smmu_2 0x0B6c 0x0000>;
++		qcom,iommu-dma-addr-range = <0x4 0x0 0x80 0x0>;
++		qcom,iova-align-shift-max = <30>;
++		dma-coherent;
++	};
++
++	cdsp2_cb@d {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0xd 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x0B0d 0x0000>,
++		       <&apps_smmu_2 0x0B4d 0x0020>,
++		       <&apps_smmu_2 0x0B6d 0x0020>;
++		qcom,iommu-dma-addr-range = <0x4 0x0 0x80 0x0>;
++		qcom,iova-align-shift-max = <30>;
++		dma-coherent;
++	};
++
++	cdsp3_cb@1 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x1 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++                interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x0F01 0x0040>,
++		       <&apps_smmu_2 0x0F41 0x0040>,
++		       <&apps_smmu_2 0x0F61 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	cdsp3_cb@2 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x2 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++                interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x0F02 0x0040>,
++		       <&apps_smmu_2 0x0F42 0x0040>,
++		       <&apps_smmu_2 0x0F62 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	cdsp3_cb@3 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x3 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++                interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x0F03 0x0040>,
++		       <&apps_smmu_2 0x0F43 0x0040>,
++		       <&apps_smmu_2 0x0F63 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	cdsp3_cb@4 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x4 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++                interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x0F04 0x0040>,
++		       <&apps_smmu_2 0x0F44 0x0040>,
++		       <&apps_smmu_2 0x0F64 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	cdsp3_cb@5 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x5 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++                interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x0F05 0x0000>,
++		       <&apps_smmu_2 0x0F45 0x0020>,
++		       <&apps_smmu_2 0x0F65 0x0020>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	cdsp3_cb@6 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x6 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++                interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x0F06 0x0040>,
++		       <&apps_smmu_2 0x0F46 0x0040>,
++		       <&apps_smmu_2 0x0F66 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	cdsp3_cb@7 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x7 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++                interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x0F07 0x0040>,
++		       <&apps_smmu_2 0x0F47 0x0040>,
++		       <&apps_smmu_2 0x0F67 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	cdsp3_cb@8 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x8 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++                interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++                        <&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x0F08 0x0040>,
++		       <&apps_smmu_2 0x0F48 0x0040>,
++		       <&apps_smmu_2 0x0F68 0x0000>;
++                qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	cdsp3_cb@9 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x9 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x0F09 0x0040>,
++		       <&apps_smmu_2 0x0F49 0x0040>,
++		       <&apps_smmu_2 0x0F69 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	cdsp3_cb@a {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0xa 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x0F0a 0x0040>,
++		       <&apps_smmu_2 0x0F4a 0x0040>,
++		       <&apps_smmu_2 0x0F6a 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	cdsp3_cb@b {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0xb 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x0F0b 0x0040>,
++		       <&apps_smmu_2 0x0F4b 0x0040>,
++		       <&apps_smmu_2 0x0F6b 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	cdsp3_cb@c {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0xc 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x0F0c 0x0040>,
++		       <&apps_smmu_2 0x0F4c 0x0040>,
++		       <&apps_smmu_2 0x0F6c 0x0000>;
++		qcom,iommu-dma-addr-range = <0x4 0x0 0x80 0x0>;
++		qcom,iova-align-shift-max = <30>;
++		dma-coherent;
++	};
++
++	cdsp3_cb@d {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0xd 0x0 0x0>,
++		     <0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_2 0x0F0d 0x0000>,
++		       <&apps_smmu_2 0x0F4d 0x0020>,
++		       <&apps_smmu_2 0x0F6d 0x0020>;
++		qcom,iommu-dma-addr-range = <0x4 0x0 0x80 0x0>;
++		qcom,iova-align-shift-max = <30>;
++		dma-coherent;
++	};
++
++	hpass0_audio_cb@1 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x1 0x0 0x0>,
++			<0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_0 0x09E3 0x0000>,
++		       <&apps_smmu_0 0x0A43 0x0020>,
++		       <&apps_smmu_0 0x0A63 0x0020>,
++		       <&apps_smmu_0 0x0A83 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	hpass0_audio_cb@2 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x2 0x0 0x0>,
++			<0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_0 0x09E4 0x0000>,
++		       <&apps_smmu_0 0x0A44 0x0020>,
++		       <&apps_smmu_0 0x0A64 0x0020>,
++		       <&apps_smmu_0 0x0A84 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	hpass0_audio_cb@3 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x3 0x0 0x0>,
++			<0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_0 0x09E5 0x0000>,
++		       <&apps_smmu_0 0x0A45 0x0020>,
++		       <&apps_smmu_0 0x0A65 0x0020>,
++		       <&apps_smmu_0 0x0A85 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	hpass0_audio_cb@4 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x4 0x0 0x0>,
++			<0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_0 0x09E6 0x0000>,
++		       <&apps_smmu_0 0x0A46 0x0020>,
++		       <&apps_smmu_0 0x0A66 0x0020>,
++		       <&apps_smmu_0 0x0A86 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	hpass0_audio_cb@5 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x5 0x0 0x0>,
++			<0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_0 0x0A47 0x0020>,
++		       <&apps_smmu_0 0x0A67 0x0020>,
++		       <&apps_smmu_0 0x0A87 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	hpass0_compute_cb@1 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x1 0x0 0x0>,
++			<0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_0 0x0DE3 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	hpass0_compute_cb@2 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x2 0x0 0x0>,
++			<0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_0 0x0DE4 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	hpass0_compute_cb@3 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x3 0x0 0x0>,
++			<0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_0 0x0DE5 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	hpass0_compute_cb@4 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x4 0x0 0x0>,
++			<0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_0 0x0DE6 0x0000>;
++		qcom,iommu-dma-addr-range = <0x4 0x0 0x80 0x0>;
++		qcom,iova-align-shift-max = <30>;
++		dma-coherent;
++	};
++
++	hpass0_compute_cb@5 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x5 0x0 0x0>,
++			<0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_0 0x0DE7 0x0000>;
++		qcom,iommu-dma-addr-range = <0x4 0x0 0x80 0x0>;
++		qcom,iova-align-shift-max = <30>;
++		dma-coherent;
++	};
++
++	hpass1_audio_cb@1 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x1 0x0 0x0>,
++			<0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_0 0x0A0B 0x0040>,
++		       <&apps_smmu_0 0x0A4B 0x0040>,
++		       <&apps_smmu_0 0x0A6B 0x0000>,
++		       <&apps_smmu_0 0x0A8B 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	hpass1_audio_cb@2 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x2 0x0 0x0>,
++			<0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_0 0x0A0C 0x0080>,
++		       <&apps_smmu_0 0x0A4C 0x0020>,
++		       <&apps_smmu_0 0x0A6C 0x0020>,
++		       <&apps_smmu_0 0x0A8C 0x0080>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	hpass1_audio_cb@3 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x3 0x0 0x0>,
++			<0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_0 0x0A0D 0x0080>,
++		       <&apps_smmu_0 0x0A4D 0x0020>,
++		       <&apps_smmu_0 0x0A6D 0x0020>,
++		       <&apps_smmu_0 0x0A8D 0x0080>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	hpass1_audio_cb@4 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x4 0x0 0x0>,
++			<0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_0 0x0A0E 0x0080>,
++		       <&apps_smmu_0 0x0A4E 0x0020>,
++		       <&apps_smmu_0 0x0A6E 0x0020>,
++		       <&apps_smmu_0 0x0A8E 0x0080>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++
++	hpass1_compute_cb@1 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x1 0x0 0x0>,
++			<0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_0 0x0E0B 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	hpass1_compute_cb@2 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x2 0x0 0x0>,
++			<0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_0 0x0E0C 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	hpass1_compute_cb@3 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x3 0x0 0x0>,
++			<0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_0 0x0E0D 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	hpass1_compute_cb@4 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x4 0x0 0x0>,
++			<0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_0 0x0E0E 0x0000>;
++		qcom,iommu-dma-addr-range = <0x4 0x0 0x80 0x0>;
++		qcom,iova-align-shift-max = <30>;
++		dma-coherent;
++	};
++
++	hpass1_compute_cb@5 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x5 0x0 0x0>,
++			<0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_0 0x0E0F 0x0000>;
++		qcom,iommu-dma-addr-range = <0x4 0x0 0x80 0x0>;
++		qcom,iova-align-shift-max = <30>;
++		dma-coherent;
++	};
++
++	hpass2_audio_cb@1 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x1 0x0 0x0>,
++			<0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_0 0x0A33 0x0040>,
++		       <&apps_smmu_0 0x0A53 0x0000>,
++		       <&apps_smmu_0 0x0A73 0x0040>,
++		       <&apps_smmu_0 0x0A93 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	hpass2_audio_cb@2 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x2 0x0 0x0>,
++			<0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_0 0x0A34 0x0040>,
++		       <&apps_smmu_0 0x0A54 0x0000>,
++		       <&apps_smmu_0 0x0A74 0x0040>,
++		       <&apps_smmu_0 0x0A94 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	hpass2_audio_cb@3 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x3 0x0 0x0>,
++			<0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_0 0x0A35 0x0000>,
++		       <&apps_smmu_0 0x0A55 0x0020>,
++		       <&apps_smmu_0 0x0A75 0x0020>,
++		       <&apps_smmu_0 0x0A95 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	hpass2_audio_cb@4 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x4 0x0 0x0>,
++			<0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_0 0x0A36 0x0000>,
++		       <&apps_smmu_0 0x0A56 0x0020>,
++		       <&apps_smmu_0 0x0A76 0x0020>,
++		       <&apps_smmu_0 0x0A96 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	hpass2_audio_cb@5 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x5 0x0 0x0>,
++			<0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_0 0x0A57 0x0020>,
++		       <&apps_smmu_0 0x0A77 0x0020>,
++		       <&apps_smmu_0 0x0A97 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	hpass2_compute_cb@1 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x1 0x0 0x0>,
++			<0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_0 0x0E33 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	hpass2_compute_cb@2 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x2 0x0 0x0>,
++			<0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_0 0x0E34 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	hpass2_compute_cb@3 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x3 0x0 0x0>,
++			<0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_0 0x0E35 0x0000>;
++		qcom,iommu-dma-addr-range = <0x0 0x1000 0x2 0x0>;
++		qcom,iova-align-shift-max = <21>;
++		dma-coherent;
++	};
++
++	hpass2_compute_cb@4 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x4 0x0 0x0>,
++			<0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_0 0x0E36 0x0000>;
++		qcom,iommu-dma-addr-range = <0x4 0x0 0x80 0x0>;
++		qcom,iova-align-shift-max = <30>;
++		dma-coherent;
++	};
++
++	hpass2_compute_cb@5 {
++		compatible = "qcom,vfio-platform";
++		memory-region = <&mm_dspq>;
++		reg = <0x0 0x5 0x0 0x0>,
++			<0x0 0x9007000 0x0 0x1000>;
++		interrupts-extended = <&ipcc0 IPCC_MPROC_ADSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP0 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP2 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_NSP3 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP1 3 IRQ_TYPE_LEVEL_HIGH>,
++			<&ipcc0 IPCC_MPROC_ADSP2 3 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_0 0x0E37 0x0000>;
++		qcom,iommu-dma-addr-range = <0x4 0x0 0x80 0x0>;
++		qcom,iova-align-shift-max = <30>;
++		dma-coherent;
++	};
++
++	sail_mailbox: sail-mailbox@82030000 {
++	compatible = "qcom,vdev-device";
++	reg = <0x0 0x82030000 0x0 0x1D0000>,
++	      <0x0 0x01F7A000 0x0 0x2000>,
++	      <0x0 0x17824000 0x0 0x1000>,
++	      <0x0 0x09185000 0x0 0x1000>;
++	interrupts-extended = <&ipcc2 IPCC_COMPUTE_L1_SAIL0 0x2 IRQ_TYPE_EDGE_RISING>,
++				<&ipcc2 IPCC_COMPUTE_L1_SAIL2 0x3 IRQ_TYPE_EDGE_RISING>,
++				<&ipcc2 IPCC_COMPUTE_L1_SAIL2 0x4 IRQ_TYPE_EDGE_RISING>,
++				<&ipcc2 IPCC_COMPUTE_L1_SAIL2 0x5 IRQ_TYPE_EDGE_RISING>,
++				<&ipcc2 IPCC_COMPUTE_L1_SAIL0 0x6 IRQ_TYPE_EDGE_RISING>,
++				<&ipcc2 IPCC_COMPUTE_L1_SAIL0 0x7 IRQ_TYPE_EDGE_RISING>,
++				<&ipcc2 IPCC_COMPUTE_L1_SAIL0 0x8 IRQ_TYPE_EDGE_RISING>,
++				<&ipcc2 IPCC_COMPUTE_L1_SAIL2 0x9 IRQ_TYPE_EDGE_RISING>,
++				<&ipcc2 IPCC_COMPUTE_L1_SAIL0 0xA IRQ_TYPE_EDGE_RISING>,
++				<&ipcc2 IPCC_COMPUTE_L1_SAIL2 0xB IRQ_TYPE_EDGE_RISING>,
++				<&ipcc2 IPCC_COMPUTE_L1_SAIL2 0xC IRQ_TYPE_EDGE_RISING>;
++	};
++
++	sail_mbox_ota: sail-mailbox-ota@82200000 {
++		compatible = "qcom,vdev-device";
++		reg = <0x0 0x82200000 0x0 0x5FF000>;
++	};
++
++	hscnoc@2030000 {
++		compatible = "qcom,vdev-device";
++		reg = <0x0 0x2030000 0x0 0xA000>,
++			<0x0 0x2240000 0x0 0x6000>,
++			<0x0 0x2930000 0x0 0x5000>,
++			<0x0 0x2A40000 0x0 0x6000>,
++			<0x0 0x100D000 0x0 0x35000>;
++	};
++
++	nsp_sysmon@89b00000 {
++		compatible = "qcom,vdev-device";
++		reg = <0x0 0x89b00000 0x0 0x400000>,
++			<0x0 0x01FD4000 0x0 0x1000>,
++			<0x0 0x100D000 0x0 0x35000>;
++		interrupts = <GIC_SPI 813 IRQ_TYPE_LEVEL_HIGH>,     // APSS0
++			     <GIC_SPI 812 IRQ_TYPE_LEVEL_HIGH>,     // APSS1
++			     <GIC_SPI 739  IRQ_TYPE_LEVEL_HIGH>;    // APSS2
++	};
++
++	qdss-service@11A05000 {
++		compatible = "qcom,vdev-device";
++		reg = <0x0 0x11A05000 0x0 0x1000>,          //tmc_etf
++			<0x0 0x10048000 0x0 0x1000>,        //tmc_etr
++			<0x0 0x11A06000 0x0 0x1000>,        //swao_replicator
++			<0x0 0x11A07000 0x0 0x1000>,        //swao_replicator_1
++			<0x0 0x10046000 0x0 0x1000>,        //qdss_replicator
++			<0x0 0x1004E000 0x0 0x1000>,        //etr_replicator
++			<0x0 0x10001000 0x0 0x1000>,        //csr
++			<0x0 0x11A11000 0x0 0x1000>,        //swao_csr
++			<0x0 0x10002000 0x0 0x1000>,        //stm
++			<0x0 0x12D21000 0x0 0x1000>,        //etm-nsp0
++			<0x0 0x12D21000 0x0 0x1000>,        //etm-nsp1
++			<0x0 0x12D21000 0x0 0x1000>,        //etm-nsp2
++			<0x0 0x12D21000 0x0 0x1000>,        //etm-nsp3
++			<0x0 0x12D21000 0x0 0x1000>,        //tpdm-apps
++			<0x0 0x10041000 0x0 0x1000>,        //funnel_in0
++			<0x0 0x11A04000 0x0 0x1000>,        //funnel_swao0
++			<0x0 0x16000000 0x0 0x1000000>,     //STM 16MB
++			<0x0 0x11A0E000 0x0 0x1000>,        //TGU
++			<0x0 0x115BC000 0x0 0x1000>,        //QDSS_TNOC
++			<0x0 0x117C9000 0x0 0x1000>,        //FUN_NSP_SS_0
++			<0x0 0x117E9000 0x0 0x1000>,        //FUN_NSP_SS_1
++			<0x0 0x118C9000 0x0 0x1000>,        //FUN_NSP_SS_2
++			<0x0 0x118E9000 0x0 0x1000>,        //FUN_NSP_SS_3
++			<0x0 0x11980000 0x0 0x1000>,        //HPASS_TNOC
++			<0x0 0x119A0000 0x0 0x1000>,         //HPASS_DSB_TPDM
++			<0x0 0x117C4000 0x0 0x1000>,         //NSP0_DSB_TPDM
++			<0x0 0x117E4000 0x0 0x1000>,         //NSP1_DSB_TPDM
++			<0x0 0x118C4000 0x0 0x1000>,         //NSP2_DSB_TPDM
++			<0x0 0x118E4000 0x0 0x1000>,         //NSP3_DSB_TPDM
++			<0x0 0x119A8000 0x0 0x1000>,         //HPASS_DL_TPDA
++			<0x0 0x117C8000 0x0 0x1000>,         //NSP0_TPDA
++			<0x0 0x117E8000 0x0 0x1000>,         //NSP1_TPDA
++			<0x0 0x118C8000 0x0 0x1000>,         //NSP2_TPDA
++			<0x0 0x118E8000 0x0 0x1000>,         //NSP3_TPDA
++			<0x0 0x117C2000 0x0 0x1000>,         //NSP0_CMSR1
++			<0x0 0x117C3000 0x0 0x1000>,         //NSP0_CMSR2
++			<0x0 0x1318B000 0x0 0x1000>,         //APPS_TPDA
++			<0x0 0x13188000 0x0 0x1000>,         //APPS_DSB0_TPDM
++			<0x0 0x13189000 0x0 0x1000>,         //APPS_DSP1_TPDM
++			<0x0 0x13080000 0x0 0x1000>,         //APPS_FUN
++			<0x0 0x11A08000 0x0 0x1000>,         //SWAO_TPDA
++			<0x0 0x11A09000 0x0 0x1000>,         //SWAO0_TPDM
++			<0x0 0x11A0A000 0x0 0x1000>,         //SWAO1_TPDM
++			<0x0 0x11A0B000 0x0 0x1000>,         //SWAO2_TPDM
++			<0x0 0x11A0C000 0x0 0x1000>,         //SWAO3_TPDM
++			<0x0 0x11A03000 0x0 0x1000>,         //SWAO4_TPDM
++			<0x0 0x11A0D000 0x0 0x1000>,         //SWAO_DSB_TPDM
++			<0x0 0x117C0000 0x0 0x1000>,         //NSP0_TURING_LLM
++			<0x0 0x117C1000 0x0 0x1000>,         //NSP0_TURING_LLM2
++			<0x0 0x117C5000 0x0 0x1000>,         //NSP0_DPM1
++			<0x0 0x117C6000 0x0 0x1000>,         //NSP0_DPM2
++			<0x0 0x117E0000 0x0 0x1000>,         //NSP1_TURING_LLM
++			<0x0 0x117E1000 0x0 0x1000>,         //NSP1_TURING_LLM2
++			<0x0 0x117E5000 0x0 0x1000>,         //NSP1_DPM1
++			<0x0 0x117E6000 0x0 0x1000>,         //NSP1_DPM2
++			<0x0 0x118C0000 0x0 0x1000>,         //NSP2_TURING_LLM
++			<0x0 0x118C1000 0x0 0x1000>,         //NSP2_TURING_LLM2
++			<0x0 0x118C5000 0x0 0x1000>,         //NSP2_DPM1
++			<0x0 0x118C6000 0x0 0x1000>,         //NSP2_DPM2
++			<0x0 0x118E0000 0x0 0x1000>,         //NSP3_TURING_LLM
++			<0x0 0x118E1000 0x0 0x1000>,         //NSP3_TURING_LLM2
++			<0x0 0x118E5000 0x0 0x1000>,         //NSP3_DPM1
++			<0x0 0x118E6000 0x0 0x1000>,         //NSP3_DPM2
++			<0x0 0x117E2000 0x0 0x1000>,         //NSP1_CMSR1
++			<0x0 0x117E3000 0x0 0x1000>,         //NSP1_CMSR2
++			<0x0 0x118C2000 0x0 0x1000>,         //NSP2_CMSR1
++			<0x0 0x118C3000 0x0 0x1000>,         //NSP2_CMSR2
++			<0x0 0x118E2000 0x0 0x1000>,         //NSP3_CMSR1
++			<0x0 0x118E3000 0x0 0x1000>,         //NSP3_CMSR2
++			<0x0 0x119A1000 0x0 0x1000>,         //HPASS_CMB
++			<0x0 0x119A2000 0x0 0x1000>,         //HPASS_LLM
++			<0x0 0x119A3000 0x0 0x1000>,         //HPASS_LLM1
++			<0x0 0x119A4000 0x0 0x1000>,         //HPASS_LLM2
++			<0x0 0x119A5000 0x0 0x1000>,         //HPASS_DPM
++			<0x0 0x119A6000 0x0 0x1000>,         //HPASS_DPM1
++			<0x0 0x119A7000 0x0 0x1000>,         //HPASS_DPM2
++			<0x0 0x119B0000 0x0 0x1000>,         //HPASS_RSCC
++			<0x0 0x119B1000 0x0 0x1000>,         //HPASS_CESTA_DL_TPDA
++			<0x0 0x19021000 0x0 0x1000>,         //NCC0_CORE0_ETM
++			<0x0 0x19121000 0x0 0x1000>,         //NCC0_CORE1_ETM
++			<0x0 0x19221000 0x0 0x1000>,         //NCC0_CORE2_ETM
++			<0x0 0x19321000 0x0 0x1000>,         //NCC0_CORE3_ETM
++			<0x0 0x19421000 0x0 0x1000>,         //NCC0_CORE4_ETM
++			<0x0 0x19521000 0x0 0x1000>,         //NCC0_CORE5_ETM
++			<0x0 0x1A021000 0x0 0x1000>,         //NCC1_CORE0_ETM
++			<0x0 0x1A121000 0x0 0x1000>,         //NCC1_CORE1_ETM
++			<0x0 0x1A221000 0x0 0x1000>,         //NCC1_CORE2_ETM
++			<0x0 0x1A321000 0x0 0x1000>,         //NCC1_CORE3_ETM
++			<0x0 0x1A421000 0x0 0x1000>,         //NCC1_CORE4_ETM
++			<0x0 0x1A521000 0x0 0x1000>,         //NCC1_CORE5_ETM
++			<0x0 0x1B021000 0x0 0x1000>,         //NCC2_CORE0_ETM
++			<0x0 0x1B121000 0x0 0x1000>,         //NCC2_CORE1_ETM
++			<0x0 0x1B221000 0x0 0x1000>,         //NCC2_CORE2_ETM
++			<0x0 0x1B321000 0x0 0x1000>,         //NCC2_CORE3_ETM
++			<0x0 0x1B421000 0x0 0x1000>,         //NCC2_CORE4_ETM
++			<0x0 0x1B521000 0x0 0x1000>,         //NCC2_CORE5_ETM
++			<0x0 0x84000000 0x0 0x3000>,         //NCC_UETM_SHARED_MEM
++			<0x0 0x1D081000 0x0 0x1000>,         //NCC0_FUN_1_1
++			<0x0 0x1D014000 0x0 0x1000>,         //NCC0_FUN_1_2
++			<0x0 0x1D001000 0x0 0x1000>,         //NCC0_FUN_2
++			<0x0 0x1D009000 0x0 0x1000>,         //NCC0_ETF
++			<0x0 0x1D181000 0x0 0x1000>,         //NCC1_FUN_1_1
++			<0x0 0x1D114000 0x0 0x1000>,         //NCC1_FUN_1_2
++			<0x0 0x1D101000 0x0 0x1000>,         //NCC1_FUN_2
++			<0x0 0x1D109000 0x0 0x1000>,         //NCC1_ETF
++			<0x0 0x1D281000 0x0 0x1000>,         //NCC2_FUN_1_1
++			<0x0 0x1D214000 0x0 0x1000>,         //NCC2_FUN_1_2
++			<0x0 0x1D201000 0x0 0x1000>,         //NCC2_FUN_2
++			<0x0 0x1D209000 0x0 0x1000>,         //NCC2_ETF
++			<0x0 0x1D090000 0x0 0x1000>,         //NCC0_CORE0_REP
++			<0x0 0x1D0A0000 0x0 0x1000>,         //NCC0_CORE1_REP
++			<0x0 0x1D0B0000 0x0 0x1000>,         //NCC0_CORE2_REP
++			<0x0 0x1D0C0000 0x0 0x1000>,         //NCC0_CORE3_REP
++			<0x0 0x1D0D0000 0x0 0x1000>,         //NCC0_CORE4_REP
++			<0x0 0x1D0E0000 0x0 0x1000>,         //NCC0_CORE5_REP
++			<0x0 0x1D190000 0x0 0x1000>,         //NCC1_CORE0_REP
++			<0x0 0x1D1A0000 0x0 0x1000>,         //NCC1_CORE1_REP
++			<0x0 0x1D1B0000 0x0 0x1000>,         //NCC1_CORE2_REP
++			<0x0 0x1D1C0000 0x0 0x1000>,         //NCC1_CORE3_REP
++			<0x0 0x1D1D0000 0x0 0x1000>,         //NCC1_CORE4_REP
++			<0x0 0x1D1E0000 0x0 0x1000>,         //NCC1_CORE5_REP
++			<0x0 0x1D290000 0x0 0x1000>,         //NCC2_CORE0_REP
++			<0x0 0x1D2A0000 0x0 0x1000>,         //NCC2_CORE1_REP
++			<0x0 0x1D2B0000 0x0 0x1000>,         //NCC2_CORE2_REP
++			<0x0 0x1D2C0000 0x0 0x1000>,         //NCC2_CORE3_REP
++			<0x0 0x1D2D0000 0x0 0x1000>,         //NCC2_CORE4_REP
++			<0x0 0x1D2E0000 0x0 0x1000>,         //NCC2_CORE5_REP
++			<0x0 0x1D008000 0x0 0x1000>,         //NCC0_UNCORE_ETF
++			<0x0 0x1D108000 0x0 0x1000>,         //NCC1_UNCORE_ETF
++			<0x0 0x1D208000 0x0 0x1000>,         //NCC2_UNCORE_ETF
++			<0x0 0x1D00A000 0x0 0x1000>,         //NCC0_UNCORE_REP
++			<0x0 0x1D10A000 0x0 0x1000>,         //NCC1_UNCORE_REP
++			<0x0 0x1D20A000 0x0 0x1000>;         //NCC2_UNCORE_REP
++	};
++
++	qdss_cb {
++		compatible = "qcom,vfio-platform";
++		iommus = <&apps_smmu_0 0x1860 0x0>,
++			<&apps_smmu_0 0x1880 0x0>;
++		dma-coherent;
++	};
++
++	qdss_etr_irq {
++		compatible = "qcom,vfio-platform";
++		interrupts = <GIC_SPI 738 IRQ_TYPE_EDGE_RISING>;
++		iommus = <&apps_smmu_1 0x0880 0x0>;
++		dma-coherent;
++	};
++
++	vfio_hsi2s@4F00000 {
++		compatible = "qcom,vfio-platform";
++		reg = <0x0 0x4F00000 0x0 0x60000>,
++			<0x0 0x5011000 0x0 0x20000>;
++
++		interrupts = <GIC_SPI 88 IRQ_TYPE_LEVEL_HIGH>;
++		iommus = <&apps_smmu_0 0x0ABB 0x0>,
++			<&apps_smmu_0 0x0ABC 0x1>;
++		qcom,iommu-dma-addr-pool = <0x0 0x0 0x0 0xFFFFFFFF>;
++		dma-coherent;
++	};
++
++	vfio_soccp@9007000 {
++		compatible = "qcom,vfio-platform";
++		reg = <0x0 0x9007000 0x0 0x1000>,
++			<0x0 0x89B00000 0x0 0x400000>,
++			<0x0 0x01FD4000 0x0 0x1000>,
++			<0x0 0x01FB5000 0x0 0x1000>,
++			<0x0 0x00DA2000 0x0 0x1000>,
++			<0x0 0x9305000 0x0 0x1000>,
++			<0x0 0x931B000 0x0 0x1000>,
++			<0x0 0x931C000 0x0 0x1000>;
++
++		interrupts-extended = <&ipcc0 IPCC_MPROC_SOCCP 2 IRQ_TYPE_LEVEL_HIGH>,
++				<&intc GIC_SPI 167 IRQ_TYPE_LEVEL_HIGH>,
++				<&intc GIC_SPI 229 IRQ_TYPE_LEVEL_HIGH>;
++
++		iommus = <&apps_smmu_0 0x1962 0x1>;
++		dma-coherent;
++	};
++
++	subsystem_ramdump_util@89b00000 {
++		compatible = "qcom,vdev-device";
++		reg = <0x0 0x89b00000 0x0 0x400000>,			//SMEM
++			<0x0 0x8d900000 0x0 0x2300000>,			//NSP0
++			<0x0 0x8fc00000 0x0 0x2300000>,			//NSP1
++			<0x0 0x91f00000 0x0 0x2300000>,			//NSP2
++			<0x0 0x94200000 0x0 0x2300000>,			//NSP3
++			<0x0 0x96500000 0x0 0x2800000>,			//HPASS0
++			<0x0 0x98d00000 0x0 0x2800000>,			//HPASS1
++			<0x0 0x9b500000 0x0 0x2800000>,			//HPASS2
++			<0x0 0x8bc00000 0x0 0x300000>,			//SOCCP
++			<0x0 0x01FD4000 0x0 0x1000>;			//JTAG
++	};
++
++	// CRYPTO0
++	vfio_hwkm_gpce_core_0@1dc0000 {
++		compatible = "qcom,vfio-platform";
++		interrupts = <GIC_SPI 272 IRQ_TYPE_LEVEL_HIGH>;
++		reg = <0x0 0x01dc0000 0x0 0x00040000>;
++		iommus = <&apps_smmu_0 0x1689 0x0>;
++		qcom,iommu-dma-addr-pool = <0x0 0x0 0x0 0xffffffff>;
++		dma-coherent;
++	};
++
++	vfio_gpce_gvm_ns_tzdec_cb {
++		compatible = "qcom,vfio-platform";
++		iommus = <&apps_smmu_0 0x1681 0x0>;
++		qcom,iommu-dma-addr-pool = <0x0 0x0 0x0 0xffffffff>;
++		dma-coherent;
++	};
++
++	vfio_gpce_gvm_s_tzdec_cb {
++		compatible = "qcom,vfio-platform";
++		iommus = <&apps_smmu_0 0x1688 0x0>;
++		qcom,iommu-dma-addr-pool = <0x0 0x0 0x0 0xffffffff>;
++		qcom,iommu-vmid = <0x9>; /*VMID_CP_BITSTREAM */
++		qcom,secure-context-bank;
++		dma-coherent;
++	};
++
++	// CRYPTO1
++	vfio_hwkm_gpce_core_1@9900000 {
++		compatible = "qcom,vfio-platform";
++		interrupts = <GIC_SPI 836 IRQ_TYPE_LEVEL_HIGH>;
++		reg = <0x0 0x09900000 0x0 0x00040000>;
++		iommus = <&apps_smmu_0 0x1649 0x0>;
++		dma-coherent;
++	};
++};
+-- 
+2.34.1
+

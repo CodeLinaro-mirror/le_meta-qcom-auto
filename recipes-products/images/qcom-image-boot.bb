@@ -13,10 +13,10 @@ IMAGE_CLASSES:remove = "qimage"
 IMAGE_FEATURES:remove = "ssh-server-openssh"
 
 DEPLOY_NAME_BASE_LAGVM = "${PRODUCT}-lagvm-automotive"
-DEPLOY_NAME_LAGVM = "${DEPLOY_NAME_BASE_LAGVM}${@['-' + d.getVar('VARIANT', True), ''][d.getVar('VARIANT', True) == ('' or 'debug')]}"
+DEPLOY_NAME_LAGVM = "${DEPLOY_NAME_BASE_LAGVM}${@['-' + (d.getVar('VARIANT') or ''), ''][not d.getVar('VARIANT') or d.getVar('VARIANT') == 'debug']}"
 DEPLOY_DIR_IMAGE_LAGVM = "${DEPLOY_DIR}/images/${DEPLOY_NAME_LAGVM}"
 DEPLOY_NAME_BASE_PVM = "${PRODUCT}-pvm-automotive"
-DEPLOY_NAME_PVM = "${DEPLOY_NAME_BASE_PVM}${@['-' + d.getVar('VARIANT', True), ''][d.getVar('VARIANT', True) == ('' or 'debug')]}"
+DEPLOY_NAME_PVM = "${DEPLOY_NAME_BASE_PVM}${@['-' + (d.getVar('VARIANT') or ''), ''][not d.getVar('VARIANT') or d.getVar('VARIANT') == 'debug']}"
 DEPLOY_DIR_IMAGE_PVM = "${DEPLOY_DIR}/images/${DEPLOY_NAME_PVM}"
 
 inherit image qcom-dtb-merge

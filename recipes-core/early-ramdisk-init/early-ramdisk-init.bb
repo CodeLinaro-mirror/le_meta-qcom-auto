@@ -1,16 +1,19 @@
-SUMMARY = "early-ramdisk-init for load kernel modules and start rootfs init"
+SUMMARY = "early-ramdisk-init for loading kernel modules and starting rootfs init"
 HOMEPAGE = "https://git.codelinaro.org"
 LICENSE = "BSD-3-Clause-Clear"
 LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/${LICENSE};md5=7a434440b651f4a472ca93716d01033a"
 DEPENDS = "kmod util-linux"
 
 SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/early-ramdisk-init/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/early-ramdisk-init;usehead=1"
-SRC_URI:append = "${@bb.utils.contains("MACHINE_FEATURES", "qti-umd", " file://vfio_param.conf", "", d)}"
+SRC_URI:append = "${@bb.utils.contains('MACHINE_FEATURES', 'qti-umd', ' file://vfio_param.conf', '', d)}"
+# preload-unit/GVM patches already merged in local source (commits 78beccf, f7f64ef)
+# qcom_ice module not yet in sa8797 conf — apply patch
+SRC_URI:append:gen5 = " file://0001-config-sa8797-enable-qcom_ice-module.patch"
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/early-ramdisk-init"
+S = "${UNPACKDIR}/vendor/qcom/opensource/early-ramdisk-init"
 
-inherit autotools
+inherit autotools pkgconfig
 
 EXTRA_OECONF += "--bindir=${base_sbindir} --sbindir=${base_sbindir}"
 
@@ -30,39 +33,39 @@ TARGET_PATH_NAME:gen5 = "sa8797"
 do_install:append() {
     install -d ${D}/dev
     install -d ${D}/sys
-    install -d ${D}/etc
     install -d ${D}/proc
     install -d ${D}/boot/early-ramdisk
     install -d ${D}/realroot
-    install -d ${D}/etc/modules-load.f
-    install -d ${D}/etc/modules-load.l
+    install -d ${D}${sysconfdir}/modules-load.f
+    install -d ${D}${sysconfdir}/modules-load.l
     touch ${D}/init
-    install -m 0755 ${S}/conf/${TARGET_PATH_NAME}/*.conf -D ${D}/etc/modules-load.f/
-    install -m 0755 ${S}/conf/${TARGET_PATH_NAME}/*.late -D ${D}/etc/modules-load.l/
+    install -m 0755 ${S}/conf/${TARGET_PATH_NAME}/*.conf -D ${D}${sysconfdir}/modules-load.f/
+    install -m 0755 ${S}/conf/${TARGET_PATH_NAME}/*.late -D ${D}${sysconfdir}/modules-load.l/
     if ${@bb.utils.contains('DISTRO_FEATURES', 'qti-external-boot', 'true', 'false', d)}; then
-        # External hdd root device node is detected by 00-external-bootup.conf load done.
-        install -m 0644 ${S}/conf/${TARGET_PATH_NAME}/02-external-bootup.conf.in -D ${D}/etc/modules-load.f/00-external-bootup.conf
+        install -m 0644 ${S}/conf/${TARGET_PATH_NAME}/02-external-bootup.conf.in -D ${D}${sysconfdir}/modules-load.f/00-external-bootup.conf
     fi
     if ${@bb.utils.contains('MACHINE_FEATURES', 'qti-umd', 'true', 'false', d)}; then
-        install -m 0755 ${WORKDIR}/vfio_param.conf -D ${D}${sysconfdir}/modprobe.d/vfio.conf
+        install -m 0755 ${UNPACKDIR}/vfio_param.conf -D ${D}${sysconfdir}/modprobe.d/vfio.conf
     fi
 }
 
 do_install:append:sa8775() {
-    install -m 0644 ${S}/conf/${TARGET_PATH_NAME}/07-gvm.conf.in -D ${D}/etc/modules-load.f/07-gvm.conf
+    install -m 0644 ${S}/conf/${TARGET_PATH_NAME}/07-gvm.conf.in -D ${D}${sysconfdir}/modules-load.f/07-gvm.conf
 }
 
 do_install:append:sa7255-ivi() {
-    install -m 0644 ${S}/conf/${TARGET_PATH_NAME}/07-gvm.conf.in -D ${D}/etc/modules-load.f/07-gvm.conf
+    install -m 0644 ${S}/conf/${TARGET_PATH_NAME}/07-gvm.conf.in -D ${D}${sysconfdir}/modules-load.f/07-gvm.conf
 }
 
 FILES:${PN} += "\
-         init \
-         dev/ \
-         sys/ \
-         etc/ \
-         proc/ \
-         boot/early-ramdisk \
-         realroot/ \
-         etc/modules-load.f/* \
+    init \
+    dev/ \
+    sys/ \
+    proc/ \
+    boot/early-ramdisk \
+    realroot/ \
+    ${sysconfdir}/modules-load.f/ \
+    ${sysconfdir}/modules-load.f/* \
+    ${sysconfdir}/modules-load.l/ \
+    ${sysconfdir}/modules-load.l/* \
 "

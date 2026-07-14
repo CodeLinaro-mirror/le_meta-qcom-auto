@@ -4,17 +4,35 @@ HOMEPAGE = "https://git.codelinaro.org"
 LICENSE = "GPL-2.0-only"
 LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/${LICENSE};md5=801f80980d171dd6425610833a22dbe6"
 
+FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
+
 SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/safelinux-sec-modules/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/safelinux-sec-modules;usehead=1"
+SRC_URI:append = " file://fix-kernel7-api.py"
 
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/safelinux-sec-modules/security-modules"
+S = "${UNPACKDIR}/vendor/qcom/opensource/safelinux-sec-modules/security-modules"
 
 TECHPACK_MODULES = "${@bb.utils.contains_any('PREFERRED_PROVIDER_virtual/kernel', 'linux-qcom-custom linux-qcom-custom-rt', '', 'tz_log.ko qtee_shmbridge.ko qcom_scm_oot.ko', d)}"
 TECHPACK_MODULES:append = " scm_user_intf_sec.ko tz_ffi.ko dice_vm.ko"
 inherit qti-techpack
 
 EXTRA_OEMAKE:append = " SECURITY_MODULES_SYSROOT_INC=${STAGING_DIR_TARGET}/usr/include"
+EXTRA_OEMAKE:append = " KCFLAGS=-Wno-error"
+
+python do_apply_kernel7_fixes () {
+    import subprocess, os
+    s = d.getVar('S')
+    unpackdir = d.getVar('UNPACKDIR')
+    fixscript = os.path.join(unpackdir, 'fix-kernel7-api.py')
+    drvsrc = os.path.join(s, 'drivers')
+    driver_names = ['dice_vm', 'tz_ffi', 'scm_user_intf_sec', 'smcinvoke', 'qtee_shmbridge', 'tz_log']
+    paths = [os.path.join(drvsrc, n + '.c') for n in driver_names if os.path.isfile(os.path.join(drvsrc, n + '.c'))]
+    if paths and os.path.isfile(fixscript):
+        subprocess.call(['python3', fixscript] + paths)
+}
+
+addtask do_apply_kernel7_fixes after do_unpack before do_patch
 
 do_install:append() {
     install -d ${D}${includedir}/linux

@@ -1,14 +1,17 @@
 SUMMARY = "Initramfs image for early-ramdisk-init"
 LICENSE = "BSD-3-Clause-Clear"
 
-DEPENDS += "mkbootimg-native virtual/kernel"
-DEPENDS += "${@bb.utils.contains('MACHINE_FEATURES', 'qti-umd', 'audiolite-dlkm safelinux-system-cfg safelinux-sec-modules safelinux-cfg-modules msmhab hyp-udmabuf gunyah-drivers ', '', d)}"
+DEPENDS += "virtual/kernel"
+# audiolite-dlkm is blocked: kernel module requires QTI-specific sa8797 config not in linux-qcom-next
+# safelinux-system-cfg has a do_install:append:gen5 bug (standalone 'false' under set -e) — removed from DEPENDS
+# vfio-device-bind.sh is installed directly by early-ramdisk-init from the source tree
+DEPENDS += "${@bb.utils.contains('MACHINE_FEATURES', 'qti-umd', 'safelinux-sec-modules ', '', d)}"
 
 IMAGE_CLASSES:remove = "qimage qimage-boot"
 
 inherit image
 
-IMAGE_FSTYPES = "cpio.lz4"
+IMAGE_FSTYPES = "cpio.gz"
 
 # avoid circular dependencies
 EXTRA_IMAGEDEPENDS = ""
@@ -16,13 +19,16 @@ KERNELDEPMODDEPEND = ""
 
 KERNEL_VERSION = "${@oe.utils.read_file('${STAGING_KERNEL_BUILDDIR}/kernel-abiversion')}"
 
+# EARLY_RAMDISK_KERNEL_MODULES is populated by gen5.conf with the trimmed set of
+# modules that actually exist as packages (safelinux-cfg-modules RPROVIDEs +
+# vfio-platform/-base). Weak default so gen5.conf's hard assignment wins.
+# Matches QLI-2.0-AUTO / CL 6776705.
 EARLY_RAMDISK_KERNEL_MODULES ?= ""
 
 # We really need just kexecboot, kexec and ubiattach
 IMAGE_INSTALL = "\
-    early-ramdisk-init libgcc kmod util-linux-libblkid \
+    early-ramdisk-init libgcc kmod util-linux-libblkid busybox \
     ${EARLY_RAMDISK_KERNEL_MODULES} \
-    ${@bb.utils.contains('PACKAGE_CLASSES', 'package_rpm', 'busybox', '', d)} \
 "
 do_rootfs[depends] += "virtual/kernel:do_shared_workdir"
 
@@ -52,6 +58,11 @@ do_rootfs:append() {
 
 fakeroot do_image_clean() {
    rm -rf ${IMAGE_ROOTFS}/boot/Image*
+   # early-ramdisk-init hardcodes /lib/modules/ but usrmerge puts modules at
+   # /usr/lib/modules/ — create a compat symlink so kmod can find the .ko files
+   if [ ! -e ${IMAGE_ROOTFS}/lib ] && [ -d ${IMAGE_ROOTFS}/usr/lib ]; then
+       ln -sf usr/lib ${IMAGE_ROOTFS}/lib
+   fi
 }
 
 # Do not pollute the initrd image with rootfs features

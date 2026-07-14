@@ -3,7 +3,7 @@ DEPENDS += "\
     pahole-native rsync-native \
 "
 
-SRCREV_kernel = "${AUTOREV}"
+SRCREV_kernel = "0000000000000000000000000000000000000000"
 
 inherit kernel
 

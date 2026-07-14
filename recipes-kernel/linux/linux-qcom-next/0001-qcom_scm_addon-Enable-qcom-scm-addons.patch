@@ -1,0 +1,86 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: AU.0.3.0 porting <noreply@qti.qualcomm.com>
+Date: Wed, 2 Jul 2026 00:00:00 -0700
+Subject: [PATCH] qcom_scm: add qcom_scm_set_vmid_by_word for gunyah + vfio owner
+
+Minimal subset of the QLI-2.0 qcom_scm_addon patch: adds only
+qcom_scm_set_vmid_by_word() (needed by the gunyah-drivers OOT module) plus the
+gunyah VFIO container DMA-owner relaxation. The full qcom_scm_addon.c/.h is
+dropped because the meta-qcom kernel already provides the camera-QoS / DCVS /
+KGSL SCM declarations it contained (which caused a struct qcom_scm_camera_qos
+redefinition).
+
+Signed-off-by: Venkatakrishnaiah Pari <vpari@qti.qualcomm.com>
+
+Upstream-Status: Inappropriate
+---
+diff --git a/drivers/firmware/qcom/qcom_scm.c b/drivers/firmware/qcom/qcom_scm.c
+index 38feefda7dd0..6ee5d32d5ac7 100644
+--- a/drivers/firmware/qcom/qcom_scm.c
++++ b/drivers/firmware/qcom/qcom_scm.c
+@@ -1313,6 +1313,16 @@ int qcom_scm_mem_protect_video_var(u32 cp_start, u32 cp_size,
+ }
+ EXPORT_SYMBOL_GPL(qcom_scm_mem_protect_video_var);
+ 
++void qcom_scm_set_vmid_by_word(u64 *srcvm, int vmid)
++{
++	if (vmid < QCOM_SCM_VM_WORD_SIZE) {
++		srcvm[0] |= BIT(vmid);
++	} else {
++		srcvm[1] |= BIT(vmid - QCOM_SCM_VM_WORD_SIZE);
++	}
++}
++EXPORT_SYMBOL_GPL(qcom_scm_set_vmid_by_word);
++
+ static int __qcom_scm_assign_mem(struct device *dev, phys_addr_t mem_region,
+ 				 size_t mem_sz, phys_addr_t src, size_t src_sz,
+ 				 phys_addr_t dest, size_t dest_sz)
+diff --git a/drivers/vfio/container.c b/drivers/vfio/container.c
+index 003281dbf8bc..ad1da1e598e4 100644
+--- a/drivers/vfio/container.c
++++ b/drivers/vfio/container.c
+@@ -433,11 +433,13 @@ int vfio_container_attach_group(struct vfio_container *container,
+ 		goto out_unlock_container;
+ 	}
+ 
++/*
+ 	if (group->type == VFIO_IOMMU) {
+ 		ret = iommu_group_claim_dma_owner(group->iommu_group, group);
+ 		if (ret)
+ 			goto out_unlock_container;
+ 	}
++*/
+ 
+ 	driver = container->iommu_driver;
+ 	if (driver) {
+@@ -480,8 +482,10 @@ void vfio_group_detach_container(struct vfio_group *group)
+ 		driver->ops->detach_group(container->iommu_data,
+ 					  group->iommu_group);
+ 
++/*
+ 	if (group->type == VFIO_IOMMU)
+ 		iommu_group_release_dma_owner(group->iommu_group);
++*/
+ 
+ 	group->container = NULL;
+ 	group->container_users = 0;
+diff --git a/include/linux/firmware/qcom/qcom_scm.h b/include/linux/firmware/qcom/qcom_scm.h
+index d84b5eb6870c..257e39bcdd31 100644
+--- a/include/linux/firmware/qcom/qcom_scm.h
++++ b/include/linux/firmware/qcom/qcom_scm.h
+@@ -60,10 +60,13 @@ enum qcom_scm_ice_cipher {
+ #define QCOM_SCM_PERM_EXEC       0x1
+ #define QCOM_SCM_PERM_RW (QCOM_SCM_PERM_READ | QCOM_SCM_PERM_WRITE)
+ #define QCOM_SCM_PERM_RWX (QCOM_SCM_PERM_RW | QCOM_SCM_PERM_EXEC)
++#define QCOM_SCM_VM_WORD_SIZE       64
++#define QCOM_SCM_MAX_VMID       128
+ 
+ bool qcom_scm_is_available(void);
+ 
+ int qcom_scm_set_cold_boot_addr(void *entry);
++extern void qcom_scm_set_vmid_by_word(u64 *srcvm, int vmid);
+ int qcom_scm_set_warm_boot_addr(void *entry);
+ void qcom_scm_cpu_power_down(u32 flags);
+ int qcom_scm_set_remote_state(u32 state, u32 id);
+-- 
+2.34.1

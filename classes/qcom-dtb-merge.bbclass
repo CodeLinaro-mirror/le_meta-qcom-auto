@@ -33,7 +33,7 @@ merge_dtbos () {
     out_dir=$3
     matched_dtbos=""
 
-    dtb_files=$(find $dtb_dir -name "*.dtb*")
+    dtb_files=$(find $dtb_dir -maxdepth 1 -name "*.dtb*")
     dtbo_files=$(find $dtbo_dir -name "*.dtbo")
 
     if [ -z "$dtb_files" ]; then
@@ -43,7 +43,7 @@ merge_dtbos () {
 
     if [ -z "$dtbo_files" ]; then
         echo "WARN: Overlay DTB files not found"
-        cp $dtb_dir/* $out_dir
+        find $dtb_dir -maxdepth 1 -name "*.dtb" -exec cp -f {} $out_dir/ \;
         return 0
     fi
 
@@ -77,7 +77,7 @@ merge_dtbos_single () {
     dtbo_dir=$2
     out_dir=$3
 
-    dtb_files=$(find $dtb_dir -name "*.dtb*")
+    dtb_files=$(find $dtb_dir -maxdepth 1 -name "*.dtb*")
     dtbo_files=$(find $dtbo_dir -name "*.dtbo")
 
     if [ -z "$dtb_files" ]; then
@@ -87,7 +87,7 @@ merge_dtbos_single () {
 
     if [ -z "$dtbo_files" ]; then
         echo "WARN: Overlay DTB files not found"
-        cp $dtb_dir/* $out_dir
+        find $dtb_dir -maxdepth 1 -name "*.dtb" -exec cp -f {} $out_dir/ \;
         return 0
     fi
 
@@ -139,7 +139,7 @@ merge_ddr_dtbos_single () {
 
     if [ -z "$dtbo_files" ]; then
         echo "WARN: Overlay DTB files not found"
-        cp $dtb_dir/* $out_dir
+        find $dtb_dir -maxdepth 1 -name "*.dtb" -exec cp -f {} $out_dir/ \;
         return 0
     fi
 

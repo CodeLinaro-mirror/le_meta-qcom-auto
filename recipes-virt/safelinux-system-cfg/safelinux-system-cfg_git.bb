@@ -53,12 +53,16 @@ do_install:append:sa8775() {
 }
 
 do_install:append:gen5() {
-    if ${@bb.utils.contains('DISTRO_FEATURES', 'qti-rumi', 'true', 'false', d)}; then
-        install -m 0755 ${S}/vfio-device-probe/seca_dev.conf -D ${D}${libdir}/vfio-bind.d/seca_dev.conf
-    fi
-    if ${@bb.utils.contains('DISTRO_FEATURES', 'qti-rumi', 'false', 'true', d)}; then
-        install -m 0755 ${S}/vfio-device-probe/sa8797_dev.conf -D ${D}${libdir}/vfio-bind.d/sa8797_dev.conf
-    fi
+    # Install sa8797-specific VFIO device config.
+    # qti-rumi builds use seca_dev.conf; all others (including sa8797) use sa8797_dev.conf.
+    # Use DISTRO_FEATURES_RUMI var to avoid standalone 'false' exit under set -e.
+    local rumi_feat="${DISTRO_FEATURES}"
+    case " $rumi_feat " in
+        *" qti-rumi "*)
+            install -m 0755 ${S}/vfio-device-probe/seca_dev.conf -D ${D}${libdir}/vfio-bind.d/seca_dev.conf ;;
+        *)
+            install -m 0755 ${S}/vfio-device-probe/sa8797_dev.conf -D ${D}${libdir}/vfio-bind.d/sa8797_dev.conf ;;
+    esac
 }
 
 FILES:${PN} += "${libdir}/modules-load.d/*"
