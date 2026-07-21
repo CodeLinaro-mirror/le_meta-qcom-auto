@@ -19,6 +19,10 @@ do_deploy:append:gen5 () {
 
     ${SIGNING_FUNCTION}
 
-    install -m 0644 ${D}/boot/${PRODUCT}-abl.elf ${DEPLOYDIR}/${PRODUCT}-abl-single-lv-gvm.elf
+    if [ -f ${D}/boot/${PRODUCT}-abl.elf ]; then
+        install -m 0644 ${D}/boot/${PRODUCT}-abl.elf ${DEPLOYDIR}/${PRODUCT}-abl-single-lv-gvm.elf
+    else
+        install -m 0644 ${S}/../abl.elf ${DEPLOYDIR}/unsigned_abl-single-lv-gvm.elf
+    fi
     mv ${S}/../abl.elf.bak ${S}/../abl.elf
 }

@@ -17,6 +17,8 @@ SRCREV = "${AUTOREV}"
 
 S = "${UNPACKDIR}/bootable/bootloader/edk2"
 
+DEPENDS += "lld-native"
+
 inherit deploy
 
 TOOLCHAIN = "clang"
