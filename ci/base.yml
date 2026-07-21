@@ -19,6 +19,7 @@ repos:
     branch: wrynose/linux-firmware
   oe-core:
     url: https://github.com/openembedded/openembedded-core
+    branch: wrynose
     layers:
       meta:
 
@@ -36,6 +37,7 @@ repos:
 
   bitbake:
     url: https://github.com/openembedded/bitbake
+    branch: "2.18"
     layers:
       .: disabled
 
