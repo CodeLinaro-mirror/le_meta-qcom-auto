@@ -46,8 +46,6 @@ repos:
 bblayers_conf_header:
   extras: |
     BBLAYERS:append = " ${TOPDIR}/../meta-qcom-auto-extras"
-    BBLAYERS:append = " ${TOPDIR}/../meta-openembedded/meta-python"
-    BBLAYERS:append = " ${TOPDIR}/../meta-openembedded/meta-multimedia"
     # meta-selinux dangling bbappends
     BBMASK:append = " /meta-selinux/recipes-graphics/mesa/"
     BBMASK:append = " /meta-selinux/recipes-kernel/linux/linux-yocto"

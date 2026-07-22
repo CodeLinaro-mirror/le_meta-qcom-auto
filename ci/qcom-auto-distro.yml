@@ -7,15 +7,25 @@ distro: qcom-auto-distro
 
 defaults:
   repos:
-    branch: master
+    branch: wrynose
 
 repos:
   meta-qcom-auto-distro:
     path: meta-qcom-auto-distro
 
+  meta-openembedded:
+    url: https://github.com/openembedded/meta-openembedded
+    layers:
+      meta-filesystems:
+      meta-gnome:
+      meta-multimedia:
+      meta-networking:
+      meta-oe:
+      meta-python:
+      meta-xfce:
+
   meta-virtualization:
     url: https://git.yoctoproject.org/meta-virtualization
-    branch: wrynose
 
 target:
   - qcom-auto-minimal-image
