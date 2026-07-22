@@ -10,7 +10,7 @@ DEPENDS += "${@bb.utils.contains('MACHINE_FEATURES', 'qti-umd', 'safelinux-cfg-m
 
 SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/safelinux-services/notify_aop/.git;protocol=${PROTO};destsuffix=/vendor/qcom/opensource/safelinux-services/notify_aop;usehead=1"
 SRCREV = "${AUTOREV}"
-S = "${WORKDIR}/vendor/qcom/opensource/safelinux-services/notify_aop"
+S = "${UNPACKDIR}/vendor/qcom/opensource/safelinux-services/notify_aop"
 
 inherit systemd cmake pkgconfig sleep-notify-service
 

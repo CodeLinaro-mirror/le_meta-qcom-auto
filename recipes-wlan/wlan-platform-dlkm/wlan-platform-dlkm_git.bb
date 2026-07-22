@@ -8,9 +8,9 @@ ${LICENSE};md5=801f80980d171dd6425610833a22dbe6"
 SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/wlan/platform/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/wlan/platform;;usehead=1"
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/wlan/platform"
+S = "${UNPACKDIR}/vendor/qcom/opensource/wlan/platform"
 
-TECHPACK_MODULE_OUT = "${WORKDIR}/wlan-platform-dlkm"
+TECHPACK_MODULE_OUT = "${UNPACKDIR}/wlan-platform-dlkm"
 TECHPACK_MODULES = "cnss2/cnss2.ko"
 TECHPACK_MODULES:append = " cnss_utils/cnss_utils.ko"
 TECHPACK_MODULES:append = " cnss_utils/wlan_firmware_service.ko"

@@ -10,7 +10,7 @@ DEPENDS:append:gen5 = " ar-scmi"
 SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/audio-ar-service/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/audio-ar-service;usehead=1"
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/audio-ar-service/audio_driver/ar_dev_plugin"
+S = "${UNPACKDIR}/vendor/qcom/opensource/audio-ar-service/audio_driver/ar_dev_plugin"
 
 inherit cmake pkgconfig
 

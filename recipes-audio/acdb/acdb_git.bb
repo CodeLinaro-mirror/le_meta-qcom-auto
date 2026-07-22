@@ -8,7 +8,7 @@ DEPENDS += "ar-osal"
 SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/args/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/args/acdb;subpath=acdb;usehead=1"
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/args/acdb"
+S = "${UNPACKDIR}/vendor/qcom/opensource/args/acdb"
 
 inherit pkgconfig cmake
 

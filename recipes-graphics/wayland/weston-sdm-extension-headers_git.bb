@@ -12,7 +12,7 @@ CODE_DIR:sa7255 = "${TARGET_DIR}graphics/weston-sdm-extension"
 
 SRC_URI = "${PATH_TO_REPO}/${CODE_DIR}/.git;protocol=${PROTO};destsuffix=${CODE_DIR};usehead=1"
 SRCREV = "${AUTOREV}"
-S = "${WORKDIR}/${CODE_DIR}"
+S = "${UNPACKDIR}/${CODE_DIR}"
 
 PREBUILT = "1"
 

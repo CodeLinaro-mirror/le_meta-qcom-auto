@@ -12,7 +12,7 @@ DEPENDS += "libssr-client"
 
 SRC_URI = "${PATH_TO_REPO}/external/vhost-device/.git;protocol=${PROTO};destsuffix=external/vhost-device;usehead=1"
 SRCREV = "${AUTOREV}"
-S = "${WORKDIR}/external/vhost-device"
+S = "${UNPACKDIR}/external/vhost-device"
 
 inherit cargo systemd
 

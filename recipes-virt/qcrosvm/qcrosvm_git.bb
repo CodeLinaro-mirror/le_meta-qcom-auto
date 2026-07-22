@@ -20,7 +20,7 @@ SRC_URI = "\
 
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/crosvm-gunyah"
+S = "${UNPACKDIR}/vendor/qcom/opensource/crosvm-gunyah"
 
 inherit cargo systemd cargo-update-recipe-crates
 

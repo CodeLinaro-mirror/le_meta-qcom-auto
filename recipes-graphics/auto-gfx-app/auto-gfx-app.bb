@@ -22,7 +22,7 @@ inherit cmake systemd sleep-notify-service
 
 SYSTEMD_SERVICE:${PN} = "gles2_kpi.service"
 
-S = "${WORKDIR}/vendor/qcom/opensource/auto-gfx-app"
+S = "${UNPACKDIR}/vendor/qcom/opensource/auto-gfx-app"
 
 do_install() {
     install -d ${D}${libdir} \
@@ -38,11 +38,11 @@ do_install() {
         install -d ${D}${systemd_system_unitdir} \
                    ${D}/${sysconfdir}/systemd/system/multi-user.target.wants
 
-        install -m 0644 ${WORKDIR}/gles2_kpi.service \
+        install -m 0644 ${UNPACKDIR}/gles2_kpi.service \
                         ${D}${systemd_system_unitdir}/gles2_kpi.service
 
         ln -sf ${systemd_system_unitdir}/gles2_kpi.service ${D}/${sysconfdir}/systemd/system/multi-user.target.wants/gles2_kpi.service
-        install -m 0644 ${WORKDIR}/gles2_kpi.conf -D ${D}${systemd_system_unitdir}/sleep-notify@gles2_kpi.service.d/gles2_kpi.conf
+        install -m 0644 ${UNPACKDIR}/gles2_kpi.conf -D ${D}${systemd_system_unitdir}/sleep-notify@gles2_kpi.service.d/gles2_kpi.conf
     fi
 }
 

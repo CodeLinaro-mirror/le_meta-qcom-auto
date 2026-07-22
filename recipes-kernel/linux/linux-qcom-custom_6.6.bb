@@ -12,5 +12,5 @@ SRC_URI = "\
     ${PATH_TO_REPO}/kernel/kernel_platform/kernel/.git;protocol=${PROTO};destsuffix=kernel/kernel_platform/kernel;usehead=1 \
 "
 
-S = "${WORKDIR}/kernel/kernel_platform/kernel"
+S = "${UNPACKDIR}/kernel/kernel_platform/kernel"
 

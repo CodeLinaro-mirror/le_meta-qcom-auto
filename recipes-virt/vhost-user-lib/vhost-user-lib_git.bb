@@ -8,7 +8,7 @@ SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/vhost-user-lib/.git;protocol=$
 SRCREV = "${AUTOREV}"
 DEPENDS = "systemd"
 
-S = "${WORKDIR}/vendor/qcom/opensource/vhost-user-lib"
+S = "${UNPACKDIR}/vendor/qcom/opensource/vhost-user-lib"
 
 inherit cmake
 

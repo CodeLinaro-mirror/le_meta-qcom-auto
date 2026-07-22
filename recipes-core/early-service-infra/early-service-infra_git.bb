@@ -14,7 +14,7 @@ SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/safelinux-services/early-servi
 
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/safelinux-services/early-service-infra"
+S = "${UNPACKDIR}/vendor/qcom/opensource/safelinux-services/early-service-infra"
 
 inherit pkgconfig cmake systemd
 

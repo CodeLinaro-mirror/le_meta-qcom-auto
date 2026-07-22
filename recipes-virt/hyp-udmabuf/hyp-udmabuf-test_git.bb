@@ -10,7 +10,7 @@ SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/hyp-udmabuf/.git;protocol=${PR
 
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/hyp-udmabuf/test"
+S = "${UNPACKDIR}/vendor/qcom/opensource/hyp-udmabuf/test"
 
 inherit cmake
 

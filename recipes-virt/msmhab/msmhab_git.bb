@@ -11,27 +11,27 @@ SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/mmhab-drv/.git;protocol=${PROT
 
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/mmhab-drv"
+S = "${UNPACKDIR}/vendor/qcom/opensource/mmhab-drv"
 
 TECHPACK_MAKE_ARGS = "KBUILD_EXTRA_SYMBOLS=${STAGING_INCDIR}/Module.symvers"
 EXTRA_OEMAKE:append = " GUNYAH_DRIVERS_SYSROOT_INCDIR=${STAGING_INCDIR}"
 
-TECHPACK_MODULE_OUT = "${WORKDIR}/vendor/qcom/opensource/mmhab-drv"
+TECHPACK_MODULE_OUT = "${UNPACKDIR}/vendor/qcom/opensource/mmhab-drv"
 TECHPACK_MODULES = "msm_hab.ko"
 
 inherit qti-techpack
 
 do_patch_more() {
-    rm -rf ${WORKDIR}/vendor/qcom/opensource/mmhab-drv/vhost.h
+    rm -rf ${UNPACKDIR}/vendor/qcom/opensource/mmhab-drv/vhost.h
 }
 
 addtask patch_more after do_patch before do_compile
 
 do_install:append() {
-    install -m 0755 ${WORKDIR}/vendor/qcom/opensource/mmhab-drv/msmhab.conf -D ${D}${libdir}/modules-load.d/msmhab.conf
+    install -m 0755 ${UNPACKDIR}/vendor/qcom/opensource/mmhab-drv/msmhab.conf -D ${D}${libdir}/modules-load.d/msmhab.conf
     install -d ${D}${includedir}/linux
-    install -m 0644 ${WORKDIR}/vendor/qcom/opensource/mmhab-drv/include/uapi/linux/habmmid.h ${D}${includedir}/linux
-    install -m 0644 ${WORKDIR}/vendor/qcom/opensource/mmhab-drv/include/uapi/linux/hab_ioctl.h ${D}${includedir}/linux
+    install -m 0644 ${UNPACKDIR}/vendor/qcom/opensource/mmhab-drv/include/uapi/linux/habmmid.h ${D}${includedir}/linux
+    install -m 0644 ${UNPACKDIR}/vendor/qcom/opensource/mmhab-drv/include/uapi/linux/hab_ioctl.h ${D}${includedir}/linux
 }
 
 EXTRA_OECONF += "--disable-doc --disable-Werror"

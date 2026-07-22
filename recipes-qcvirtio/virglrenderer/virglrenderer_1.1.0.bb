@@ -17,7 +17,7 @@ VIRGLRENDERER_PATH = "external/virglrenderer"
 SRC_URI = "${PATH_TO_REPO}/${VIRGLRENDERER_PATH}/.git;protocol=${PROTO};destsuffix=${VIRGLRENDERER_PATH}"
 
 SRCREV = "${AUTOREV}"
-S = "${WORKDIR}/${VIRGLRENDERER_PATH}"
+S = "${UNPACKDIR}/${VIRGLRENDERER_PATH}"
 
 inherit meson pkgconfig features_check
 

@@ -22,7 +22,7 @@ SRC_URI += "file://customizable_types  \
 
 SRCREV_refpolicy = "429b26878be53e0b3537771a98e240e6e383ee73"
 
-S = "${WORKDIR}/refpolicy"
+S = "${UNPACKDIR}/refpolicy"
 
 RDEPENDS:${PN}-dev =+ "\
         python3-core \
@@ -118,8 +118,8 @@ EXTRA_POLICY_MODULES += "sysadm ssh sysstat loadkeys ipsec cron ftp alsa logrota
 EXTRA_POLICY_MODULES += "xdg virt qemu"
 
 do_compile() {
-    if [ -f "${WORKDIR}/modules.conf" ] ; then
-        cp -f ${WORKDIR}/modules.conf ${S}/policy/modules.conf
+    if [ -f "${UNPACKDIR}/modules.conf" ] ; then
+        cp -f ${UNPACKDIR}/modules.conf ${S}/policy/modules.conf
     fi
 
     oe_runmake conf
@@ -194,12 +194,12 @@ EOF
 }
 
 install_misc_files() {
-    cat ${WORKDIR}/customizable_types >> \
+    cat ${UNPACKDIR}/customizable_types >> \
         ${D}${sysconfdir}/selinux/${POLICY_NAME}/contexts/customizable_types
 
     # install setrans.conf for mls/mcs policy
-    if [ -f ${WORKDIR}/setrans-${POLICY_TYPE}.conf ]; then
-        install -m 0644 ${WORKDIR}/setrans-${POLICY_TYPE}.conf \
+    if [ -f ${UNPACKDIR}/setrans-${POLICY_TYPE}.conf ]; then
+        install -m 0644 ${UNPACKDIR}/setrans-${POLICY_TYPE}.conf \
             ${D}${sysconfdir}/selinux/${POLICY_NAME}/setrans.conf
     fi
 
@@ -230,9 +230,9 @@ SELINUX=${DEFAULT_ENFORCING}
 #     targeted - Targeted processes are protected.
 #     mcs - Multi Category Security protection.
 SELINUXTYPE=${POLICY_NAME}
-" > ${WORKDIR}/config
+" > ${UNPACKDIR}/config
     install -d ${D}/${sysconfdir}/selinux
-    install -m 0644 ${WORKDIR}/config ${D}/${sysconfdir}/selinux/
+    install -m 0644 ${UNPACKDIR}/config ${D}/${sysconfdir}/selinux/
 }
 
 do_install() {

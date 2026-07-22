@@ -93,6 +93,6 @@ python __anonymous(){
             d.setVar(rev, "")
 }
 
-PSEUDO_IGNORE_PATHS .= ",${WORKDIR}/vendor/qcom/proprietary"
-PSEUDO_IGNORE_PATHS .= ",${WORKDIR}/vendor/qcom/opensource"
-PSEUDO_IGNORE_PATHS .= ",${WORKDIR}/system/core"
+PSEUDO_IGNORE_PATHS .= ",${UNPACKDIR}/vendor/qcom/proprietary"
+PSEUDO_IGNORE_PATHS .= ",${UNPACKDIR}/vendor/qcom/opensource"
+PSEUDO_IGNORE_PATHS .= ",${UNPACKDIR}/system/core"

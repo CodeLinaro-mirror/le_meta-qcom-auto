@@ -9,7 +9,7 @@ DEPENDS += "libuhab audio-log-util sound-card-info-common-header compute-resmgr"
 SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/audio-virtio-be/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/audio-virtio-be/audio_device_manager;subpath=virtio_audio_device/audio_device_manager;usehead=1"
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/audio-virtio-be/audio_device_manager"
+S = "${UNPACKDIR}/vendor/qcom/opensource/audio-virtio-be/audio_device_manager"
 
 CXXFLAGS += "-I${STAGING_INCDIR}/${PREFERRED_PROVIDER_virtual/kernel}"
 

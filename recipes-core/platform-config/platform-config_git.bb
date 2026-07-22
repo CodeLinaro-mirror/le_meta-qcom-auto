@@ -12,7 +12,7 @@ DEPENDS:append:gen5 = " libsoftsku"
 
 SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/safelinux-system-cfg/platform-config/.git;protocol=${PROTO};destsuffix=/vendor/qcom/opensource/safelinux-system-cfg/platform-config;usehead=1"
 SRCREV = "${AUTOREV}"
-S = "${WORKDIR}/vendor/qcom/opensource/safelinux-system-cfg/platform-config"
+S = "${UNPACKDIR}/vendor/qcom/opensource/safelinux-system-cfg/platform-config"
 
 EXTRA_OECMAKE:append:sa8775-flex = " -D PVM_CPUS:STRING=0-3 -D GVM_CPUS:STRING=4-7"
 EXTRA_OECMAKE:append:sa8255-ivi = " -D PVM_CPUS:STRING=0-1 -D GVM_CPUS:STRING=2-7"

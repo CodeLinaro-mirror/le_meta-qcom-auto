@@ -3,7 +3,7 @@ DESCRIPTION = "Codec2 is a codec framework introduced by Google. This is to even
 HOMEPAGE = "https://git.codelinaro.org/"
 SECTION = "multimedia"
 LICENSE = "Apache-2.0"
-LIC_FILES_CHKSUM = "file://${WORKDIR}/frameworks/NOTICE;md5=a3fcbe20ea5ac731ed3aa15fe59ba20a"
+LIC_FILES_CHKSUM = "file://${UNPACKDIR}/frameworks/NOTICE;md5=a3fcbe20ea5ac731ed3aa15fe59ba20a"
 
 DEPENDS += "\
     clang-native \
@@ -21,7 +21,7 @@ DEPENDS += "\
 
 SRC_URI = "${PATH_TO_REPO}/frameworks/.git;protocol=${PROTO};destsuffix=frameworks;usehead=1"
 SRCREV = "${AUTOREV}"
-S = "${WORKDIR}/frameworks/av/media/codec2"
+S = "${UNPACKDIR}/frameworks/av/media/codec2"
 
 inherit cmake
 

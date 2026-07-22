@@ -12,7 +12,7 @@ SRCREV_dspkernel = "${AUTOREV}"
 SRCREV_platformkernel = "${AUTOREV}"
 SRCREV_FORMAT = "dspkernel_platformkernel"
 
-S = "${WORKDIR}/vendor/qcom/opensource/platform-kernel"
+S = "${UNPACKDIR}/vendor/qcom/opensource/platform-kernel"
 
 METAL_MODULES_BUILD = "drivers/aop-set-ddr.ko drivers/silent_boot.ko drivers/wallpower_charger.ko drivers/dump_boot_log.ko drivers/silent-mode-hw-monitoring.ko"
 

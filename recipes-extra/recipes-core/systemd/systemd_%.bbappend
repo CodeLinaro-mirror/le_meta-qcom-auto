@@ -26,6 +26,6 @@ SRC_URI:append:gen5 = " \
 do_install:append() {
    if ${@bb.utils.contains_any('MACHINE_FEATURES', 'qti-umd', 'false', 'true', d)} ; then
       install -d ${D}/${base_libdir}/systemd/system-sleep
-      install -m 0755 ${WORKDIR}/qti_sleep.sh -D ${D}/${base_libdir}/systemd/system-sleep/qti_sleep.sh
+      install -m 0755 ${UNPACKDIR}/qti_sleep.sh -D ${D}/${base_libdir}/systemd/system-sleep/qti_sleep.sh
    fi
 }

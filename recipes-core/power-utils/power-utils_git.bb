@@ -9,7 +9,7 @@ DEPENDS += "glibc glib-2.0 bootkpi-logging systemd libkiumd"
 
 SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/safelinux-services/power-utils/.git;protocol=${PROTO};destsuffix=/vendor/qcom/opensource/safelinux-services/power-utils;usehead=1"
 SRCREV = "${AUTOREV}"
-S = "${WORKDIR}/vendor/qcom/opensource/safelinux-services/power-utils"
+S = "${UNPACKDIR}/vendor/qcom/opensource/safelinux-services/power-utils"
 
 inherit systemd cmake pkgconfig
 

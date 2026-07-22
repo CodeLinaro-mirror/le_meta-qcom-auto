@@ -11,9 +11,9 @@ SRC_URI = "${PATH_TO_REPO}/${TARGET_DIR}vendor/qcom/opensource/display-drivers/.
 
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/${TARGET_DIR}vendor/qcom/opensource/display-drivers/umd-mm"
+S = "${UNPACKDIR}/${TARGET_DIR}vendor/qcom/opensource/display-drivers/umd-mm"
 
-TECHPACK_MODULE_OUT = "${WORKDIR}/display-drivers"
+TECHPACK_MODULE_OUT = "${UNPACKDIR}/display-drivers"
 TECHPACK_MODULES = "umd_power.ko"
 TECHPACK_HEADERS = "${S}/include/uapi"
 

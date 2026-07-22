@@ -9,7 +9,7 @@ DEPENDS += "audio-log-util ar-osal safelinux-cfg-modules virtual/kernel-headers"
 SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/audio-ar-service/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/audio-ar-service;usehead=1"
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/audio-ar-service/audio_driver/ar_scmi"
+S = "${UNPACKDIR}/vendor/qcom/opensource/audio-ar-service/audio_driver/ar_scmi"
 
 inherit cmake pkgconfig
 

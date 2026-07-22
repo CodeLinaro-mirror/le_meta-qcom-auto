@@ -9,9 +9,9 @@ SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/data-eth/.git;protocol=${PROTO
 
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/data-eth"
+S = "${UNPACKDIR}/vendor/qcom/opensource/data-eth"
 
-TECHPACK_MODULE_OUT = "${WORKDIR}/dataeth-dlkm"
+TECHPACK_MODULE_OUT = "${UNPACKDIR}/dataeth-dlkm"
 TECHPACK_MODULES = "drivers/emac_ctrl_fe/emac_ctrl_fe_virtio.ko drivers/emac_shim/emac_thin.ko"
 TECHPACK_MAKE_ARGS = "\
                  CONFIG_EMAC_SHIM=m \

@@ -10,7 +10,7 @@ SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/hyp-udmabuf/.git;protocol=${PR
 
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/hyp-udmabuf/drivers"
+S = "${UNPACKDIR}/vendor/qcom/opensource/hyp-udmabuf/drivers"
 
 TECHPACK_MODULES = "\
     hyp-udmabuf.ko \

@@ -8,7 +8,7 @@ DEPENDS += "acdb ar-util glib-2.0 gpr spf"
 SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/args/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/args/gsl;subpath=gsl;usehead=1"
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/args/gsl"
+S = "${UNPACKDIR}/vendor/qcom/opensource/args/gsl"
 
 inherit pkgconfig cmake
 

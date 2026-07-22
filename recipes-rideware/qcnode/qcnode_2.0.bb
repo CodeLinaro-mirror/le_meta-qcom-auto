@@ -29,7 +29,7 @@ DEPENDS += "aosal apdf fastrpc libkiumd libstd rpcmem camera-qcx fadas adreno vi
 
 SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/qcnode/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/qcnode;usehead=1"
 SRCREV = "${AUTOREV}"
-S = "${WORKDIR}/vendor/qcom/opensource/qcnode"
+S = "${UNPACKDIR}/vendor/qcom/opensource/qcnode"
 
 inherit cmake
 

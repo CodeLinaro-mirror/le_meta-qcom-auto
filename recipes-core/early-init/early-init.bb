@@ -25,7 +25,7 @@ SRC_URI += "file://preload15.sh"
 SRC_URI += "file://preload16.sh"
 
 SECURITY_CFLAGS:pn-${PN} = "${SECURITY_NOPIE_CFLAGS}"
-S = "${WORKDIR}"
+S = "${UNPACKDIR}"
 
 do_compile() {
         if ${@bb.utils.contains('DISTRO_FEATURES', 'early-ethernet', 'true', 'false', d)}; then

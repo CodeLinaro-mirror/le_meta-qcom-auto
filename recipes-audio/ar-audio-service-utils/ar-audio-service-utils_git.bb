@@ -13,7 +13,7 @@ DEPENDS += "audio-log-util audio-headers-export mm-osal libkiumd agm \
 SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/audio-ar-service/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/audio-ar-service/audio_driver/ar_service_utils;subpath=audio_driver/ar_service_utils;usehead=1"
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/audio-ar-service/audio_driver/ar_service_utils"
+S = "${UNPACKDIR}/vendor/qcom/opensource/audio-ar-service/audio_driver/ar_service_utils"
 
 inherit cmake pkgconfig
 

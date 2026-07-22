@@ -10,7 +10,7 @@ DEPENDS += "bootkpi-logging tinyalsa-new glib-2.0 agm"
 SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/audio-ar-service/ar_init_service/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/audio-ar-service/ar_init_service;usehead=1"
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/audio-ar-service/ar_init_service"
+S = "${UNPACKDIR}/vendor/qcom/opensource/audio-ar-service/ar_init_service"
 
 inherit cmake pkgconfig systemd
 

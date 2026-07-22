@@ -9,7 +9,7 @@ DEPENDS += "ar-osal glib-2.0 libglink-client"
 SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/args/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/args/gpr;subpath=gpr;usehead=1"
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/args/gpr"
+S = "${UNPACKDIR}/vendor/qcom/opensource/args/gpr"
 
 inherit pkgconfig cmake
 

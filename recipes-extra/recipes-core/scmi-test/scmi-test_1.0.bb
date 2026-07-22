@@ -9,7 +9,7 @@ DEPENDS += "safelinux-cfg-modules virtual/kernel-headers glib-2.0"
 SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/safelinux-services/scmi-test/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/safelinux-services/scmi-test;usehead=1"
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/safelinux-services/scmi-test"
+S = "${UNPACKDIR}/vendor/qcom/opensource/safelinux-services/scmi-test"
 
 EXTRA_OECMAKE:append:gen5 = " -DVENDOR_USCMI=1"
 

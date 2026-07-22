@@ -10,8 +10,6 @@ SRCREV = "d62475b3fb9d0be07d7c5de9d108483dff88c631"
 SRC_URI = "git://git.codelinaro.org/clo/la/wayland/wayland-ivi-extension.git;protocol=http;branch=upstream/master \
     "
 
-S = "${WORKDIR}/git"
-
 inherit cmake pkgconfig
 
 FILES:${PN} += "\

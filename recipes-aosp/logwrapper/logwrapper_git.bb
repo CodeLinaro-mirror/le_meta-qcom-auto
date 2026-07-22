@@ -10,7 +10,7 @@ DEPENDS += "libcutils liblog"
 SRC_URI = "${PATH_TO_REPO}/system/core/.git;protocol=${PROTO};destsuffix=system/core;usehead=1"
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/system/core/logwrapper"
+S = "${UNPACKDIR}/system/core/logwrapper"
 
 inherit autotools pkgconfig
 

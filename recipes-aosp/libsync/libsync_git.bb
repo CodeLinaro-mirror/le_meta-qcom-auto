@@ -15,7 +15,7 @@ SRC_URI = "\
 "
 SRCREV = "8fbe56b11ee7c1f8c87e9b71d89caa306c6cdebb"
 
-S = "${WORKDIR}/libsync"
+S = "${UNPACKDIR}/libsync"
 
 inherit autotools pkgconfig
 

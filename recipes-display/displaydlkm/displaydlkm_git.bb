@@ -11,9 +11,9 @@ SRC_URI = "${PATH_TO_REPO}/${TARGET_DIR}vendor/qcom/opensource/display-drivers/.
 
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/${TARGET_DIR}vendor/qcom/opensource/display-drivers"
+S = "${UNPACKDIR}/${TARGET_DIR}vendor/qcom/opensource/display-drivers"
 
-TECHPACK_MODULE_OUT = "${WORKDIR}/display-drivers"
+TECHPACK_MODULE_OUT = "${UNPACKDIR}/display-drivers"
 TECHPACK_MODULES = "${@bb.utils.contains('MACHINE_FEATURES', 'qti-hypervisor', \
                     'msm-hyp/msm_hyp.ko msm-cfg/msm_cfg.ko', 'msm/msm_drm.ko', d)}"
 TECHPACK_HEADERS = "${S}/include/uapi"

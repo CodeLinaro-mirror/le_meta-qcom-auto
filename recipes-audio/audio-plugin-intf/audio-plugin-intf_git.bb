@@ -9,7 +9,7 @@ DEPENDS += "sound-card-info-util agm audio-headers-export audio-log-util sound-c
 SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/audio-virtio-be/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/audio-virtio-be/audio_plugin_intf;subpath=audio_plugin_intf;usehead=1"
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/audio-virtio-be/audio_plugin_intf/agm_audio_plugin"
+S = "${UNPACKDIR}/vendor/qcom/opensource/audio-virtio-be/audio_plugin_intf/agm_audio_plugin"
 
 inherit cmake pkgconfig
 

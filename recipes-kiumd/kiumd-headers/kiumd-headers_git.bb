@@ -9,7 +9,7 @@ SRC_URI = "\
 "
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/kiumd/kiumd-headers"
+S = "${UNPACKDIR}/vendor/qcom/opensource/kiumd/kiumd-headers"
 
 do_compile[noexec] = "1"
 do_install[depends] += "virtual/kernel:do_shared_workdir"

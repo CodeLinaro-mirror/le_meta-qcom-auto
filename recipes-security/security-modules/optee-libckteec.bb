@@ -11,8 +11,6 @@ SRC_URI:append = " file://0001-libckteec-Replace-libteec-library-with-libgptee.p
 
 SRCREV = "3eac340a781c00ccd61b151b0e9c22a8c6e9f9f0"
 
-S = "${WORKDIR}/git"
-
 inherit pkgconfig
 
 do_compile() {

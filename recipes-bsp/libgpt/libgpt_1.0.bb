@@ -9,6 +9,6 @@ PR = "r1"
 SRC_URI = "${PATH_TO_REPO}/abctl/.git;protocol=${PROTO};destsuffix=abctl;usehead=1"
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/abctl/libgpt"
+S = "${UNPACKDIR}/abctl/libgpt"
 
 inherit autotools

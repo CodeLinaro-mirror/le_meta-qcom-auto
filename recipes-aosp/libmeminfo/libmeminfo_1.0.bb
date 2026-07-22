@@ -13,7 +13,7 @@ SRC_URI = "${CLO_LA_GIT}/platform/system/memory/libmeminfo;protocol=https;branch
 
 SRCREV = "9a8f5952d95c704431bc477f7f0228db47a17ae9"
 
-S = "${WORKDIR}/src/system/memory/libmeminfo"
+S = "${UNPACKDIR}/src/system/memory/libmeminfo"
 
 inherit autotools pkgconfig
 

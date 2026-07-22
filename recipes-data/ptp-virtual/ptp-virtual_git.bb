@@ -13,7 +13,7 @@ SRC_URI = "\
 "
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/ptp-virtual"
+S = "${UNPACKDIR}/vendor/qcom/opensource/ptp-virtual"
 
 inherit module module-sign kernel-arch qperf qti-kernel-arch-clang systemd useradd
 INHIBIT_PACKAGE_STRIP = "1"
@@ -25,7 +25,7 @@ USERADD_PARAM:${PN} = "--no-create-home -g vnw --shell /bin/false vnw"
 
 do_install:append() {
     install -d ${D}${systemd_unitdir}/system
-    install -m 0644 ${WORKDIR}/ptp-virtual.service ${D}${systemd_unitdir}/system/ptp-virtual.service
+    install -m 0644 ${UNPACKDIR}/ptp-virtual.service ${D}${systemd_unitdir}/system/ptp-virtual.service
 }
 
 PACKAGE_ARCH = "${MACHINE_ARCH}"

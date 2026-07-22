@@ -7,7 +7,7 @@ LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/${LICENSE};md5
 DEPENDS += "glib-2.0 vmm-lib abctl"
 SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/vmm-boot-lcm/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/vmm-boot-lcm;usehead=1"
 SRCREV = "${AUTOREV}"
-S = "${WORKDIR}/vendor/qcom/opensource/vmm-boot-lcm"
+S = "${UNPACKDIR}/vendor/qcom/opensource/vmm-boot-lcm"
 RDEPENDS:${PN} = "vmm-lib abctl"
 
 SYSTEMD_SERVICE:${PN} = "vmm-boot-lcm.service"

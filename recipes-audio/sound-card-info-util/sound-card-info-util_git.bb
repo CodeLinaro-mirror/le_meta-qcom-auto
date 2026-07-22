@@ -9,7 +9,7 @@ DEPENDS += "expat audio-headers-export audio-log-util virtual/kernel-headers sou
 SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/audio-virtio-be/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/audio-virtio-be/sound_card_info_util;subpath=sound_card_info_util;usehead=1"
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/audio-virtio-be/sound_card_info_util/ar_sound_card_info_util"
+S = "${UNPACKDIR}/vendor/qcom/opensource/audio-virtio-be/sound_card_info_util/ar_sound_card_info_util"
 
 inherit cmake pkgconfig
 

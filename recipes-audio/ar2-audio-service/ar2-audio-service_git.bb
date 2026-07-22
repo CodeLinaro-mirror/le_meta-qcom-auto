@@ -10,7 +10,7 @@ DEPENDS += "glib-2.0 libkiumd libglink-client libglink-core fastrpc libpil-clien
 SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/audio-ar-service/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/audio-ar-service/audio_service;subpath=audio_service;usehead=1"
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/audio-ar-service/audio_service"
+S = "${UNPACKDIR}/vendor/qcom/opensource/audio-ar-service/audio_service"
 
 inherit cmake pkgconfig systemd
 

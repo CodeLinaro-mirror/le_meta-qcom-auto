@@ -10,7 +10,7 @@ DESCRIPTION = "OpenMAX is a royalty-free, cross-platform API that provides compr
 HOMEPAGE = "https://git.codelinaro.org"
 SECTION = "multimedia"
 LICENSE = "BSD-3-Clause"
-LIC_FILES_CHKSUM = "file://${WORKDIR}/hardware/qcom/media/NOTICE;md5=67f520c8e55cf33925e4d738d7f4a5f4"
+LIC_FILES_CHKSUM = "file://${UNPACKDIR}/hardware/qcom/media/NOTICE;md5=67f520c8e55cf33925e4d738d7f4a5f4"
 
 DEPENDS += "\
     display-commonsys-intf-linux \
@@ -36,7 +36,7 @@ PR = "r1"
 
 SRC_URI = "${PATH_TO_REPO}/hardware/qcom/media/.git;protocol=${PROTO};destsuffix=hardware/qcom/media;usehead=1"
 SRCREV = "${AUTOREV}"
-S = "${WORKDIR}/hardware/qcom/media"
+S = "${UNPACKDIR}/hardware/qcom/media"
 
 inherit autotools systemd
 SYSTEMD_SERVICE:${PN} = "${@bb.utils.contains('DISTRO_FEATURES','early_init','video_early_demo.service','',d)}"

@@ -10,7 +10,7 @@ PR = "r1"
 SRC_URI = "${PATH_TO_REPO}/abctl/.git;protocol=${PROTO};destsuffix=abctl;usehead=1"
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/abctl/abctl"
+S = "${UNPACKDIR}/abctl/abctl"
 
 inherit autotools systemd useradd
 

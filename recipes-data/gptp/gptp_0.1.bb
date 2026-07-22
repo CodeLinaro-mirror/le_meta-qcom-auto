@@ -17,7 +17,7 @@ SRC_URI = "\
 "
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/external/open-avb"
+S = "${UNPACKDIR}/external/open-avb"
 
 inherit systemd pkgconfig useradd autotools-brokensep
 inherit ${@bb.utils.contains('MACHINE_FEATURES', 'qti-umd', 'sleep-notify-service', '', d)}

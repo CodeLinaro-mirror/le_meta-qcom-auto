@@ -15,7 +15,7 @@ SRC_URI = "\
 "
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/system/core/liblog"
+S = "${UNPACKDIR}/system/core/liblog"
 
 inherit autotools-brokensep pkgconfig
 
@@ -23,12 +23,12 @@ CFLAGS += "-Dstrlcpy=g_strlcpy "
 LDFLAGS += "-lglib-2.0 "
 
 EXTRA_OECONF += "\
-    --with-core-includes=${WORKDIR}/system/core/include \
+    --with-core-includes=${UNPACKDIR}/system/core/include \
     --disable-static \
 "
 
 do_install:append:class-target() {
-    install -m 0644 -D ${WORKDIR}/50-log.rules ${D}${sysconfdir}/udev/rules.d/50-log.rules
+    install -m 0644 -D ${UNPACKDIR}/50-log.rules ${D}${sysconfdir}/udev/rules.d/50-log.rules
 }
 
 BBCLASSEXTEND = "native"

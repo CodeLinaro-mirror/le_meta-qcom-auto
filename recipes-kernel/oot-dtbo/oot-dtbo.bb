@@ -15,7 +15,7 @@ SRC_URI:append:gen5 = " file://0001-oot-dtbo-enable-for-nord.patch;patchdir=.."
 SRCREV = "${AUTOREV}"
 
 S = "${UNPACKDIR}/vendor/qcom/opensource/safelinux-system-cfg/devicetree"
-OVERLAYED_OOT_DTBS_OUT = "${WORKDIR}/overlaid-oot-dtbs"
+OVERLAYED_OOT_DTBS_OUT = "${UNPACKDIR}/overlaid-oot-dtbs"
 
 inherit qcom-dtb-merge deploy kernel-arch
 
@@ -55,11 +55,11 @@ do_merge_dtb() {
 
     rm -rf "${OVERLAYED_OOT_DTBS_OUT}"
     install -d "${OVERLAYED_OOT_DTBS_OUT}"
-    install -d "${WORKDIR}/dtbodir"
+    install -d "${UNPACKDIR}/dtbodir"
 
     for oot_dtbo in ${OOT_DTBS}; do
         if [ -f "${S}/${oot_dtbo}" ]; then
-            install -m 0644 "${S}/${oot_dtbo}" "${WORKDIR}/dtbodir/"
+            install -m 0644 "${S}/${oot_dtbo}" "${UNPACKDIR}/dtbodir/"
         else
             bbnote "DTBO not found: ${oot_dtbo} (skipping)"
         fi
@@ -84,10 +84,10 @@ do_merge_dtb() {
     fi
 
     bbnote "Merging base DTB: ${dtb_dir}/${KERNEL_BASE_DTB}"
-    bbnote "Using DTBOs from: ${WORKDIR}/dtbodir"
+    bbnote "Using DTBOs from: ${UNPACKDIR}/dtbodir"
     bbnote "Output dir: ${OVERLAYED_OOT_DTBS_OUT}"
 
-    merge_dtbos_single "${dtb_dir}" "${WORKDIR}/dtbodir" "${OVERLAYED_OOT_DTBS_OUT}"
+    merge_dtbos_single "${dtb_dir}" "${UNPACKDIR}/dtbodir" "${OVERLAYED_OOT_DTBS_OUT}"
 }
 do_merge_dtb[depends] += "virtual/kernel:do_deploy"
 addtask do_merge_dtb after do_compile before do_install

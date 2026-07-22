@@ -9,7 +9,7 @@ DEPENDS += "audio-log-util audio-headers-export glib-2.0 mm-osal libkiumd virtua
 SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/audio-ar-service/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/audio-ar-service/audio_driver/utils;subpath=audio_driver/utils;usehead=1"
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/audio-ar-service/audio_driver/utils"
+S = "${UNPACKDIR}/vendor/qcom/opensource/audio-ar-service/audio_driver/utils"
 
 inherit cmake pkgconfig
 

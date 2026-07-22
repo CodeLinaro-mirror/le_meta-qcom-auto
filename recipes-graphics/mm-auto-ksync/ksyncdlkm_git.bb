@@ -8,11 +8,11 @@ SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/mm-auto-ksync/.git;protocol=${
 
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/mm-auto-ksync"
+S = "${UNPACKDIR}/vendor/qcom/opensource/mm-auto-ksync"
 
 inherit qti-techpack
 
-TECHPACK_MODULE_OUT = "${WORKDIR}/mm-auto-ksync"
+TECHPACK_MODULE_OUT = "${UNPACKDIR}/mm-auto-ksync"
 TECHPACK_MODULES = "qcom_ksync.ko"
 TECHPACK_HEADERS = "${S}/include/uapi"
 

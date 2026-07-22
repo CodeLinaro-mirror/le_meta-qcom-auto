@@ -12,7 +12,7 @@ DEPENDS += "glib-2.0 libcutils audio-headers-export audio-utils ar-util libkiumd
 SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/args/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/args/ar_osal;subpath=ar_osal;usehead=1"
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/args/ar_osal"
+S = "${UNPACKDIR}/vendor/qcom/opensource/args/ar_osal"
 
 inherit pkgconfig cmake
 

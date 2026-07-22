@@ -7,7 +7,7 @@ LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/BSD-3-Clause-C
 DEPENDS += "hsi2s-interface libuhab"
 SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/hsi2s/.git;protocol=${PROTO};destsuffix=hsi2s;usehead=1"
 SRCREV = "${AUTOREV}"
-S = "${WORKDIR}/vendor/qcom/opensource/hsi2s/be"
+S = "${UNPACKDIR}/vendor/qcom/opensource/hsi2s/be"
 
 inherit systemd cmake pkgconfig useradd
 

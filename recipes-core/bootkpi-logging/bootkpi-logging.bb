@@ -8,6 +8,6 @@ DEPENDS += "glibc systemd"
 
 SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/safelinux-system-cfg/bootkpi-logging/.git;protocol=${PROTO};destsuffix=/vendor/qcom/opensource/safelinux-system-cfg/bootkpi-logging;usehead=1"
 SRCREV = "${AUTOREV}"
-S = "${WORKDIR}/vendor/qcom/opensource/safelinux-system-cfg/bootkpi-logging"
+S = "${UNPACKDIR}/vendor/qcom/opensource/safelinux-system-cfg/bootkpi-logging"
 
 inherit pkgconfig cmake

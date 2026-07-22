@@ -2,7 +2,7 @@ SUMMARY = "Client for Wi-Fi Protected Access (WPA)"
 DESCRIPTION = "WPA supplicant client used for WLAN STA/AP/P2P/WPS such feature test"
 HOMEPAGE = "https://git.codelinaro.org/"
 LICENSE = "BSD-2-Clause"
-LIC_FILES_CHKSUM = "file://${WORKDIR}/${TARGET_DIR}external/wpa_supplicant_8/COPYING;md5=5ebcb90236d1ad640558c3d3cd3035df"
+LIC_FILES_CHKSUM = "file://${UNPACKDIR}/${TARGET_DIR}external/wpa_supplicant_8/COPYING;md5=5ebcb90236d1ad640558c3d3cd3035df"
 
 DEPENDS += "dbus libnl openssl"
 SRC_URI = "${PATH_TO_REPO}/${TARGET_DIR}external/wpa_supplicant_8/.git;protocol=${PROTO};destsuffix=${TARGET_DIR}external/wpa_supplicant_8;usehead=1 \
@@ -17,7 +17,7 @@ PR = "r5.2"
 SOLIBS = "*.so"
 FILES_SOLIBSDEV = ""
 
-S = "${WORKDIR}/${TARGET_DIR}external/wpa_supplicant_8/wpa_supplicant"
+S = "${UNPACKDIR}/${TARGET_DIR}external/wpa_supplicant_8/wpa_supplicant"
 
 inherit autotools-brokensep linux-kernel-base pkgconfig systemd
 
@@ -27,7 +27,7 @@ SYSTEMD_AUTO_ENABLE = "disable"
 export BINDIR = "${sbindir}"
 
 do_configure() {
-    install -m 0644 ${WORKDIR}/defconfig-qcacld .config
+    install -m 0644 ${UNPACKDIR}/defconfig-qcacld .config
     echo "CFLAGS +=\"-I${STAGING_INCDIR}/libnl3\"" >> .config
 }
 do_install() {
@@ -37,12 +37,12 @@ do_install() {
     install -m 644 ${S}/wpa_supplicant.conf ${D}${docdir}/wpa_supplicant
 
     install -d ${D}${sysconfdir}
-    install -m 600 ${WORKDIR}/wpa_supplicant.conf-sane ${D}${sysconfdir}/wpa_supplicant.conf
+    install -m 600 ${UNPACKDIR}/wpa_supplicant.conf-sane ${D}${sysconfdir}/wpa_supplicant.conf
 
     install -d ${D}${sysconfdir}/network/if-pre-up.d/
     install -d ${D}${sysconfdir}/network/if-post-down.d/
     install -d ${D}${sysconfdir}/network/if-down.d/
-    install -m 755 ${WORKDIR}/wpa-supplicant.sh ${D}${sysconfdir}/network/if-pre-up.d/wpa-supplicant
+    install -m 755 ${UNPACKDIR}/wpa-supplicant.sh ${D}${sysconfdir}/network/if-pre-up.d/wpa-supplicant
     cd ${D}${sysconfdir}/network/ && \
     ln -sf ../if-pre-up.d/wpa-supplicant if-post-down.d/wpa-supplicant
 
@@ -57,7 +57,7 @@ do_install() {
     fi
 
     install -d ${D}${sysconfdir}/default/volatiles
-    install -m 0644 ${WORKDIR}/99_wpa_supplicant ${D}${sysconfdir}/default/volatiles
+    install -m 0644 ${UNPACKDIR}/99_wpa_supplicant ${D}${sysconfdir}/default/volatiles
 }
 
 CONFFILES:${PN} += "${sysconfdir}/wpa_supplicant.conf"

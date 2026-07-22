@@ -31,12 +31,12 @@ SRC_URI[patch5.md5sum] = "c96860bcb5aa51249491fc51cf36b805"
 SRC_URI[patch5.sha256sum] = "38ae4061a44592cddbcb3c137caaacc59147ee5c2415c87771add55b3893d26e"
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/system/core/libcutils"
+S = "${UNPACKDIR}/system/core/libcutils"
 
 inherit autotools pkgconfig
 
 EXTRA_OECONF += "\
-    --with-core-includes=${WORKDIR}/system/core/include \
+    --with-core-includes=${UNPACKDIR}/system/core/include \
     --with-host-os=${HOST_OS} \
     --disable-static \
     LE_PROPERTIES_ENABLED=true \
