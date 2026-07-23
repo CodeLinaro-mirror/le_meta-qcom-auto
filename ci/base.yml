@@ -55,6 +55,7 @@ local_conf_header:
     CONF_VERSION = "2"
     INHERIT += "buildstats-summary"
     INHERIT += "buildhistory"
+    TMPDIR = "${TOPDIR}/tmp"
   local-sources: |
     # Use local workspace sources via PATH_TO_REPO (same as LY.AU.0.3.0 setup-environment)
     # Recipes fetch from the local .repo checkout — no Gerrit network access needed
