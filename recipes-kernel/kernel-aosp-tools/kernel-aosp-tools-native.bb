@@ -7,11 +7,13 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/${LICENSE};md5=89aea4e17d99a7ca
 BASE_GIT_PATH = "${PATH_TO_REPO}/kernel/kernel-${PREFERRED_VERSION_linux-msm}/kernel_platform"
 BASE_PATH = "kernel/kernel-${PREFERRED_VERSION_linux-msm}/kernel_platform"
 
-SRC_URI = "${BASE_GIT_PATH}/build/kernel/.git;protocol=${PROTO};destsuffix=${BASE_PATH}/build/kernel \
-           ${BASE_GIT_PATH}/prebuilts/kernel-build-tools/.git;protocol=${PROTO};destsuffix=${BASE_PATH}/prebuilts/kernel-build-tools \
+SRC_URI = "${BASE_GIT_PATH}/build/kernel/.git;protocol=${PROTO};destsuffix=${BASE_PATH}/build/kernel;name=kernel \
+           ${BASE_GIT_PATH}/prebuilts/kernel-build-tools/.git;protocol=${PROTO};destsuffix=${BASE_PATH}/prebuilts/kernel-build-tools;name=kernel-build-tools \
            "
 
-SRCREV = "${AUTOREV}"
+SRCREV_kernel = "${AUTOREV}"
+SRCREV_kernel-build-tools = "${AUTOREV}"
+SRCREV_FORMAT = "kernel_kernel-build-tools"
 
 S = "${UNPACKDIR}"
 

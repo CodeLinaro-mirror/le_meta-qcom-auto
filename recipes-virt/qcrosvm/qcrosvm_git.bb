@@ -10,15 +10,21 @@ LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/BSD-3-Clause-C
 DEPENDS += "cargo-native libcap rust-native rust-llvm-native pkgconfig-native"
 
 SRC_URI = "\
-    ${PATH_TO_REPO}/vendor/qcom/opensource/crosvm-gunyah/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/crosvm-gunyah;usehead=1 \
-    ${PATH_TO_REPO}/external/crosvm/.git;protocol=${PROTO};destsuffix=external/crosvm;usehead=1 \
-    ${PATH_TO_REPO}/external/minijail/.git;protocol=${PROTO};destsuffix=external/minijail;usehead=1 \
-    ${PATH_TO_REPO}/external/rust/crates/android_logger/.git;protocol=${PROTO};destsuffix=external/rust/crates/android_logger;usehead=1 \
-    ${PATH_TO_REPO}/external/rust/crates/simplelog/.git;protocol=${PROTO};destsuffix=external/rust/crates/simplelog;usehead=1 \
-    ${PATH_TO_REPO}/external/rust/crates/vmm_vhost/.git;protocol=${PROTO};destsuffix=external/rust/crates/vmm_vhost;usehead=1 \
+    ${PATH_TO_REPO}/vendor/qcom/opensource/crosvm-gunyah/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/crosvm-gunyah;name=crosvm-gunyah;usehead=1 \
+    ${PATH_TO_REPO}/external/crosvm/.git;protocol=${PROTO};destsuffix=external/crosvm;name=crosvm;usehead=1 \
+    ${PATH_TO_REPO}/external/minijail/.git;protocol=${PROTO};destsuffix=external/minijail;name=minijail;usehead=1 \
+    ${PATH_TO_REPO}/external/rust/crates/android_logger/.git;protocol=${PROTO};destsuffix=external/rust/crates/android_logger;name=android-logger;usehead=1 \
+    ${PATH_TO_REPO}/external/rust/crates/simplelog/.git;protocol=${PROTO};destsuffix=external/rust/crates/simplelog;name=simplelog;usehead=1 \
+    ${PATH_TO_REPO}/external/rust/crates/vmm_vhost/.git;protocol=${PROTO};destsuffix=external/rust/crates/vmm_vhost;name=vmm-vhost;usehead=1 \
 "
 
-SRCREV = "${AUTOREV}"
+SRCREV_crosvm-gunyah = "${AUTOREV}"
+SRCREV_crosvm = "${AUTOREV}"
+SRCREV_minijail = "${AUTOREV}"
+SRCREV_android-logger = "${AUTOREV}"
+SRCREV_simplelog = "${AUTOREV}"
+SRCREV_vmm-vhost = "${AUTOREV}"
+SRCREV_FORMAT = "crosvm-gunyah_crosvm_minijail_android-logger_simplelog_vmm-vhost"
 
 S = "${UNPACKDIR}/vendor/qcom/opensource/crosvm-gunyah"
 
