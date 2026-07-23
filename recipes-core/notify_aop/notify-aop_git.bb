@@ -8,7 +8,7 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/BSD-3-Clause-Clear;md5=7a434440
 DEPENDS += "virtual/kernel-headers libstd systemd libkiumd power-utils libpil-client"
 DEPENDS += "${@bb.utils.contains('MACHINE_FEATURES', 'qti-umd', 'safelinux-cfg-modules', '', d)}"
 
-SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/safelinux-services/notify_aop/.git;protocol=${PROTO};destsuffix=/vendor/qcom/opensource/safelinux-services/notify_aop;usehead=1"
+SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/safelinux-services/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/safelinux-services;usehead=1"
 SRCREV = "${AUTOREV}"
 S = "${UNPACKDIR}/vendor/qcom/opensource/safelinux-services/notify_aop"
 

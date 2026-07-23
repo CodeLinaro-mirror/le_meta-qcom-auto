@@ -6,7 +6,7 @@ LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/${LICENSE};md5
 
 DEPENDS += "glibc systemd"
 
-SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/safelinux-system-cfg/bootkpi-logging/.git;protocol=${PROTO};destsuffix=/vendor/qcom/opensource/safelinux-system-cfg/bootkpi-logging;usehead=1"
+SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/safelinux-system-cfg/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/safelinux-system-cfg;usehead=1"
 SRCREV = "${AUTOREV}"
 S = "${UNPACKDIR}/vendor/qcom/opensource/safelinux-system-cfg/bootkpi-logging"
 
