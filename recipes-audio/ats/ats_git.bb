@@ -7,7 +7,7 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/${LICENSE};md5=7a434440b651f4a4
 DEPENDS += "\
             acdb ar-osal glib-2.0 gsl diag \
 "
-SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/args/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/args/acdb/ats;subpath=ats;usehead=1"
+SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/args/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/args;usehead=1"
 SRCREV = "${AUTOREV}"
 S = "${UNPACKDIR}/vendor/qcom/opensource/args/acdb/ats"
 

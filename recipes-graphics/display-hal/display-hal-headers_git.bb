@@ -18,8 +18,9 @@ do_compile[noexec] = "1"
 do_install() {
     install -d ${D}${includedir}
     install -m 644 ${S}/include/*.h ${D}${includedir}
-    if ${@bb.utils.contains_any('PREFERRED_PROVIDER_virtual/kernel', 'linux-qcom-custom linux-qcom-custom-rt', 'false', 'true', d)}; then
-      install -m 644 ${S}/libqservice/*.h ${D}${includedir}
+    # libqservice headers only present in display/display-hal path (not display-core)
+    if [ -d ${S}/libqservice ]; then
+        install -m 644 ${S}/libqservice/*.h ${D}${includedir}
     fi
 }
 

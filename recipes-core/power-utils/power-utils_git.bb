@@ -27,3 +27,6 @@ FILES:${PN} += "\
     ${systemd_system_unitdir}/* \
     ${libdir}/tmpfiles-early.d/* \
 "
+
+# GCC 15.3: implicit declarations from missing _GNU_SOURCE; incompatible socket pointer types
+CFLAGS:append = " -D_GNU_SOURCE -Wno-implicit-function-declaration -Wno-incompatible-pointer-types"

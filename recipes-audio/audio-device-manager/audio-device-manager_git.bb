@@ -18,3 +18,6 @@ inherit cmake pkgconfig
 SOLIBS = ".so"
 FILES_SOLIBSDEV = ""
 RDEPENDS:${PN} += "audio-plugin-intf sound-card-info-util"
+
+# GCC 15.3 (C23): implicit declarations and incompatible pointer types are now errors
+CFLAGS:append = " -std=gnu11 -Wno-implicit-function-declaration -Wno-incompatible-pointer-types -Wno-int-conversion -D_GNU_SOURCE"

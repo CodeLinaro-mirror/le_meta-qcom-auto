@@ -21,3 +21,6 @@ RDEPENDS:${PN}:append:gen5 = " ar-scmi"
 
 SOLIBS = ".so"
 FILES_SOLIBSDEV = ""
+
+# GCC 15.3 (C23): implicit declarations and incompatible pointer types are now errors
+CFLAGS:append = " -std=gnu11 -Wno-implicit-function-declaration -Wno-incompatible-pointer-types -Wno-int-conversion -D_GNU_SOURCE"

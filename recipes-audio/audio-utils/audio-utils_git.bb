@@ -6,7 +6,9 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/${LICENSE};md5=7a434440b651f4a4
 
 DEPENDS += "audio-log-util audio-headers-export glib-2.0 mm-osal libkiumd virtual/kernel-headers"
 
-SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/audio-ar-service/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/audio-ar-service/audio_driver/utils;subpath=audio_driver/utils;usehead=1"
+CFLAGS:append = " -I${STAGING_INCDIR} -Wno-int-conversion -Wno-incompatible-pointer-types"
+
+SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/audio-ar-service/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/audio-ar-service;usehead=1"
 SRCREV = "${AUTOREV}"
 
 S = "${UNPACKDIR}/vendor/qcom/opensource/audio-ar-service/audio_driver/utils"

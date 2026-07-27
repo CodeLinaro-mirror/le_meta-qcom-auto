@@ -51,3 +51,14 @@ FILES:${PN} += "\
     ${systemd_system_unitdir}/sleep-notify@gles2_kpi.service.d/ \
 "
 
+# CMake 4.x policy + cross-compile pkgconfig fix (FindPkgConfig doesn't inherit PKG_CONFIG_PATH)
+EXTRA_OECMAKE:append = " -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+    -DPKG_CONFIG_EXECUTABLE=${STAGING_BINDIR_NATIVE}/pkg-config \
+    -DCMAKE_PREFIX_PATH=${STAGING_DIR_TARGET}${prefix} \
+    -DPKG_CONFIG_PATH=${STAGING_LIBDIR}/pkgconfig:${STAGING_DATADIR}/pkgconfig \
+"
+export PKG_CONFIG_SYSROOT_DIR = "${STAGING_DIR_TARGET}"
+
+# GCC 15.3: int/pointer conversions + implicit declarations + _GNU_SOURCE for glibc extensions
+CFLAGS:append = " -Wno-int-conversion -Wno-incompatible-pointer-types -Wno-implicit-function-declaration -D_GNU_SOURCE"
+CXXFLAGS:append = " -Wno-int-conversion -Wno-incompatible-pointer-types -D_GNU_SOURCE"
