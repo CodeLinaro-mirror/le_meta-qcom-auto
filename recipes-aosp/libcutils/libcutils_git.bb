@@ -50,3 +50,8 @@ do_install:append() {
 }
 
 BBCLASSEXTEND = "native"
+
+# GCC 16 rejects passing &array where a plain pointer is expected in
+# property_ops.c. The pointer value is identical, so downgrade the error
+# instead of patching the source.
+CFLAGS:append = " -Wno-error=incompatible-pointer-types"

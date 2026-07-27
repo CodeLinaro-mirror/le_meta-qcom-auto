@@ -18,3 +18,8 @@ BBCLASSEXTEND = "native"
 
 PACKAGE_BEFORE_PN = "${PN}-utils"
 FILES:${PN}-utils = "${bindir}/logwrapper"
+
+# grantpt/unlockpt need _GNU_SOURCE on modern glibc; tolerate remaining
+# implicit declarations that older Android sources still trigger.
+CFLAGS:append  = " -D_GNU_SOURCE -Wno-implicit-function-declaration"
+CXXFLAGS:append = " -D_GNU_SOURCE -Wno-implicit-function-declaration"

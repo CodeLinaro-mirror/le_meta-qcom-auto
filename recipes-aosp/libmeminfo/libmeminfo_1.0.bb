@@ -20,3 +20,7 @@ inherit autotools pkgconfig
 EXTRA_OECONF:append = " \
     --disable-static \
 "
+
+# GCC 16 / C++20 no longer pulls these in transitively (uint64_t, ULLONG_MAX,
+# std::find_if/find/sort). Force-include instead of patching each source.
+CXXFLAGS:append = " -include cstdint -include climits -include algorithm"

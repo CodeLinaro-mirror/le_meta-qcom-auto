@@ -20,3 +20,7 @@ S = "${UNPACKDIR}/libsync"
 inherit autotools pkgconfig
 
 EXTRA_OECONF = "--with-glib"
+
+# -std=gnu11 keeps ATOMIC_VAR_INIT available (removed only in C23), so no
+# source patch is needed for it.
+CFLAGS += "-std=gnu11"

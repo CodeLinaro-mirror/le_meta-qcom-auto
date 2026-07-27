@@ -6,7 +6,7 @@ HOMEPAGE = "http://developer.android.com/"
 LICENSE = "Apache-2.0"
 LIC_FILES_CHKSUM = "file://NOTICE;md5=bb2810bf31da2f6bb39e0bfa86091da3"
 
-DEPENDS += "libcutils libpcre libsparse"
+DEPENDS += "libcutils libpcre2 libsparse"
 
 PR = "r1"
 
@@ -26,3 +26,9 @@ CPPFLAGS:append = " -I${STAGING_INCDIR}/cutils"
 BBCLASSEXTEND = "native"
 
 MACHINEOVERRIDES:class-native = "${MACHINE}:${SOC_FAMILY}"
+
+# -std=gnu17 keeps K&R-style empty prototypes ("()" means unspecified args,
+# not "(void)"), so allocate_inode(info) compiles without patching the source.
+# The -Wno-* flags tolerate the remaining C23-strictness fallout.
+CFLAGS:append  = " -std=gnu17 -Wno-incompatible-pointer-types -Wno-implicit-function-declaration"
+CXXFLAGS:append = " -Wno-incompatible-pointer-types -Wno-implicit-function-declaration"

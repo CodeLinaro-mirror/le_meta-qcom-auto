@@ -5,8 +5,6 @@ HOMEPAGE = "http://developer.android.com/"
 LICENSE = "Apache-2.0"
 LIC_FILES_CHKSUM = "file://NOTICE;md5=2754aa537525e0fed3d297e8379b6d81"
 
-DEPENDS += "glib-2.0"
-
 PR = "r1"
 
 SRC_URI = "\
@@ -19,13 +17,14 @@ S = "${UNPACKDIR}/system/core/liblog"
 
 inherit autotools-brokensep pkgconfig
 
-CFLAGS += "-Dstrlcpy=g_strlcpy "
-LDFLAGS += "-lglib-2.0 "
-
 EXTRA_OECONF += "\
     --with-core-includes=${UNPACKDIR}/system/core/include \
     --disable-static \
 "
+
+# strlcpy is provided by glibc 2.38+ but not prototyped without <string.h>;
+# tolerate the implicit declaration instead of patching the source.
+CFLAGS += "-Wno-implicit-function-declaration"
 
 do_install:append:class-target() {
     install -m 0644 -D ${UNPACKDIR}/50-log.rules ${D}${sysconfdir}/udev/rules.d/50-log.rules

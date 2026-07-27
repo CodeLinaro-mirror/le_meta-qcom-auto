@@ -18,3 +18,7 @@ SRCREV = "e8bf00215cb2175a87c38deb9ae3ff5a441ffd18"
 
 inherit autotools pkgconfig
 
+# GCC 16 / C++20 no longer pulls in uint64_t transitively (process.h).
+# Force-include <cstdint> instead of patching the header.
+CXXFLAGS:append = " -include cstdint"
+

@@ -17,6 +17,10 @@ inherit autotools pkgconfig
 
 EXTRA_OECONF += "--with-glib"
 
+# glibc 2.38+ hides the transitional LFS64 API (lseek64/pread64/pwrite64)
+# unless _LARGEFILE64_SOURCE is defined. Re-expose it instead of patching.
+CFLAGS:append = " -D_LARGEFILE64_SOURCE"
+
 BBCLASSEXTEND = "native"
 
 PACKAGE_BEFORE_PN = "${PN}-utils"
