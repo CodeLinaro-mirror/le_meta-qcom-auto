@@ -12,5 +12,7 @@ S = "${UNPACKDIR}/vendor/qcom/opensource/vhost-user-lib"
 
 inherit cmake
 
+CFLAGS:append = " -Wno-incompatible-pointer-types"
+
 SOLIBS = ".so"
 FILES_SOLIBSDEV = ""

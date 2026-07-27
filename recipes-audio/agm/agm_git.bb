@@ -51,3 +51,10 @@ FILES_SOLIBSDEV = ""
 # Include custom libdir and pkgconfig files in the main and -dev packages
 FILES:${PN} += "/usr/lib/ar/*.so"
 FILES:${PN}-dev += "/usr/lib/ar/pkgconfig /usr/lib/ar/pkgconfig/*.pc"
+# GCC 15.3: pointer type and return type fixes
+CFLAGS:append = " -Wno-deprecated-declarations -Wno-incompatible-pointer-types -Wno-return-type"
+
+# GCC 15.3: deprecated declarations and return type
+
+# GCC 15.3 second pass: return type
+

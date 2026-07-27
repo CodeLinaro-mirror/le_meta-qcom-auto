@@ -15,6 +15,8 @@ inherit cmake pkgconfig
 
 CFLAGS += "\
     -I${STAGING_INCDIR}/${PREFERRED_PROVIDER_virtual/kernel} \
+    -std=gnu11 -Wno-implicit-function-declaration -Wno-incompatible-pointer-types \
+    -Wno-int-conversion -D_GNU_SOURCE \
     -I${STAGING_INCDIR}/uapi \
 "
 

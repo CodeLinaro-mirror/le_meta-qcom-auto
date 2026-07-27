@@ -28,6 +28,8 @@ repos:
     branch: wrynose
     layers:
       meta-oe:
+      meta-networking:
+      meta-filesystems:
 
   meta-selinux:
     url: https://git.yoctoproject.org/meta-selinux
@@ -139,6 +141,10 @@ local_conf_header:
     BBMASK:append = " /meta-qcom-auto/recipes-support/gflags/gflags_2.2.2.bbappend"
     BBMASK:append = " /meta-qcom-auto-extras/recipes-products/images/qcom-automotive-image.bbappend"
     # bbappends with base recipe present — masked because patch may not apply cleanly
+    # iperf3: 0001-fix-sigfault + 0002-udp-gso-gro are post-release fixes (Dec 2024, Sep 2025),
+    # not included in the iperf3 3.21 release tag used by wrynose OE. Hunks fail against 3.21 context.
+    # TODO: forward-port patches to 3.21 source before re-enabling.
+    BBMASK:append = " /meta-qcom-auto/recipes-data/iperf3/"
     BBMASK:append = " /meta-qcom-auto/recipes-core/glibc/glibc_%.bbappend"
     BBMASK:append = " /meta-qcom-auto/recipes-core/irqbalance/irqbalance_git.bbappend"
     BBMASK:append = " /meta-qcom-auto/recipes-core/systemd/systemd_%.bbappend"
@@ -160,7 +166,6 @@ local_conf_header:
     BBMASK:append = " /meta-qcom-auto/recipes-security/selinux/libselinux/libselinux_%.bbappend"
     BBMASK:append = " /meta-qcom-auto-extras/recipes-products/images/machine-image.bbappend"
     BBMASK:append = " /meta-qcom-auto-extras/recipes-products/images/machine-image-lagvm.bbappend"
-    BBMASK:append = " /meta-qcom-auto-extras/recipes-products/images/machine-image-pvm.bbappend"
     BBMASK:append = " /meta-qcom-auto-extras/recipes-products/images/qti-image-boot.bbappend"
     BBMASK:append = " /meta-qcom-auto-extras/recipes-tools/fpga-test/fpga-test_git.bb"
     BBMASK:append = " /meta-selinux/recipes-security/selinux/libselinux_"

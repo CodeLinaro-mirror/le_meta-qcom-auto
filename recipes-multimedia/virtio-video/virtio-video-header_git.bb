@@ -15,17 +15,18 @@ S = "${UNPACKDIR}/${TARGET_DIR}vendor/qcom/opensource/virtio-video"
 
 do_configure[noexec] = "1"
 do_compile[noexec] = "1"
-do_install[depends] += "virtual/kernel:do_shared_workdir"
 
+# Removed do_install[depends] on virtual/kernel:do_shared_workdir —
+# headers_install.sh needs scripts/unifdef which is absent from linux-qcom-next
+# build artifacts. Use plain install instead.
 do_install:append() {
-    install -d -p ${D}${includedir}/
-    cd ${STAGING_KERNEL_BUILDDIR}
-    ${STAGING_KERNEL_DIR}/scripts/headers_install.sh ${S}/include/virtio_video.h ${D}${includedir}/virtio_video.h
+    install -d ${D}${includedir}/
+    install -m 0644 ${S}/include/virtio_video.h ${D}${includedir}/virtio_video.h
     if [ -f ${S}/include/virtio_video_msm_ext.h ]; then
-       ${STAGING_KERNEL_DIR}/scripts/headers_install.sh ${S}/include/virtio_video_msm_ext.h ${D}${includedir}/virtio_video_msm_ext.h
+        install -m 0644 ${S}/include/virtio_video_msm_ext.h ${D}${includedir}/virtio_video_msm_ext.h
     fi
     if [ -f ${S}/include/virtio_video_hw_virt.h ]; then
-       ${STAGING_KERNEL_DIR}/scripts/headers_install.sh ${S}/include/virtio_video_hw_virt.h ${D}${includedir}/virtio_video_hw_virt.h
+        install -m 0644 ${S}/include/virtio_video_hw_virt.h ${D}${includedir}/virtio_video_hw_virt.h
     fi
 }
 

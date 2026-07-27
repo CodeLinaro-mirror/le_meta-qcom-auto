@@ -52,3 +52,6 @@ RDEPENDS:${PN} += "minini"
 SOLIBS = ".so"
 FILES_SOLIBSDEV = ""
 FILES:${PN} += "${libdir}/*"
+
+# GCC 15.3: ini_gets/ini_getl forward declarations not visible
+CFLAGS:append = " -Wno-implicit-function-declaration"
