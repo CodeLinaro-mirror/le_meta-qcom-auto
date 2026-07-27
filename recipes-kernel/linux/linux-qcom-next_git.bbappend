@@ -12,6 +12,7 @@ SRC_URI = "git://github.com/qualcomm-linux/kernel-topics.git;branch=early/hwe/no
 SRC_URI:append = " \
     file://configs/bsp-additions.cfg \
     file://files/0001-qcom_scm_addon-Enable-qcom-scm-addons.patch \
+    file://files/0002-pmdomain-core-Skip-sync_state-when-pd_ignore_unused-.patch \
 "
 
 # Pin to a specific commit once you know it

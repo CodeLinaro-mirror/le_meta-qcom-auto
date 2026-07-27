@@ -1,0 +1,36 @@
+From e39d68a9837c46552f6a5aa082e582d3abe5fd27 Mon Sep 17 00:00:00 2001
+From: Venkatakrishnaiah Pari <vpari@qti.qualcomm.com>
+Date: Mon, 27 Jul 2026 14:19:43 -0700
+Subject: [PATCH] pmdomain: core: Skip sync_state when pd_ignore_unused is set
+
+When booted with the pd_ignore_unused kernel command line parameter,
+generic PM domains are intentionally left powered on and are not
+torn down by genpd_power_off(). Calling of_genpd_sync_state() in this
+mode still walks the gpd_list and attempts to power off each domain
+tied to the provider, which is pointless work and contradicts the
+intent of pd_ignore_unused.
+
+Bail out of of_genpd_sync_state() early when pd_ignore_unused is set.
+
+Signed-off-by: Venkatakrishnaiah Pari <vpari@qti.qualcomm.com>
+---
+ drivers/pmdomain/core.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/drivers/pmdomain/core.c b/drivers/pmdomain/core.c
+index 52ea84e548ff..85bd5bffe345 100644
+--- a/drivers/pmdomain/core.c
++++ b/drivers/pmdomain/core.c
+@@ -3506,6 +3506,9 @@ void of_genpd_sync_state(struct device_node *np)
+ 	if (!np)
+ 		return;
+ 
++	if (pd_ignore_unused)
++		return;
++
+ 	mutex_lock(&gpd_list_lock);
+ 	list_for_each_entry(genpd, &gpd_list, gpd_list_node) {
+ 		if (genpd->provider == of_fwnode_handle(np)) {
+-- 
+2.34.1
+
