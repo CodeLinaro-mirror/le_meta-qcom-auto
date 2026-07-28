@@ -37,6 +37,12 @@ KERNEL_MACHINE_DTB = "\
     arch/arm64/boot/dts/qcom/nord-ride.dtb \
 "
 
+# Emit a /__symbols__ node in the base DTBs so the OOT dtbo overlay
+# (nord-ride_overlay.dtbo) can be applied with fdtoverlay at merge time.
+do_compile:prepend() {
+    export DTC_FLAGS="-@"
+}
+
 do_configure:prepend() {
     # Use a copy of the 'defconfig' from the actual repo to merge fragments
     cp ${S}/arch/${ARCH}/configs/${KBUILD_DEFCONFIG} ${B}/.config
