@@ -9,6 +9,8 @@ SRC_URI:append = "${@bb.utils.contains('MACHINE_FEATURES', 'qti-umd', ' file://v
 # preload-unit/GVM patches already merged in local source (commits 78beccf, f7f64ef)
 # qcom_ice module not yet in sa8797 conf — apply patch
 SRC_URI:append:gen5 = " file://0001-config-sa8797-enable-qcom_ice-module.patch"
+# sa8797-ride-sx passes slot via systemd.setenv="SLOT_SUFFIX=_a" instead of androidboot.slot_suffix
+SRC_URI:append:gen5 = " file://0001-early-ramdisk-parse-SLOT_SUFFIX-from-systemd.setenv-.patch"
 SRCREV = "${AUTOREV}"
 
 S = "${UNPACKDIR}/vendor/qcom/opensource/early-ramdisk-init"

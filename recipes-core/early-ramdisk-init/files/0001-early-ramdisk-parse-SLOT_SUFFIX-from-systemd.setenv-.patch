@@ -1,0 +1,45 @@
+From bfd753a0419447f824dbcc763d48bc6fe69f1741 Mon Sep 17 00:00:00 2001
+From: Ajender Reddy Mallikarjuna <ajenderr@qti.qualcomm.com>
+Date: Wed, 15 Jul 2026 10:50:26 -0700
+Subject: [PATCH] early-ramdisk: parse SLOT_SUFFIX from systemd.setenv for
+ sa8797-ride-sx
+
+Some boards (sa8797-ride-sx gen5) pass the A/B slot via:
+  systemd.setenv=SLOT_SUFFIX=_a
+instead of the standard androidboot.slot_suffix=_a form.
+
+When slot_suffix stays empty, early_mount_func uses mount_start=1
+(slot _b index) and tries PARTLABEL=dsp_b which fails, so /vendor/dsp
+is never mounted before systemd starts.
+
+NOTE: Do NOT assign to ret — strlcpy returns source length (not 0),
+which would propagate a non-zero return from rootfs_cmd_setup causing
+early-ramdisk-init to exit with EINVAL and a kernel panic.
+
+Change-Id: I08464583ccf13ebc1761b386b656f7fa49355028
+---
+ src/init/init.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/src/init/init.c b/src/init/init.c
+index c0e4727..9ffbdaf 100644
+--- a/src/init/init.c
++++ b/src/init/init.c
+@@ -347,6 +347,15 @@ static int rootfs_cmd_setup(struct cmd_params *cmd)
+ 		}
+ 		if (!strcmp(param, slot_str) && val)
+ 			ret = strlcpy(cmd->slot_suffix, val, strlen(val) + 1);
++		/* Fallback: sa8797-ride-sx passes slot as systemd.setenv=SLOT_SUFFIX=_a */
++		if (!strcmp(param, "systemd.setenv") && val && !cmd->slot_suffix[0]) {
++			const char *sp = strstr(val, "SLOT_SUFFIX=_");
++			if (sp) {
++				char s[3] = {'_', sp[13], '\0'};
++				if (s[1] == 'a' || s[1] == 'b')
++					strlcpy(cmd->slot_suffix, s, sizeof(s));
++			}
++		}
+ 		if (!strcmp(param, "ro")) {
+ 			cmd->rootfs.flag |= MS_RDONLY;
+ 		}
+-- 
+2.34.1
