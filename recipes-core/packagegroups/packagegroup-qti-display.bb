@@ -28,3 +28,13 @@ RDEPENDS:${PN}:remove:gen5 = "display-commonsys-intf-linux"
 RDEPENDS:${PN}:remove:qti-dpk = "wayland-ivi-extension"
 RDEPENDS:${PN}:append:qti-dpk = " weston-udev"
 RDEPENDS:${PN}:remove:qti-dpk = "weston-sdm-extension"
+
+# =============================================================================
+# LY.AU.0.3.0 wrynose porting exclusions
+# NOTE: This section will be removed once the blocked recipes are unblocked.
+# =============================================================================
+# display-hal-linux/weston-sdm-extension: kernel display drivers not in linux-qcom-next
+# wayland-ivi-extension: RPROVIDES conflict / not needed on gen5
+# weston-examples: not in wrynose layer set
+RDEPENDS:${PN}:remove:gen5 += "display-hal-linux weston-sdm-extension wayland-ivi-extension weston-examples"
+RDEPENDS:${PN}:remove = "display-hal-linux display-hal-linux-dev"

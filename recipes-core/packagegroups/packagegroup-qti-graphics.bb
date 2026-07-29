@@ -17,3 +17,10 @@ RDEPENDS:${PN} += "\
     vulkan-loader \
     auto-gfx-app \
     "
+
+# =============================================================================
+# LY.AU.0.3.0 wrynose porting exclusions
+# NOTE: This section will be removed once the blocked recipes are unblocked.
+# =============================================================================
+# ksyncdlkm: dma_fence_ops API removed in kernel 6.3+; patch 0002 context mismatch
+RDEPENDS:${PN}:remove = "ksyncdlkm"

@@ -20,9 +20,10 @@ do_install:append() {
     install -m 0755 ${S}/vfioiommu.conf -D ${D}${libdir}/modules-load.d/vfioiommu.conf
     install -m 0755 ${S}/appspinctrl.conf -D ${D}${libdir}/modules-load.d/appspinctrl.conf
 
+    # headers_install.sh needs scripts/unifdef absent from kernel build artifacts;
+    # scmioctl.h has no kernel-internal types so plain install suffices.
     install -d -p ${D}${includedir}/uapi/misc
-    cd ${STAGING_KERNEL_BUILDDIR}
-    ${STAGING_KERNEL_DIR}/scripts/headers_install.sh ${S}/scmioctl.h ${D}${includedir}/uapi/misc/scmioctl.h
+    install -m 0644 ${S}/scmioctl.h ${D}${includedir}/uapi/misc/scmioctl.h
 }
 
 FILES:${PN} += "${libdir}/modules-load.d/*"

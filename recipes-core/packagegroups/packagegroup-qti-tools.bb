@@ -38,3 +38,12 @@ RDEPENDS:${PN}:remove = "${@bb.utils.contains('TCMODE', 'external-ubuntu', 'lttn
 
 # headless need exclude lttng related modules
 RDEPENDS:${PN}:remove = "${@bb.utils.contains('DISTRO_NAME', 'headless', 'lttng-modules lttng-tools lttng-ust', '', d)}"
+
+# =============================================================================
+# LY.AU.0.3.0 wrynose porting exclusions
+# NOTE: This section will be removed once the blocked recipes are unblocked.
+# =============================================================================
+# exfat-utils renamed to exfatprogs in wrynose OE upstream
+# rtla: requires kernel source build artifacts (libbpf Makefile.config) not available
+RDEPENDS:${PN}:remove = "exfat-utils rtla"
+RDEPENDS:${PN}:append = " exfatprogs"

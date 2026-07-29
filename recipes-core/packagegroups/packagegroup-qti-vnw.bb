@@ -19,3 +19,10 @@ RDEPENDS:${PN} += "\
     ${@bb.utils.contains('MACHINE_FEATURES', 'qti-umd', 'hsi2s-be', '', d)} \
     "
 
+
+# =============================================================================
+# LY.AU.0.3.0 wrynose porting exclusions
+# NOTE: This section will be removed once the blocked recipes are unblocked.
+# =============================================================================
+# ptp-virtual/avb-utils: source dirs absent in LY.AU.0.3.0 workspace manifest
+RDEPENDS:${PN}:remove = "ptp-virtual avb-utils"

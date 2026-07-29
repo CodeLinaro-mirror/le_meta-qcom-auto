@@ -29,30 +29,28 @@ do_compile[noexec] = "1"
 do_install[depends] += "virtual/kernel:do_shared_workdir"
 
 do_install() {
-   HEADER_INSTALL_TOOL=${STAGING_KERNEL_DIR}/scripts/headers_install.sh
-
-   cd ${STAGING_KERNEL_BUILDDIR}
-
+   # headers_install.sh needs scripts/unifdef absent from kernel build artifacts;
+   # these headers have no kernel-internal types so plain install suffices.
    install -d ${D}${includedir}/drm
    for h in ${DRM_UAPI_HEADERS}; do
-        ${HEADER_INSTALL_TOOL} ${S}/display/$h ${D}${includedir}/$h
+        install -m 0644 ${S}/display/$h ${D}${includedir}/$h
    done
 
    install -d ${D}${includedir}/media
    for h in ${MEDIA_UAPI_HEADERS}; do
-        ${HEADER_INSTALL_TOOL} ${S}/display/$h ${D}${includedir}/$h
+        install -m 0644 ${S}/display/$h ${D}${includedir}/$h
    done
 }
 
 do_install:append:gen5() {
    install -d ${D}${includedir}/display/drm
    for h in ${DRM_UAPI_HEADERS}; do
-        ${HEADER_INSTALL_TOOL} ${S}/display/$h ${D}${includedir}/display/$h
+        install -m 0644 ${S}/display/$h ${D}${includedir}/display/$h
    done
 
    install -d ${D}${includedir}/display/media
    for h in ${MEDIA_UAPI_HEADERS}; do
-        ${HEADER_INSTALL_TOOL} ${S}/display/$h ${D}${includedir}/display/$h
+        install -m 0644 ${S}/display/$h ${D}${includedir}/display/$h
    done
 }
 
