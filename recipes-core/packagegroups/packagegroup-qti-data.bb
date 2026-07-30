@@ -25,8 +25,7 @@ RDEPENDS:${PN} += "\
     phytool \
     vlan \
     strongswan \
-    tcp-wrappers \
-    ${@bb.utils.contains('LAYERSERIES_CORENAMES', 'scarthgap', '', 'netkit-telnet', d)} \
+    ${@bb.utils.contains_any('LAYERSERIES_CORENAMES', 'scarthgap wrynose blacksail', '', 'netkit-telnet', d)} \
     ${@bb.utils.contains('MACHINE_FEATURES', 'qti-hypervisor', '', 'proftpd', d)} \
     ${@bb.utils.contains_any('MACHINE_FEATURES', 'qti-umd', 'setup-qos', '', d)} \
     ${@bb.utils.contains_any('MACHINE_FEATURES', 'qti-umd', 'early-eth', '', d)} \
@@ -43,11 +42,3 @@ RDEPENDS:${PN}:append:sa7255 = " ${@bb.utils.contains_any('MACHINE_FEATURES', 'q
 RDEPENDS:${PN}:remove:sa8650-adas = "netlink-service-infra"
 
 RDEPENDS:${PN}:append:quin-gvm-lemans = " dataeth-dlkm"
-
-# =============================================================================
-# LY.AU.0.3.0 wrynose porting exclusions
-# NOTE: This section will be removed once the blocked recipes are unblocked.
-# =============================================================================
-# vlan/bridge-utils: meta-networking layer not in LY.AU.0.3.0 stack
-# netkit-telnet/tcp-wrappers: removed from wrynose OE upstream
-RDEPENDS:${PN}:remove = "vlan bridge-utils netkit-telnet tcp-wrappers"

@@ -5,7 +5,7 @@ LICENSE = "BSD-3-Clause-Clear"
 LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/BSD-3-Clause-Clear;md5=7a434440b651f4a472ca93716d01033a"
 
 DEPENDS += "hsi2s-interface libuhab"
-SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/hsi2s/.git;protocol=${PROTO};destsuffix=hsi2s;usehead=1"
+SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/hsi2s/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/hsi2s;usehead=1"
 SRCREV = "${AUTOREV}"
 S = "${UNPACKDIR}/vendor/qcom/opensource/hsi2s/be"
 
@@ -15,3 +15,6 @@ USERADD_PACKAGES = "${PN}"
 
 USERADD_PARAM:${PN} = "--no-create-home --shell /bin/false -g vnw vnw"
 GROUPADD_PARAM:${PN} = "vnw;"
+
+# GCC 15.3: incompatible pointer type in Register_cmd_handler callback
+CFLAGS:append = " -Wno-incompatible-pointer-types -Wno-int-conversion"

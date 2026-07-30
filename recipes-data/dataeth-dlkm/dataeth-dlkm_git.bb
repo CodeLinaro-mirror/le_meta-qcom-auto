@@ -5,7 +5,7 @@ LICENSE = "GPL-2.0-only"
 LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/\
 ${LICENSE};md5=801f80980d171dd6425610833a22dbe6"
 
-SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/data-eth/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/data-eth;;usehead=1"
+SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/data-eth/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/data-eth;usehead=1"
 
 SRCREV = "${AUTOREV}"
 

@@ -21,6 +21,8 @@ S = "${UNPACKDIR}/external/open-avb"
 
 inherit systemd pkgconfig useradd autotools-brokensep
 inherit ${@bb.utils.contains('MACHINE_FEATURES', 'qti-umd', 'sleep-notify-service', '', d)}
+# Source uses Makefile directly (no autotools configure)
+do_configure[noexec] = "1"
 # Add non-root user vnw for gptp-daemon.service
 USERADD_PACKAGES = "${PN}"
 
