@@ -92,24 +92,25 @@ merge_dtbos_single () {
     fi
 
     for dtb_file in $dtb_files; do
-        dtbo_matched=""
+        matched_dtbos=""
         for dtbo_file in $dtbo_files; do
             if match_dtb_to_dtbo $dtb_file $dtbo_file; then
-                dtbo_matched="true"
-                dtbo_string=$(basename $dtbo_file)
-                dtbo_string=$(echo "$dtbo_string" | sed -e 's/\.[^.]*$//')
-                out_dtb=${dtbo_string}.dtb
-                # execute the command in verbose mode(-v)
-                fdtoverlay -i $dtb_file -o ${out_dir}/${out_dtb} -v $dtbo_file
-                #exit in case of failure
-                if [ $? -ne 0 ]; then
-                    exit 1
-                fi
+                matched_dtbos="${matched_dtbos} ${dtbo_file}"
             fi
         done
-        if [ -z "$dtbo_matched" ]; then
-            base_name=$(basename $dtb_file)
-            base_dtb_name=$(echo "$base_name" | sed -e 's/\.[^.]*$//')
+
+        base_name=$(basename $dtb_file)
+        base_dtb_name=$(echo "$base_name" | sed -e 's/\.[^.]*$//')
+
+        if [ -n "$matched_dtbos" ]; then
+            out_dtb=${base_dtb_name}_overlay.dtb
+            # execute the command in verbose mode(-v), all matched overlays applied cumulatively
+            fdtoverlay -i $dtb_file -o ${out_dir}/${out_dtb} -v $matched_dtbos
+            #exit in case of failure
+            if [ $? -ne 0 ]; then
+                exit 1
+            fi
+        else
             out_dtb=${base_dtb_name}-overlay.dtb
             cp $dtb_file ${out_dir}/${out_dtb}
         fi

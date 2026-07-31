@@ -5,6 +5,9 @@ LICENSE = "GPL-2.0-only"
 LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/${LICENSE};md5=801f80980d171dd6425610833a22dbe6"
 
 DEPENDS += "bison-native dtc-native virtual/kernel"
+# mm-vfio-devicetree deploys sa8797p-mm-vfio.dtbo (see do_stage_mmvfio_dtbo
+# below); only needed on gen5 where OOT_DTBS references it.
+DEPENDS:append:gen5 = " mm-vfio-devicetree"
 
 SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/safelinux-system-cfg/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/safelinux-system-cfg/devicetree;subpath=devicetree;usehead=1"
 # The gen5 nord patch was generated against QLI-2.0 commit cc2200186 which had a
@@ -47,6 +50,20 @@ do_compile() {
     rm -f "${OOT_LINK}" "${OOT_INC_LINK}"
 }
 
+do_stage_mmvfio_dtbo() {
+    :
+}
+do_stage_mmvfio_dtbo:gen5() {
+    local mmvfio_dtbo="${DEPLOY_DIR_IMAGE}/build-artifacts/techpack-dtbs/nord-ride-mm-vfio.dtbo"
+    if [ -f "$mmvfio_dtbo" ]; then
+        install -m 0644 "$mmvfio_dtbo" "${S}/"
+    else
+        bbnote "nord-ride-mm-vfio.dtbo not found under ${DEPLOY_DIR_IMAGE}/build-artifacts/techpack-dtbs (skipping)"
+    fi
+}
+do_stage_mmvfio_dtbo[depends] += "${@bb.utils.contains('OVERRIDES', 'gen5', 'mm-vfio-devicetree:do_deploy', '', d)}"
+addtask do_stage_mmvfio_dtbo after do_compile before do_merge_dtb
+
 do_merge_dtb() {
     if [ -z "${KERNEL_BASE_DTB}" ]; then
         bbnote "KERNEL_BASE_DTB is empty; skipping do_merge_dtb"
@@ -83,11 +100,18 @@ do_merge_dtb() {
         bbfatal "Base DTB ${KERNEL_BASE_DTB} not found under ${DEPLOY_DIR_IMAGE}"
     fi
 
+    # Stage only KERNEL_BASE_DTB, not the whole shared deploy dir: merge_dtbos_single
+    # globs every *.dtb* in its dtb_dir arg, and DEPLOY_DIR_IMAGE also holds sibling
+    # dtbs (e.g. nord-evk*.dtb) that can share a compatible string with an OOT_DTBS
+    # overlay (e.g. "qcom,sa8797p") without actually containing the nodes it touches.
+    install -d "${UNPACKDIR}/basedtbdir"
+    install -m 0644 "${dtb_dir}/${KERNEL_BASE_DTB}" "${UNPACKDIR}/basedtbdir/"
+
     bbnote "Merging base DTB: ${dtb_dir}/${KERNEL_BASE_DTB}"
     bbnote "Using DTBOs from: ${UNPACKDIR}/dtbodir"
     bbnote "Output dir: ${OVERLAYED_OOT_DTBS_OUT}"
 
-    merge_dtbos_single "${dtb_dir}" "${UNPACKDIR}/dtbodir" "${OVERLAYED_OOT_DTBS_OUT}"
+    merge_dtbos_single "${UNPACKDIR}/basedtbdir" "${UNPACKDIR}/dtbodir" "${OVERLAYED_OOT_DTBS_OUT}"
 }
 do_merge_dtb[depends] += "virtual/kernel:do_deploy"
 addtask do_merge_dtb after do_compile before do_install
