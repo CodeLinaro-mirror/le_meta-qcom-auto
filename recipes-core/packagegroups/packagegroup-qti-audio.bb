@@ -56,11 +56,7 @@ RDEPENDS:${PN}:append:gen5 = " \
 # LY.AU.0.3.0 wrynose porting exclusions
 # NOTE: This section will be removed once the blocked recipes are unblocked.
 # =============================================================================
-# ar-audiodlkm: source at vendor/qcom/opensource/audio-kernel-ar has no .git
-# agm sub-packages: meta-qti-automotive layer not present in LY.AU.0.3.0 workspace
-# AUDIOREACH stack (ar-dev-plugin etc.): masked, no sstate available in this workspace
-# audiolite-dlkm: kernel 7.x API incompatible — deferred to kernel team
-RDEPENDS:${PN}:remove = "ar-audiodlkm agm agm-client agm-alsa-plugin agm-server agm-sndparser"
-RDEPENDS:${PN}:remove += "ar-dev-plugin ar2-audio-service ar-audio-init-service"
-RDEPENDS:${PN}:remove += "audio-device-manager audioreach-conf ar-audio-service-utils"
+# AUDIOREACH stack: masked — no sstate available (gen5 qti-audio-ar active path)
+RDEPENDS:${PN}:remove = "agm ar-dev-plugin ar2-audio-service ar-audio-init-service audio-device-manager audioreach-conf"
+# audiolite-dlkm: kernel 7.x DLKM API — deferred to kernel team (gen5 qti-audio-aw active path)
 AUDIOLITE_RDEPENDS:remove = "audiolite-dlkm"
