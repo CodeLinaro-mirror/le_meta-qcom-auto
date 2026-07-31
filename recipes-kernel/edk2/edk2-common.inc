@@ -1,4 +1,4 @@
-DEPENDS += "util-linux-native"
+DEPENDS += "util-linux-native lld-native"
 
 PROVIDES = "virtual/bootloader"
 
