@@ -1,0 +1,59 @@
+From ceedf21844a36f81748df155c4fd41ab044e5739 Mon Sep 17 00:00:00 2001
+From: Venkatakrishnaiah Pari <vpari@qti.qualcomm.com>
+Date: Tue, 4 Aug 2026 14:10:03 -0700
+Subject: [PATCH] QCLINUX:iommu:arm-smmu: protect the dereference of adreno 
+ priv
+
+Instead of returning ENIVAL, protect the dereference
+of adreno priv after checking if its NULL. In Auto,
+currently GPU is a vfio device, so we are not setting
+the priv data for GPU. So instead of returning EINVAL,
+check if its NULL and then proceed.
+
+Signed-off-by: Venkatakrishnaiah Pari <vpari@qti.qualcomm.com>
+---
+ drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c | 28 ++++++++++++----------
+ 1 file changed, 15 insertions(+), 13 deletions(-)
+
+diff --git a/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c b/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c
+index edd41b5a3b6a..5d63e29d6759 100644
+--- a/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c
++++ b/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c
+@@ -374,19 +374,21 @@ static int qcom_adreno_smmu_init_context(struct arm_smmu_domain *smmu_domain,
+ 	 */
+ 
+ 	priv = dev_get_drvdata(dev);
+-	priv->cookie = smmu_domain;
+-	priv->get_ttbr1_cfg = qcom_adreno_smmu_get_ttbr1_cfg;
+-	priv->set_ttbr0_cfg = qcom_adreno_smmu_set_ttbr0_cfg;
+-	priv->get_fault_info = qcom_adreno_smmu_get_fault_info;
+-	priv->set_stall = qcom_adreno_smmu_set_stall;
+-	priv->set_prr_bit = NULL;
+-	priv->set_prr_addr = NULL;
+-
+-	if (of_device_is_compatible(np, "qcom,smmu-500") &&
+-	    !of_device_is_compatible(np, "qcom,sm8250-smmu-500") &&
+-	    of_device_is_compatible(np, "qcom,adreno-smmu")) {
+-		priv->set_prr_bit = qcom_adreno_smmu_set_prr_bit;
+-		priv->set_prr_addr = qcom_adreno_smmu_set_prr_addr;
++	if (priv) { /*Skip if priv is NULL*/
++		priv->cookie = smmu_domain;
++		priv->get_ttbr1_cfg = qcom_adreno_smmu_get_ttbr1_cfg;
++		priv->set_ttbr0_cfg = qcom_adreno_smmu_set_ttbr0_cfg;
++		priv->get_fault_info = qcom_adreno_smmu_get_fault_info;
++		priv->set_stall = qcom_adreno_smmu_set_stall;
++		priv->set_prr_bit = NULL;
++		priv->set_prr_addr = NULL;
++
++		if (of_device_is_compatible(np, "qcom,smmu-500") &&
++			!of_device_is_compatible(np, "qcom,sm8250-smmu-500") &&
++			of_device_is_compatible(np, "qcom,adreno-smmu")) {
++			priv->set_prr_bit = qcom_adreno_smmu_set_prr_bit;
++			priv->set_prr_addr = qcom_adreno_smmu_set_prr_addr;
++		}
+ 	}
+ 
+ 	return 0;
+-- 
+2.34.1
+

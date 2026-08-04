@@ -13,6 +13,7 @@ SRC_URI:append = " \
     file://configs/bsp-additions.cfg \
     file://files/0001-qcom_scm_addon-Enable-qcom-scm-addons.patch \
     file://files/0002-pmdomain-core-Skip-sync_state-when-pd_ignore_unused-.patch \
+    file://files/0001-QCLINUX-iommu-arm-smmu-protect-the-dereference-of-ad.patch \
 "
 
 # Pin to a specific commit once you know it
