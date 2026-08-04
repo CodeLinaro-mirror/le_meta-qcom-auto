@@ -1,7 +1,9 @@
 SUMMARY = "Core platform image"
 DESCRIPTION = "Build the full core image depend on different parameters"
 
-DEPENDS += "mkbootimg-native"
+DEPENDS += "mkbootimg-native edk2"
+
+EXTRA_IMAGEDEPENDS += "edk2"
 
 inherit core-image
 
