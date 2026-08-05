@@ -14,18 +14,18 @@ Signed-off-by: Lei wang <leiwan@qti.qualcomm.com>
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/src/shutdown/shutdown.c b/src/shutdown/shutdown.c
-index 7ad9930677..eeb1c81491 100644
+index ff68f9e2727..6cc04504792 100644
 --- a/src/shutdown/shutdown.c
 +++ b/src/shutdown/shutdown.c
-@@ -40,7 +40,7 @@
+@@ -50,7 +50,7 @@
  #include "watchdog.h"
  
  #define SYNC_PROGRESS_ATTEMPTS 3
 -#define SYNC_TIMEOUT_USEC (10*USEC_PER_SEC)
 +#define SYNC_TIMEOUT_USEC (5*USEC_PER_SEC)
  
- static char* arg_verb;
- static uint8_t arg_exit_code;
+ static const char *arg_verb = NULL;
+ static uint8_t arg_exit_code = 0;
 -- 
 2.34.1
 

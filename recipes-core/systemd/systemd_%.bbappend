@@ -1,9 +1,6 @@
 FILESBBAPPENDPATH := "${THISDIR}"
 FILESEXTRAPATHS =. "${FILESBBAPPENDPATH}/${BP}:${FILESBBAPPENDPATH}/${BPN}:"
 
-# Add glib-2.0 dependency to support g_strlcat
-DEPENDS += "glib-2.0"
-
 SRC_URI:append = " \
     file://0001-systemd-avoid-active-seat-change-to-NULL.patch \
     file://60-misc.rules \
@@ -66,16 +63,10 @@ PACKAGECONFIG:append:sa8775 = " coredump"
 PACKAGECONFIG:append:gen5 = " coredump"
 PACKAGECONFIG:append:sa7255 = " coredump"
 
-# Use glib-2.0 for g_strlcat
-CFLAGS:append = " \
-    -fPIC \
-    -DUSE_GLIB \
-    -I${STAGING_INCDIR}/glib-2.0 \
-    -I${STAGING_LIBDIR}/glib-2.0/include \
-    -I${STAGING_LIBDIR}/glib-2.0/glib \
-"
-
-LDFLAGS:append = " -lglib-2.0"
+# slotselect patch (sa81x5) uses strlcat, provided natively by glibc >= 2.38 (2.43 in use).
+# Previously glib-2.0 (-DUSE_GLIB / g_strlcat) supplied it, but that global -lglib-2.0
+# polluted systemd-boot's static-pie linker probe (src/boot) and broke do_configure.
+CFLAGS:append = " -fPIC"
 
 # In aarch64 targets systemd is not booting with -finline-functions -finline-limit=64 optimizations
 # So temporarily revert to default optimizations for systemd.
@@ -119,8 +110,14 @@ do_install:append () {
     fi
 
     # Create by-partlabel symlink for la/lv/bluetooth/modem/dsp devices in disksymlink-service service, remove these operations from plain udev rules
-    sed -i 's#ENV{ID_PART_ENTRY_SCHEME}=="gpt", ENV{ID_PART_ENTRY_NAME}=="?\*", SYMLINK+="disk/by-partlabel/$env{ID_PART_ENTRY_NAME}"#ENV{ID_PART_ENTRY_SCHEME}=="gpt", ENV{ID_PART_ENTRY_NAME}=="?\*", ENV{ID_PART_ENTRY_NAME}!="la_*", ENV{ID_PART_ENTRY_NAME}!="lv_*", ENV{ID_PART_ENTRY_NAME}!="bluetooth*", ENV{ID_PART_ENTRY_NAME}!="modem*", ENV{ID_PART_ENTRY_NAME}!="dsp*", SYMLINK+="disk/by-partlabel/$env{ID_PART_ENTRY_NAME}"#' ${D}${rootlibexecdir}/udev/rules.d/60-persistent-storage.rules
+    # Note: udev rules live under ${nonarch_base_libdir}/udev in systemd 259.5;
+    # the old ${rootlibexecdir} no longer resolves (var dropped upstream), so use nonarch_base_libdir.
+    sed -i 's#ENV{ID_PART_ENTRY_SCHEME}=="gpt", ENV{ID_PART_ENTRY_NAME}=="?\*", SYMLINK+="disk/by-partlabel/$env{ID_PART_ENTRY_NAME}"#ENV{ID_PART_ENTRY_SCHEME}=="gpt", ENV{ID_PART_ENTRY_NAME}=="?\*", ENV{ID_PART_ENTRY_NAME}!="la_*", ENV{ID_PART_ENTRY_NAME}!="lv_*", ENV{ID_PART_ENTRY_NAME}!="bluetooth*", ENV{ID_PART_ENTRY_NAME}!="modem*", ENV{ID_PART_ENTRY_NAME}!="dsp*", SYMLINK+="disk/by-partlabel/$env{ID_PART_ENTRY_NAME}"#' ${D}${nonarch_base_libdir}/udev/rules.d/60-persistent-storage.rules
 
     # Mask serial-getty on hvc0 to prevent auto getty on hypervisor console
     ln -sf /dev/null ${D}${sysconfdir}/systemd/system/serial-getty@hvc0.service
+
+    # Set OOMScoreAdjust=0 on serial-getty (moved from systemd-serialgetty.bbappend:
+    # serial-getty@.service is installed by this main systemd package, not systemd-serialgetty)
+    sed -i -e '/SendSIGHUP=yes/a OOMScoreAdjust=0' ${D}${systemd_system_unitdir}/serial-getty@.service
 }

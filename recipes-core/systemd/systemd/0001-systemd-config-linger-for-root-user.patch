@@ -17,12 +17,11 @@ diff --git a/units/systemd-user-sessions.service.in b/units/systemd-user-session
 index adca848c2a..a3ab12945f 100644
 --- a/units/systemd-user-sessions.service.in
 +++ b/units/systemd-user-sessions.service.in
-@@ -16,4 +16,5 @@ After=remote-fs.target nss-user-lookup.target network.target home.mount
- Type=oneshot
+@@ -16,3 +16,4 @@ Type=oneshot
  RemainAfterExit=yes
- ExecStart={{ROOTLIBEXECDIR}}/systemd-user-sessions start
+ ExecStart={{LIBEXECDIR}}/systemd-user-sessions start
 +ExecStartPost=/bin/loginctl enable-linger root
- ExecStop={{ROOTLIBEXECDIR}}/systemd-user-sessions stop
+ ExecStop={{LIBEXECDIR}}/systemd-user-sessions stop
 --
 2.25.1
 
