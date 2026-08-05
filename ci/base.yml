@@ -127,10 +127,6 @@ local_conf_header:
     BBMASK:append = " /meta-qcom-auto/recipes-support/gflags/gflags_2.2.2.bbappend"
     BBMASK:append = " /meta-qcom-auto-extras/recipes-products/images/qcom-automotive-image.bbappend"
     # bbappends with base recipe present — masked because patch may not apply cleanly
-    # iperf3: 0001-fix-sigfault + 0002-udp-gso-gro are post-release fixes (Dec 2024, Sep 2025),
-    # not included in the iperf3 3.21 release tag used by wrynose OE. Hunks fail against 3.21 context.
-    # TODO: forward-port patches to 3.21 source before re-enabling.
-    BBMASK:append = " /meta-qcom-auto/recipes-data/iperf3/"
     BBMASK:append = " /meta-qcom-auto/recipes-data/proftpd/proftpd_%.bbappend"
     BBMASK:append = " /meta-qcom-auto/recipes-devtools/clang/clang_git.bbappend"
     BBMASK:append = " /meta-qcom-auto/recipes-devtools/clang/llvm-project-source.bbappend"
