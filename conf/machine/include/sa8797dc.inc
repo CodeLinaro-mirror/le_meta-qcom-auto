@@ -37,7 +37,7 @@ IMAGE_INSTALL += "\
     openssh-sftp-server \
     "
 
-IMAGE_FEATURES += "ssh-server-openssh debug-tweaks"
+IMAGE_FEATURES += "ssh-server-openssh allow-empty-password allow-root-login empty-root-password"
 
 EXTRA_IMAGEDEPENDS += "qcom-image-boot:do_sign_boot_img"
 

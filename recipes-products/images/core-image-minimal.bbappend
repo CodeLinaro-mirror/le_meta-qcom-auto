@@ -5,7 +5,7 @@ IMAGE_INSTALL += "\
 
 EXTRA_IMAGECMD:ext4 = "-i 4096 -b 4096"
 
-IMAGE_FEATURES:append = " ${@bb.utils.contains('VARIANT', 'debug', 'debug-tweaks ssh-server-openssh', '', d)}"
+IMAGE_FEATURES:append = " ${@bb.utils.contains('VARIANT', 'debug', 'allow-empty-password allow-root-login empty-root-password ssh-server-openssh', '', d)}"
 
 # Set up for handling the generation of the /usr image
 # partition...
