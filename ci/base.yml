@@ -131,7 +131,6 @@ local_conf_header:
     # not included in the iperf3 3.21 release tag used by wrynose OE. Hunks fail against 3.21 context.
     # TODO: forward-port patches to 3.21 source before re-enabling.
     BBMASK:append = " /meta-qcom-auto/recipes-data/iperf3/"
-    BBMASK:append = " /meta-qcom-auto/recipes-core/glibc/glibc_%.bbappend"
     BBMASK:append = " /meta-qcom-auto/recipes-core/systemd/systemd_%.bbappend"
     BBMASK:append = " /meta-qcom-auto/recipes-core/systemd/systemd-conf_%.bbappend"
     BBMASK:append = " /meta-qcom-auto/recipes-core/systemd/systemd-serialgetty.bbappend"
