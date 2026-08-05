@@ -113,7 +113,6 @@ local_conf_header:
     BBMASK:remove = " /meta-qcom/recipes-devtools/"
     BBMASK:remove = " /meta-qcom/recipes-bsp/"
     BBMASK:append = " /layers/meta-clang/recipes-core/busybox/"
-    BBMASK:append = " /layers/meta-clang/recipes-devtools/rust/rust-llvm_%.bbappend"
     BBMASK:append = " /meta-qcom/dynamic-layers/openembedded-layer/recipes-multimedia/imsdk/"
     BBMASK:append = " /meta-qcom/dynamic-layers/openembedded-layer/recipes-security/"
     BBMASK:append = " /meta-qcom/recipes-graphics/wayland/weston_15.0.0.bbappend"
@@ -127,8 +126,6 @@ local_conf_header:
     BBMASK:append = " /meta-qcom-auto/recipes-support/gflags/gflags_2.2.2.bbappend"
     BBMASK:append = " /meta-qcom-auto-extras/recipes-products/images/qcom-automotive-image.bbappend"
     # bbappends with base recipe present — masked because patch may not apply cleanly
-    BBMASK:append = " /meta-qcom-auto/recipes-devtools/clang/clang_git.bbappend"
-    BBMASK:append = " /meta-qcom-auto/recipes-devtools/clang/llvm-project-source.bbappend"
     # linux-qcom-custom_6.6.bb: SRCREV unresolvable at parse time — must stay masked
     BBMASK:append = " /meta-qcom-auto/recipes-kernel/linux/linux-qcom-custom_6.6.bb"
     BBMASK:append = " /meta-qcom-auto-extras/recipes-products/images/machine-image-lagvm.bbappend"
