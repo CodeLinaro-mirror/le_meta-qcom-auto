@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/siemens/kas/master/kas/schema-kas.json
+
+# Pointer file only - no content is duplicated here. shikra-evk-auto.yml
+# lives in the meta-qcom-auto repo, while meta-qcom/ci/qcom-distro.yml lives
+# in the meta-qcom repo; kas's colon-syntax (file1.yml:file2.yml) refuses to
+# merge config files that live in different git repositories, so the real
+# meta-qcom/ci/qcom-distro.yml can't be colon-appended directly. This file
+# resolves it in place via kas's repo: include instead, so it can be
+# colon-appended to any meta-qcom-auto/ci/*.yml file, matching stock
+# meta-qcom's own colon-merge workflow:
+#   kas shell meta-qcom/ci/shikra.yml:meta-qcom/ci/qcom-distro.yml
+# becomes:
+#   kas shell meta-qcom-auto/ci/shikra-evk-auto.yml:meta-qcom-auto/ci/qcom-distro.yml
+# Any future upstream change to meta-qcom/ci/qcom-distro.yml flows through
+# automatically - nothing is forked or copied.
+header:
+  version: 14
+  includes:
+  - repo: meta-qcom
+    file: ci/qcom-distro.yml
