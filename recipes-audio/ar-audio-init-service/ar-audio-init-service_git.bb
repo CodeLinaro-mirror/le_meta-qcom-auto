@@ -30,3 +30,6 @@ SOLIBS = ".so"
 FILES_SOLIBSDEV = ""
 
 RDEPENDS:${PN} += "tinyalsa-new"
+
+# gcc15 / C23: string.h functions (strrchr, memcpy, strlen, memset, strlcpy) not implicitly declared
+CFLAGS:append = " -Wno-implicit-function-declaration -Wno-incompatible-pointer-types -Wno-int-conversion -D_GNU_SOURCE"

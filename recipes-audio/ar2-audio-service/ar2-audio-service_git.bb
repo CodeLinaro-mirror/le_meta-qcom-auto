@@ -16,6 +16,9 @@ inherit cmake pkgconfig systemd
 
 CFLAGS += "-I${STAGING_INCDIR}/${PREFERRED_PROVIDER_virtual/kernel}"
 
+# gcc15: implicit decls, incompatible pointer/int conversion are now errors
+CFLAGS:append = " -Wno-implicit-function-declaration -Wno-incompatible-pointer-types -Wno-int-conversion -D_GNU_SOURCE"
+
 do_install:append() {
     if ${@bb.utils.contains('DISTRO_FEATURES', 'systemd', 'true', 'false', d)}; then
         install -m 0644 ${S}/ar-audio-service.service -D ${D}${systemd_system_unitdir}/ar-audio-service.service

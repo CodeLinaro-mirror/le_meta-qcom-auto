@@ -21,8 +21,11 @@ CFLAGS += "\
    -I${STAGING_INCDIR}/ \
    -I${STAGING_INCDIR}/uapi \
    -I${STAGING_INCDIR}/${PREFERRED_PROVIDER_virtual/kernel} \
-   -I${STAGING_INCDIR}/agm/plugins/tinyalsa/test  \
+   -I${STAGING_INCDIR}/agm/plugins/tinyalsa/test \
 "
+
+# gcc15: implicit decls, incompatible pointer/int conversion are now errors
+CFLAGS:append = " -Wno-implicit-function-declaration -Wno-incompatible-pointer-types -Wno-int-conversion -D_GNU_SOURCE"
 EXTRA_OECONF += "\
     --with-glib \
 "

@@ -15,6 +15,9 @@ inherit cmake pkgconfig
 
 CFLAGS += "-I${STAGING_INCDIR}/${PREFERRED_PROVIDER_virtual/kernel}"
 
+# gcc15: implicit decls, incompatible pointer/int conversion are now errors
+CFLAGS:append = " -std=gnu11 -Wno-implicit-function-declaration -Wno-incompatible-pointer-types -Wno-int-conversion -D_GNU_SOURCE"
+
 do_install:append() {
     install -d ${D}${sysconfdir}/sciu_cfg
     install -m 0644 ${S}/libs/xml_parser/configs/card_defs.xml ${D}${sysconfdir}/sciu_cfg/card_defs.xml

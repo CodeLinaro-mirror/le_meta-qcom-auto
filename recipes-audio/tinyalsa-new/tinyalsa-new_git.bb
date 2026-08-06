@@ -6,7 +6,7 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/${LICENSE};md5=550794465ba0ec53
 DEPENDS += "libcutils"
 
 SRC_URI = "\
-    git://git.codelinaro.org/clo/la/platform/external/tinyalsa_new;protocol=https;branch=aosp-new/master \
+    git://git.codelinaro.org/clo/la/platform/external/tinyalsa_new;protocol=https;nobranch=1 \
     file://0001-tinyalsa-Fix-interger-comparison-warning.patch \
     file://0001-Enable-TinyAlsa-plugin-support.patch \
     file://0001-Call-pcm_start-for-NON-MMAP-mode.patch \
@@ -23,3 +23,8 @@ SRC_URI = "\
 SRCREV = "f78ed25aced2dfea743867b8205a787bfb091340"
 
 inherit cmake pkgconfig
+
+EXTRA_OECMAKE:append = " -DCMAKE_POLICY_VERSION_MINIMUM=3.5"
+
+ERROR_QA:remove:pn-tinyalsa-new = "patch-status"
+WARN_QA:append:pn-tinyalsa-new = " patch-status"

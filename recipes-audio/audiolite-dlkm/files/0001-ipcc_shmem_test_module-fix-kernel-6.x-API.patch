@@ -1,0 +1,54 @@
+From 31e7d61bbe0eb6431de2060ceaf18cd2c49e5349 Mon Sep 17 00:00:00 2001
+From: Xiaoxiang Yang <xiaoxian@qti.qualcomm.com>
+Date: Tue, 4 Aug 2026 09:15:00 +0800
+Subject: [PATCH] ipcc_shmem_test_module: fix kernel 6.x API incompatibilities
+
+Two kernel 6.x API changes break the build:
+
+1. MODULE_IMPORT_NS() now requires a string literal argument since
+   kernel 5.17 (commit 8651ec01da). The bare symbol DMA_BUF triggers
+   a static_assert failure in MODULE_INFO().
+
+2. platform_driver.remove() return type changed from int to void in
+   kernel 6.3 (commit 0edb555a65). ipc_shmem_irq_remove() must return
+   void to match the new function pointer type.
+
+Change-Id: Ide7650985a82b55323488cdebd21305dcb940c41
+Signed-off-by: Xiaoxiang Yang <xiaoxian@qti.qualcomm.com>
+---
+ ipcc_shmem_test_module.c | 5 ++---
+ 1 file changed, 2 insertions(+), 3 deletions(-)
+
+diff --git a/ipcc_shmem_test_module.c b/ipcc_shmem_test_module.c
+index 0437274..1155d1f 100644
+--- a/ipcc_shmem_test_module.c
++++ b/ipcc_shmem_test_module.c
+@@ -864,7 +864,7 @@ debugfs_dir_err:
+     return ret;
+ }
+ 
+-static int ipc_shmem_irq_remove(struct platform_device *pdev)
++static void ipc_shmem_irq_remove(struct platform_device *pdev)
+ {
+     struct ipc_shmem_irq_data *data = platform_get_drvdata(pdev);
+ 
+@@ -873,7 +873,6 @@ static int ipc_shmem_irq_remove(struct platform_device *pdev)
+     ipc_shmem_disable(data);
+     dev_info(&pdev->dev, "Removed %s\n", data->name);
+ 
+-    return 0;
+ }
+ 
+ static const struct of_device_id ipc_shmem_irq_of_match[] = {
+@@ -1323,7 +1322,7 @@ static void ipc_shmem_exit(void)
+     return;
+ }
+ 
+-MODULE_IMPORT_NS(DMA_BUF);
++MODULE_IMPORT_NS("DMA_BUF");
+ MODULE_PARM_DESC(ipc_from_user, "Access IPCC from user space");
+ module_param(ipc_from_user,int,S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
+ MODULE_PARM_DESC(cache_mode_g, "Cache mode for Carved-out memory");
+-- 
+2.34.1
+

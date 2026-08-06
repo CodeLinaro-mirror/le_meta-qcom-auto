@@ -15,3 +15,9 @@ inherit cmake pkgconfig
 
 SOLIBS = ".so"
 FILES_SOLIBSDEV = ""
+
+CFLAGS:append = " -I${UNPACKDIR}/vendor/qcom/opensource/agm/service/inc/public"
+CXXFLAGS:append = " -I${UNPACKDIR}/vendor/qcom/opensource/agm/service/inc/public"
+
+# gcc15: implicit decls, incompatible pointer/int conversion are now errors
+CFLAGS:append = " -std=gnu11 -Wno-implicit-function-declaration -Wno-incompatible-pointer-types -Wno-int-conversion -D_GNU_SOURCE"

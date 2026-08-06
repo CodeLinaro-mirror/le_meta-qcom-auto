@@ -1,0 +1,62 @@
+From 031aa4d8e3e672c62e27921c75d14c41e4c760f7 Mon Sep 17 00:00:00 2001
+From: Xiaoxiang Yang <xiaoxian@qti.qualcomm.com>
+Date: Tue, 4 Aug 2026 09:15:00 +0800
+Subject: [PATCH] agm: tinyalsa/test: drop agmplay/agmcap binaries and acdbdata
+ include
+
+Two issues under the GCC 15 (C23) cross toolchain:
+
+1. agmplay.c and agmcap.c declare a local variable named 'close', which
+   clashes with the fcntl.h __REDIRECT_NTH(close, ...) declaration and is
+   now a hard error ("'close' redeclared as different kind of symbol").
+   These are optional test binaries; drop them (keep libagmmixer.la, which
+   ar-audio-init-service depends on).
+
+2. AM_CFLAGS pulls in "-I${includedir}/acdbdata", which resolves to the
+   host system include directory and trips -Werror=poison-system-directories
+   during cross compilation. Remove the acdbdata include from the test
+   Makefile since the test binaries are being dropped anyway.
+
+Upstream-Status: Inappropriate [porting - GCC 15 test build]
+
+Change-Id: Ide7650985a82b55323488cdebd21305dcb940e40
+Signed-off-by: Xiaoxiang Yang <xiaoxian@qti.qualcomm.com>
+---
+ plugins/tinyalsa/test/Makefile.am | 14 +-------------
+ 1 file changed, 1 insertion(+), 13 deletions(-)
+
+diff --git a/plugins/tinyalsa/test/Makefile.am b/plugins/tinyalsa/test/Makefile.am
+index f6f59eb..93d906e 100644
+--- a/plugins/tinyalsa/test/Makefile.am
++++ b/plugins/tinyalsa/test/Makefile.am
+@@ -3,7 +3,7 @@ pkgconfig_DATA = agmtest.pc
+ EXTRA_DIST = $(pkgconfig_DATA)
+ 
+ AM_CFLAGS = -Wno-unused-parameter -Wno-unused-result
+-AM_CFLAGS += -I${includedir}/acdbdata -I$(top_srcdir)/service/inc/public
++AM_CFLAGS += -I$(top_srcdir)/service/inc/public
+ AM_CFLAGS += $(GLIB_CFLAGS) -include glib.h @KVH2XML_CFLAGS@
+ 
+ if USE_G_STR_FUNC
+@@ -17,18 +17,6 @@ libagmmixer_la_CFLAGS = $(AM_CFLAGS)
+ libagmmixer_la_LDFLAGS   = -avoid-version -shared
+ libagmmixer_la_LIBADD   = -ltinyalsa -ldl -lexpat @GLIB_LIBS@
+ 
+-bin_PROGRAMS = agmplay
+-agmplay_SOURCES  = agmplay.c
+-
+-agmplay_la_CFLAGS = $(AM_CFLAGS)
+-agmplay_LDADD    = -ltinyalsa libagmmixer.la
+-
+-bin_PROGRAMS += agmcap
+-agmcap_SOURCES  = agmcap.c
+-
+-agmcap_la_CFLAGS = $(AM_CFLAGS)
+-agmcap_LDADD    = -ltinyalsa libagmmixer.la
+-
+ # install xml files under /etc
+ root_etcdir      = "/etc"
+ root_etc_SCRIPTS = backend_conf.xml
+-- 
+2.34.1
+

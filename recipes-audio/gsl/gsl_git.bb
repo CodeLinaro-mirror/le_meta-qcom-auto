@@ -20,4 +20,4 @@ SOLIBS = ".so"
 FILES_SOLIBSDEV = ""
 
 # GCC 15.3: discarded qualifiers and incompatible pointer types
-CFLAGS:append = " -Wno-discarded-qualifiers -Wno-incompatible-pointer-types"
+CFLAGS:append = " -Wno-int-conversion -Wno-incompatible-pointer-types -Wno-implicit-function-declaration -Wno-discarded-qualifiers -D_GNU_SOURCE"

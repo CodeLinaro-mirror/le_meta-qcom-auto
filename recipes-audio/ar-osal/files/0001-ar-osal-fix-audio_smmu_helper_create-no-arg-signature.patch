@@ -1,0 +1,45 @@
+From 8ca73a9f2c6d073e73d93180348cb1b3214e4c9a Mon Sep 17 00:00:00 2001
+From: Xiaoxiang Yang <xiaoxian@qti.qualcomm.com>
+Date: Tue, 4 Aug 2026 09:15:00 +0800
+Subject: [PATCH] ar-osal: fix audio_smmu_helper_create() no-arg signature
+ mismatch
+
+The lnx.2.0 header declares audio_smmu_helper_create() with no parameters,
+but the LY platform source calls it with NULL (lnx.1.0 style). GCC 15
+(C23 default) makes this a hard error.
+
+Source: QLI-2.0-AUTO reference port.
+
+Upstream-Status: Inappropriate [porting - bridging lnx.1.0/lnx.2.0 API divergence]
+
+Change-Id: Ide7650985a82b55323488cdebd21305dcb940b40
+Signed-off-by: Xiaoxiang Yang <xiaoxian@qti.qualcomm.com>
+---
+ platform/ly/src/ar_osal_shmem.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/platform/ly/src/ar_osal_shmem.c b/platform/ly/src/ar_osal_shmem.c
+index 889e90b..27bb7d2 100644
+--- a/platform/ly/src/ar_osal_shmem.c
++++ b/platform/ly/src/ar_osal_shmem.c
+@@ -227,7 +227,7 @@ int32_t ar_shmem_alloc(_Inout_ ar_shmem_info *info)
+   {
+     total_size = (info->buf_size + AR_OSAL_SHMEM_ALIGNMENT - 1)&~(AR_OSAL_SHMEM_ALIGNMENT - 1);
+ 
+-    asmmu = audio_smmu_helper_create(NULL);
++    asmmu = audio_smmu_helper_create();
+     if (asmmu == NULL)
+     {
+       AR_LOG_ERR(AR_OSAL_SHMEM_LOG_TAG, "audio_smmu_helper_create failed");
+@@ -408,7 +408,7 @@ int32_t ar_shmem_map(_Inout_ ar_shmem_info *info)
+      *and pass it on to the audio smmu helper.
+      */
+ 
+-    asmmu = audio_smmu_helper_create(NULL);
++    asmmu = audio_smmu_helper_create();
+     if (asmmu == NULL)
+     {
+       AR_LOG_ERR(AR_OSAL_SHMEM_LOG_TAG, "audio_smmu_helper_create failed");
+-- 
+2.34.1
+

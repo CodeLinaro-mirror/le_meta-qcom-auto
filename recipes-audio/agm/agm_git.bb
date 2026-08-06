@@ -8,7 +8,9 @@ DEPENDS += "tinyalsa-new tinycompress expat dbus \
     audioreach-conf \
 "
 
+FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
 SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/agm/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/agm;usehead=1"
+SRC_URI:append = " file://0001-agm-tinyalsa-test-drop-agmplay-agmcap-and-acdbdata-i.patch;patchdir=${S}"
 
 SRCREV = "${AUTOREV}"
 
@@ -51,10 +53,9 @@ FILES_SOLIBSDEV = ""
 # Include custom libdir and pkgconfig files in the main and -dev packages
 FILES:${PN} += "/usr/lib/ar/*.so"
 FILES:${PN}-dev += "/usr/lib/ar/pkgconfig /usr/lib/ar/pkgconfig/*.pc"
-# GCC 15.3: pointer type and return type fixes
-CFLAGS:append = " -Wno-deprecated-declarations -Wno-incompatible-pointer-types -Wno-return-type"
 
-# GCC 15.3: deprecated declarations and return type
-
-# GCC 15.3 second pass: return type
+# GCC 15.3: incompatible pointer/int conversion, implicit decls, deprecated
+# -Wno-poison-system-directories remains as a cross-compile safety net.
+CFLAGS:append = " -Wno-int-conversion -Wno-incompatible-pointer-types -Wno-implicit-function-declaration -Wno-deprecated-declarations -Wno-return-type -D_GNU_SOURCE"
+TARGET_CFLAGS:append = " -Wno-poison-system-directories"
 
