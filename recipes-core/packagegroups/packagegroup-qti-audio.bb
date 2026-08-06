@@ -52,11 +52,6 @@ RDEPENDS:${PN}:append:gen5 = " \
     ${@bb.utils.contains('COMBINED_FEATURES', 'qti-audio-ar', '${AUDIOREACH_RDEPENDS}', '', \
     d)} \
 "
-# =============================================================================
-# LY.AU.0.3.0 wrynose porting exclusions
-# NOTE: This section will be removed once the blocked recipes are unblocked.
-# =============================================================================
-# AUDIOREACH stack: masked — no sstate available (gen5 qti-audio-ar active path)
-RDEPENDS:${PN}:remove = "agm ar-dev-plugin ar2-audio-service ar-audio-init-service audio-device-manager audioreach-conf"
-# audiolite-dlkm: kernel 7.x DLKM API — deferred to kernel team (gen5 qti-audio-aw active path)
-AUDIOLITE_RDEPENDS:remove = "audiolite-dlkm"
+
+# below are not in pn-buildlist
+RDEPENDS:${PN}:remove = "agm-client agm-alsa-plugin agm-server agm-sndparser init-audio ar-audiodlkm"
