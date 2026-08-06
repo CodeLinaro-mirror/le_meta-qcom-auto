@@ -53,3 +53,6 @@ SOLIBS = ".so"
 FILES_SOLIBSDEV = ""
 
 FILES:${PN} += "${libdir}/gstreamer-1.0/*.so"
+
+# GCC 15.3: incompatible pointer types in hash table and pool callbacks
+CFLAGS:append = " -Wno-incompatible-pointer-types -Wno-int-conversion -Wno-implicit-function-declaration"
