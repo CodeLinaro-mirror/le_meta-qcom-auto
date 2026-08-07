@@ -6,7 +6,7 @@
 From 76db1cb68d3da19f77d9dad874a6a034059aee1f Mon Sep 17 00:00:00 2001
 From: Xiaoyu Huang <quic_xiahua@quicinc.com>
 Date: Wed, 27 Nov 2024 15:15:58 +0800
-Subject: [PATCH] Update wayland-ivi-extension to be aligned with weston-13
+Subject: [PATCH] Update wayland-ivi-extension to be aligned with weston-15
 
 Signed-off-by: Xiaoyu Huang <quic_xiahua@quicinc.com>
 ---
@@ -28,7 +28,7 @@ index 031d5c6..5917875 100644
  SET(ILM_API_VERSION 2.3.2)
  
 -SET(LIBWESTON_VER 11)
-+SET(LIBWESTON_VER 13)
++SET(LIBWESTON_VER 15)
  
  SET( CMAKE_C_FLAGS  "${CMAKE_C_FLAGS} -Wall -Wextra -Wno-unused-parameter" )
  SET( CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wno-unused-parameter" )
@@ -247,7 +247,27 @@ index ae05e56..4c3f246 100644
      }
  
      w_surface = view->surface;
-@@ -1863,11 +1858,7 @@ check_layout_layers(struct ivishell *shell)
+@@ -1730,7 +1725,7 @@ remove_bkgnd_surface(struct ivishell *shell, struct ivisurface *ivisurf)
+ remove_bkgnd_surface(struct ivishell *shell, struct ivisurface *ivisurf)
+ {
+     if (shell->bkgnd_view) {
+-        weston_layer_entry_remove(&shell->bkgnd_view->layer_link);
++        weston_view_move_to_layer(shell->bkgnd_view, NULL);
+         weston_view_destroy(shell->bkgnd_view);
+         shell->bkgnd_view = NULL;
+     }
+@@ -1804,9 +1799,8 @@ surface_event_configure(struct wl_listener *listener, void *data)
+
+         if (!shell->bkgnd_view) {
+             wl_list_init(&shell->bkgnd_transform.link);
+             shell->bkgnd_view = weston_view_create(w_surface);
+-            weston_layer_entry_insert(&shell->bkgnd_layer.view_list,
+-                                      &shell->bkgnd_view->layer_link);
++            weston_view_move_to_layer(shell->bkgnd_view, &shell->bkgnd_layer.view_list);
+             weston_surface_map(w_surface);
+             shell->bkgnd_view->is_mapped = true;
+         }
+@@ -1863,11 +1857,7 @@ check_layout_layers(struct ivishell *shell)
      int32_t i = 0;
      int32_t ret = 0;
  
