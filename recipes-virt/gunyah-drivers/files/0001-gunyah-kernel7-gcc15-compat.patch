@@ -1,0 +1,278 @@
+From 2fbf8e1e1fd705cbd32627210e2aaa176e10cd46 Mon Sep 17 00:00:00 2001
+From: Jie Ma <mjie@qti.qualcomm.com>
+Date: Wed, 5 Aug 2026 06:02:38 +0200
+Subject: [PATCH] Fix the out-of-tree gunyah-drivers build against the
+ kernel-7.1 headers and GCC 15 on sa8797-ride-sx:
+
+Upstream-Status: Inappropriate [kernel 7.1 / GCC 15 out-of-tree build compat]
+
+- Kbuild: EXTRA_CFLAGS is ignored by the modern kernel kbuild, so the
+  -DCONFIG_GH_*=1 defines never reached the compiler. The OOT header
+  gh_rm_drv_oot.h then emitted its "static inline" stubs (the !CONFIG_GH_*
+  branch) which clashed with the real definitions in the .c files
+  ("redefinition of gh_*"). Switch to ccflags-y so the defines take effect.
+- of_node_to_fwnode() was renamed to of_fwnode_handle(); the stub gunyah.h
+  provides a compat macro, gh_rm_core.c uses the new name directly.
+- struct fd lost its ->file member (use fd_file()/EMPTY_FD) and eventfd_signal()
+  dropped its second argument in kernel 7.
+- qcom_mdt_load_no_init() dropped the pas_id argument.
+- platform_driver .remove callbacks are now void-returning.
+- copy_from_user/copy_to_user need an explicit (void __user *) cast from the
+  unsigned long ioctl arg under -Werror=int-conversion.
+- sched_clock_read_begin/retry are not exported; approximate with local_clock()
+  (needs linux/sched/clock.h).
+- strlcpy -> strscpy (strlcpy no longer declared for modules).
+
+Signed-off-by: Jie Ma <mjie@qti.qualcomm.com>
+---
+ arch/arm64/gunyah/Kbuild                      |  2 +-
+ drivers/tty/hvc/Kbuild                        |  2 +-
+ drivers/virt/gunyah/Kbuild                    |  2 +-
+ drivers/virt/gunyah/gh_ctrl.c                 | 16 +++++---------
+ drivers/virt/gunyah/gh_rm_core.c              |  6 ++---
+ drivers/virt/gunyah/gh_secure_vm_loader.c     | 10 ++++-----
+ .../virt/gunyah/gh_secure_vm_virtio_backend.c | 22 +++++++++----------
+ drivers/virt/gunyah/gvm_dump_debugfs.c        |  2 +-
+ 8 files changed, 28 insertions(+), 34 deletions(-)
+
+diff --git a/arch/arm64/gunyah/Kbuild b/arch/arm64/gunyah/Kbuild
+index 9bfe546..544db68 100644
+--- a/arch/arm64/gunyah/Kbuild
++++ b/arch/arm64/gunyah/Kbuild
+@@ -1,5 +1,5 @@
+ LINUXINCLUDE += -I$(GUNYAH_ROOT)/include
+-EXTRA_CFLAGS += -DCONFIG_GH_ARM64_DRV=1
++ccflags-y += -DCONFIG_GH_ARM64_DRV=1
+ 
+ obj-m		+= gh_arm_drv.o
+ gh_arm_drv-y	:= gh_arm.o irq.o reset.o
+diff --git a/drivers/tty/hvc/Kbuild b/drivers/tty/hvc/Kbuild
+index cf1899d..94d31f0 100644
+--- a/drivers/tty/hvc/Kbuild
++++ b/drivers/tty/hvc/Kbuild
+@@ -1,6 +1,6 @@
+ LINUXINCLUDE += -I$(GUNYAH_ROOT)/include \
+ 
+-EXTRA_CFLAGS += -DCONFIG_HVC_GUNYAH_CONSOLE \
++ccflags-y += -DCONFIG_HVC_GUNYAH_CONSOLE \
+ 				-DCONFIG_GH_RM_DRV=1 \
+ 
+ obj-m += hvc_gunyah.o
+diff --git a/drivers/virt/gunyah/Kbuild b/drivers/virt/gunyah/Kbuild
+index 74fe781..4566c73 100644
+--- a/drivers/virt/gunyah/Kbuild
++++ b/drivers/virt/gunyah/Kbuild
+@@ -3,7 +3,7 @@ LINUXINCLUDE += -I$(GUNYAH_ROOT)/include \
+ 		-I$(GUNYAH_ROOT)/arch/arm64/include \
+ 		-I$(KERNEL_SRC)/include \
+ 
+-EXTRA_CFLAGS += -DCONFIG_GH_DBL=1 \
++ccflags-y += -DCONFIG_GH_DBL=1 \
+ 		-DCONFIG_GH_MSGQ=1 \
+ 		-DCONFIG_GH_RM_DRV=1 \
+ 		-DCONFIG_GH_SECURE_VM_LOADER=1 \
+diff --git a/drivers/virt/gunyah/gh_ctrl.c b/drivers/virt/gunyah/gh_ctrl.c
+index 8464fbb..f044ac3 100644
+--- a/drivers/virt/gunyah/gh_ctrl.c
++++ b/drivers/virt/gunyah/gh_ctrl.c
+@@ -13,6 +13,7 @@
+ #include <linux/of.h>
+ #include <linux/printk.h>
+ #include <linux/sched_clock.h>
++#include <linux/sched/clock.h>
+ #include <linux/slab.h>
+ #include <linux/gunyah.h>
+ #include <linux/gunyah/gh_errno.h>
+@@ -94,16 +95,11 @@ static const struct attribute_group version_group = {
+ 
+ void gh_get_virt_time_offset(struct gh_virt_time_offset *virt_time_offset)
+ {
+-	struct clock_read_data *rd;
+-	unsigned int seq = 0;
+-	u64 ns;
+-
+-	do {
+-		rd = sched_clock_read_begin(&seq);
+-		ns = mul_u64_u32_shr(rd->epoch_cyc, rd->mult, rd->shift);
+-		virt_time_offset->offset = ns - rd->epoch_ns;
+-		virt_time_offset->ns = rd->epoch_ns;
+-	} while (sched_clock_read_retry(seq));
++	/* sched_clock_read_begin/retry are not exported in kernel 7.0 */
++	/* Use local_clock() as an approximation */
++	u64 ns = local_clock();
++	virt_time_offset->offset = 0;
++	virt_time_offset->ns = ns;
+ }
+ EXPORT_SYMBOL_GPL(gh_get_virt_time_offset);
+ 
+diff --git a/drivers/virt/gunyah/gh_rm_core.c b/drivers/virt/gunyah/gh_rm_core.c
+index 0935166..fb4224f 100644
+--- a/drivers/virt/gunyah/gh_rm_core.c
++++ b/drivers/virt/gunyah/gh_rm_core.c
+@@ -738,7 +738,7 @@ out:
+  */
+ int gh_rm_virq_to_irq(u32 virq, u32 type)
+ {
+-	return gh_get_irq(virq, type, of_node_to_fwnode(gh_rm_intc));
++	return gh_get_irq(virq, type, of_fwnode_handle(gh_rm_intc));
+ }
+ EXPORT_SYMBOL(gh_rm_virq_to_irq);
+ 
+@@ -1588,13 +1588,11 @@ err_recv_task:
+ 	return ret;
+ }
+ 
+-static int gh_rm_drv_remove(struct platform_device *pdev)
++static void gh_rm_drv_remove(struct platform_device *pdev)
+ {
+ 	kthread_stop(gh_rm_drv_recv_task);
+ 	gh_msgq_unregister(gh_rm_msgq_desc);
+ 	idr_destroy(&gh_rm_call_idr);
+-
+-	return 0;
+ }
+ 
+ static struct platform_driver gh_rm_driver = {
+diff --git a/drivers/virt/gunyah/gh_secure_vm_loader.c b/drivers/virt/gunyah/gh_secure_vm_loader.c
+index 4fa6534..720a9c3 100644
+--- a/drivers/virt/gunyah/gh_secure_vm_loader.c
++++ b/drivers/virt/gunyah/gh_secure_vm_loader.c
+@@ -215,7 +215,7 @@ static int gh_vm_loader_sec_load(struct gh_sec_vm_dev *vm_dev,
+ 		goto release_fw;
+ 	}
+ 
+-	ret = qcom_mdt_load_no_init(dev, fw, fw_name, vm_dev->pas_id, vm_dev->fw_mem_regions[fw_index].fw_virt,
++	ret = qcom_mdt_load_no_init(dev, fw, fw_name, vm_dev->fw_mem_regions[fw_index].fw_virt,
+ 				vm_dev->fw_mem_regions[fw_index].fw_phys, vm_dev->fw_mem_regions[fw_index].fw_size, NULL);
+ 	if (ret) {
+ 		dev_err(dev, "Failed to load fw \"%s\": %d\n", fw_name, ret);
+@@ -520,7 +520,7 @@ long gh_vm_ioctl_get_mem_region(struct gh_vm *vm, unsigned long arg)
+ 	char name[SZ_16];
+ 	struct file *file;
+ 
+-	if (copy_from_user(&mem_region, arg,
++	if (copy_from_user(&mem_region, (void __user *)arg,
+ 				sizeof(mem_region)))
+ 		return -EFAULT;
+ 
+@@ -562,7 +562,7 @@ long gh_vm_ioctl_get_mem_region(struct gh_vm *vm, unsigned long arg)
+ 
+ 	mutex_unlock(&vm->vm_lock);
+ 
+-	if (copy_to_user(arg, &mem_region,
++	if (copy_to_user((void __user *)arg, &mem_region,
+ 				sizeof(mem_region)))
+ 		return -EFAULT;
+ 
+@@ -925,7 +925,7 @@ err_unmap_fw:
+ 	return ret;
+ }
+ 
+-static int gh_secure_vm_loader_remove(struct platform_device *pdev)
++static void gh_secure_vm_loader_remove(struct platform_device *pdev)
+ {
+ 	struct gh_sec_vm_dev *sec_vm_dev;
+ 	int i;
+@@ -942,7 +942,7 @@ static int gh_secure_vm_loader_remove(struct platform_device *pdev)
+ 
+ 	of_reserved_mem_device_release(&pdev->dev);
+ 
+-	return gh_virtio_backend_remove(sec_vm_dev->vm_name);
++	gh_virtio_backend_remove(sec_vm_dev->vm_name);
+ }
+ 
+ static const struct of_device_id gh_secure_vm_loader_match_table[] = {
+diff --git a/drivers/virt/gunyah/gh_secure_vm_virtio_backend.c b/drivers/virt/gunyah/gh_secure_vm_virtio_backend.c
+index 88299ad..6b0d756 100644
+--- a/drivers/virt/gunyah/gh_secure_vm_virtio_backend.c
++++ b/drivers/virt/gunyah/gh_secure_vm_virtio_backend.c
+@@ -187,9 +187,9 @@ irqfd_shutdown(struct work_struct *work)
+ 	if (irq->ctx) {
+ 		eventfd_ctx_remove_wait_queue(irq->ctx, &irq->wait, &isr);
+ 		eventfd_ctx_put(irq->ctx);
+-		if (vb_dev->irq.fd.file) {
++		if (fd_file(vb_dev->irq.fd)) {
+ 			fdput(irq->fd);
+-			irq->fd.file = NULL;
++			irq->fd = EMPTY_FD;
+ 		}
+ 		irq->ctx = NULL;
+ 	}
+@@ -234,18 +234,18 @@ static int vb_dev_irqfd(struct virtio_backend_device *vb_dev,
+ 	__poll_t events;
+ 	unsigned long flags;
+ 
+-	f.file = NULL;
++	f = EMPTY_FD;
+ 
+ 	spin_lock_irqsave(&vb_dev->lock, flags);
+ 
+-	if (vb_dev->irq.fd.file || vb_dev->irq.ctx)
++	if (fd_file(vb_dev->irq.fd) || vb_dev->irq.ctx)
+ 		goto fail;
+ 
+ 	f = fdget(ifd->fd);
+-	if (!f.file)
++	if (!fd_file(f))
+ 		goto fail;
+ 
+-	eventfd = eventfd_ctx_fileget(f.file);
++	eventfd = eventfd_ctx_fileget(fd_file(f));
+ 	if (IS_ERR(eventfd)) {
+ 		ret = PTR_ERR(eventfd);
+ 		goto fail;
+@@ -258,7 +258,7 @@ static int vb_dev_irqfd(struct virtio_backend_device *vb_dev,
+ 	init_waitqueue_func_entry(&vb_dev->irq.wait, vb_dev_irqfd_wakeup);
+ 	INIT_WORK(&vb_dev->irq.shutdown_work, irqfd_shutdown);
+ 	init_poll_funcptr(&vb_dev->irq.pt, vb_dev_irqfd_ptable_queue_proc);
+-	events = vfs_poll(f.file, &vb_dev->irq.pt);
++	events = vfs_poll(fd_file(f), &vb_dev->irq.pt);
+ 	if (events & EPOLLIN) {
+ 		dev_dbg(vb_dev->vm->dev,
+ 			"%s: Premature injection of interrupt\n",
+@@ -270,7 +270,7 @@ static int vb_dev_irqfd(struct virtio_backend_device *vb_dev,
+ fail:
+ 	if (eventfd && !IS_ERR(eventfd))
+ 		eventfd_ctx_put(eventfd);
+-	if (f.file)
++	if (fd_file(f))
+ 		fdput(f);
+ 
+ 	spin_unlock_irqrestore(&vb_dev->lock, flags);
+@@ -318,7 +318,7 @@ static void signal_vqs(struct virtio_backend_device *vb_dev)
+ 	for (i = 0; i < MAX_IO_CONTEXTS; ++i) {
+ 		flags = 1 << i;
+ 		if ((vb_dev->vdev_event_data & flags) && vb_dev->ioctx[i].ctx) {
+-			eventfd_signal(vb_dev->ioctx[i].ctx, 1);
++			eventfd_signal(vb_dev->ioctx[i].ctx);
+ 			vb_dev->vdev_event_data &= ~flags;
+ 			trace_gh_virtio_backend_queue_notify(vb_dev->label, i);
+ 		}
+@@ -1401,9 +1401,9 @@ int gh_virtio_mmio_exit(gh_vmid_t vmid, const char *vm_name)
+ 		if (vb_dev->irq.ctx) {
+ 			eventfd_ctx_remove_wait_queue(vb_dev->irq.ctx, &(vb_dev->irq.wait), &cnt);
+ 			eventfd_ctx_put(vb_dev->irq.ctx);
+-			if (vb_dev->irq.fd.file) {
++			if (fd_file(vb_dev->irq.fd)) {
+ 				fdput(vb_dev->irq.fd);
+-				vb_dev->irq.fd.file = NULL;
++				vb_dev->irq.fd = EMPTY_FD;
+ 			}
+ 			vb_dev->irq.ctx = NULL;
+ 		}
+diff --git a/drivers/virt/gunyah/gvm_dump_debugfs.c b/drivers/virt/gunyah/gvm_dump_debugfs.c
+index c21c32a..b8f723d 100644
+--- a/drivers/virt/gunyah/gvm_dump_debugfs.c
++++ b/drivers/virt/gunyah/gvm_dump_debugfs.c
+@@ -236,7 +236,7 @@ static ssize_t dump_info_read(struct file *file, char __user *ubuf,
+ 	size_t reg_len = strlen(reg_name);
+ 	int curr_buf_len = 0;
+ 
+-	strlcpy(d_info_buf, header, sizeof(d_info_buf));
++	strscpy(d_info_buf, header, sizeof(d_info_buf));
+ 	strlcat(d_info_buf, dot_line, sizeof(d_info_buf));
+ 	curr_buf_len = header_len + dot_line_len;
+ 	for(int idx = 0; idx < gvm_prv_ctx->num_mem_regions; idx++) {
+-- 
+2.43.0
+

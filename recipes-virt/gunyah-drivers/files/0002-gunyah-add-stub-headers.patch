@@ -1,0 +1,102 @@
+From 952c7ff9d15e3ec833c052b1dd1da4184f144b02 Mon Sep 17 00:00:00 2001
+From: Jie Ma <mjie@qti.qualcomm.com>
+Date: Wed, 5 Aug 2026 06:04:39 +0200
+Subject: [PATCH] The out-of-tree gunyah driver includes <linux/gunyah.h> and
+ <asm/gunyah.h>, which do not exist on the sa8797 kernel-7.1 tree (no upstream
+ gunyah). Provide minimal stub headers on the driver's own include path:
+ gunyah.h supplies the gh_error enum (undefining the GH_ERROR_* macros from
+ gh_errno.h first to avoid collisions) and an
+ of_node_to_fwnode->of_fwnode_handle compat macro; asm/gunyah.h pulls in the
+ hypercall header.
+
+Upstream-Status: Inappropriate [stub headers for OOT build on kernels without upstream gunyah]
+Signed-off-by: Jie Ma <mjie@qti.qualcomm.com>
+---
+ arch/arm64/include/asm/gunyah.h |  6 ++++
+ include/linux/gunyah.h          | 61 +++++++++++++++++++++++++++++++++
+ 2 files changed, 67 insertions(+)
+ create mode 100644 arch/arm64/include/asm/gunyah.h
+ create mode 100644 include/linux/gunyah.h
+
+diff --git a/arch/arm64/include/asm/gunyah.h b/arch/arm64/include/asm/gunyah.h
+new file mode 100644
+index 0000000..35b84d9
+--- /dev/null
++++ b/arch/arm64/include/asm/gunyah.h
+@@ -0,0 +1,6 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++/* Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries. */
++#ifndef __ASM_GUNYAH_H
++#define __ASM_GUNYAH_H
++#include <asm/gunyah/hcall.h>
++#endif
+diff --git a/include/linux/gunyah.h b/include/linux/gunyah.h
+new file mode 100644
+index 0000000..12c92bb
+--- /dev/null
++++ b/include/linux/gunyah.h
+@@ -0,0 +1,61 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++/* Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries. */
++/* Stub: gunyah.h for out-of-tree builds on kernels without upstream gunyah */
++#ifndef __LINUX_GUNYAH_H
++#define __LINUX_GUNYAH_H
++#include <linux/gunyah/gh_errno.h>
++/* Undefine GH_ERROR_* macros from gh_errno.h to avoid collision with enum member names */
++#undef GH_ERROR_OK
++#undef GH_ERROR_UNIMPLEMENTED
++#undef GH_ERROR_RETRY
++#undef GH_ERROR_ARG_INVAL
++#undef GH_ERROR_ARG_SIZE
++#undef GH_ERROR_ARG_ALIGN
++#undef GH_ERROR_NOMEM
++#undef GH_ERROR_ADDR_OVFL
++#undef GH_ERROR_ADDR_UNFL
++#undef GH_ERROR_ADDR_INVAL
++#undef GH_ERROR_DENIED
++#undef GH_ERROR_BUSY
++#undef GH_ERROR_IDLE
++#undef GH_ERROR_IRQ_BOUND
++#undef GH_ERROR_IRQ_UNBOUND
++#undef GH_ERROR_CSPACE_CAP_NULL
++#undef GH_ERROR_CSPACE_CAP_REVOKED
++#undef GH_ERROR_CSPACE_WRONG_OBJ_TYPE
++#undef GH_ERROR_CSPACE_INSUF_RIGHTS
++#undef GH_ERROR_CSPACE_FULL
++#undef GH_ERROR_MSGQUEUE_EMPTY
++#undef GH_ERROR_MSGQUEUE_FULL
++/* enum gh_error with corrected values */
++enum gh_error {
++	GH_ERROR_OK             = 0,
++	GH_ERROR_UNIMPL         = -1,
++	GH_ERROR_RETRY          = -2,
++	GH_ERROR_ARG_INVAL      = 1,
++	GH_ERROR_ARG_SIZE       = 2,
++	GH_ERROR_ARG_ALIGN      = 3,
++	GH_ERROR_NOMEM          = 10,
++	GH_ERROR_ADDR_OVFL      = 20,
++	GH_ERROR_ADDR_UNFL      = 21,
++	GH_ERROR_ADDR_INVAL     = 22,
++	GH_ERROR_DENIED         = 30,
++	GH_ERROR_BUSY           = 31,
++	GH_ERROR_IDLE           = 32,
++	GH_ERROR_IRQ_BOUND      = 40,
++	GH_ERROR_IRQ_UNBOUND    = 41,
++	GH_ERROR_CSPACE_CAP_NULL         = 50,
++	GH_ERROR_CSPACE_CAP_REVOKED      = 51,
++	GH_ERROR_CSPACE_WRONG_OBJ_TYPE   = 52,
++	GH_ERROR_CSPACE_INSUF_RIGHTS     = 53,
++	GH_ERROR_CSPACE_FULL             = 54,
++	GH_ERROR_MSGQUEUE_EMPTY          = 60,
++	GH_ERROR_MSGQUEUE_FULL           = 61,
++};
++typedef enum gh_error gh_error_t;
++/* of_node_to_fwnode was renamed to of_fwnode_handle in Linux 5.x */
++#include <linux/of.h>
++#ifndef of_node_to_fwnode
++#define of_node_to_fwnode(node) of_fwnode_handle(node)
++#endif
++#endif /* __LINUX_GUNYAH_H */
+-- 
+2.43.0
+

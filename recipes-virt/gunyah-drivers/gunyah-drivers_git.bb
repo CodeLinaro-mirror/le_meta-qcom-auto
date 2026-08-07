@@ -6,7 +6,13 @@ LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/${LICENSE};md5
 
 DEPENDS += "virtual/kernel"
 
+FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
+
 SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/gunyah-drivers/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/gunyah-drivers;usehead=1"
+SRC_URI += " \
+    file://0001-gunyah-kernel7-gcc15-compat.patch;patchdir=${S} \
+    file://0002-gunyah-add-stub-headers.patch;patchdir=${S} \
+"
 
 SRCREV = "${AUTOREV}"
 

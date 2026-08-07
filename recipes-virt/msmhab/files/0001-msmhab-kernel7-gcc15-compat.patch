@@ -1,0 +1,168 @@
+From 75b0a99867d67ebc5d53e134e284b24aa4d05ab8 Mon Sep 17 00:00:00 2001
+From: Jie Ma <mjie@qti.qualcomm.com>
+Date: Wed, 5 Aug 2026 06:06:33 +0200
+Subject: [PATCH] Fix the out-of-tree msmhab (mmhab-drv) build against
+ kernel-7.1 / GCC 15 on sa8797-ride-sx:
+
+Upstream-Status: Inappropriate [kernel 7.1 / GCC 15 out-of-tree build compat]
+
+- Kbuild: EXTRA_CFLAGS is ignored by the modern kernel kbuild; switch to
+  ccflags-y so the -DCONFIG_* defines take effect. The vhost backend
+  (hab_vhost.o) relies on vhost symbols not exported by kernel 7.1, so switch
+  to the virtio backend (hab_virtio.o) and define CONFIG_MSM_VIRTIO_HAB=1 (plus
+  CONFIG_MSM_VIRQ_HAB=1 so hab_virq.c suppresses its duplicate stub symbols);
+  drop the drivers/vhost include path.
+- hab_linux.c: MODULE_IMPORT_NS() now takes a string literal.
+- hab_mem_linux.c: nth_page() removed; open-code via pfn_to_page(page_to_pfn()+n).
+  dma_buf_ops lost its cache_sgt_mapping member.
+- hab_virq_hgy.c: eventfd_signal() dropped its second argument.
+- hab_virtio.c: add <linux/slab.h>; virtio_find_vqs() now takes a
+  struct virtqueue_info[] instead of separate callback/name arrays; fix a
+  strlspy() typo -> strscpy().
+
+Signed-off-by: Jie Ma <mjie@qti.qualcomm.com>
+---
+ Kbuild                           |  5 ++---
+ hab_linux.c                      |  2 +-
+ hypervisor/virtio/hab_virq_hgy.c |  2 +-
+ hypervisor/virtio/hab_virtio.c   | 20 +++++++++++++++++---
+ os/linux/hab_mem_linux.c         | 11 +++++------
+ 5 files changed, 26 insertions(+), 14 deletions(-)
+
+diff --git a/Kbuild b/Kbuild
+index 38b4ee3..fe64993 100644
+--- a/Kbuild
++++ b/Kbuild
+@@ -7,11 +7,10 @@ LINUXINCLUDE += -I$(HAB_ROOT)/include \
+ 		-I$(HAB_ROOT)/ \
+ 		-I$(HAB_ROOT)/hypervisor \
+ 		-I$(HAB_ROOT)/os \
+-		-I$(KERNEL_SRC)/drivers/vhost \
+                 -I$(KERNEL_SRC)/include \
+ 		-I$(KERNEL_SRC)/include/uapi/linux
+ 
+-EXTRA_CFLAGS += -DCONFIG_MSM_VHOST_HAB=1 \
++ccflags-y += -DCONFIG_MSM_VIRTIO_HAB=1 \
+ 		-DCONFIG_GH_DBL=1 \
+ 		-DCONFIG_MSM_VIRQ_HAB=1 \
+ 		-DCONFIG_MSM_HAB_DEFAULT_VMID=2 \
+@@ -40,5 +39,5 @@ msm_hab-y += os/linux/khab.o \
+ msm_hab-y += hypervisor/virtio/hab_virq_hgy.o
+ #endif
+ #ifdef CONFIG_MSM_VHOST_HAB
+-msm_hab-y += hypervisor/virtio/hab_vhost.o
++msm_hab-y += hypervisor/virtio/hab_virtio.o
+ #endif
+diff --git a/hab_linux.c b/hab_linux.c
+index 755b11a..ad9a669 100644
+--- a/hab_linux.c
++++ b/hab_linux.c
+@@ -584,4 +584,4 @@ module_exit(hab_exit);
+ 
+ MODULE_DESCRIPTION("Hypervisor abstraction layer");
+ MODULE_LICENSE("GPL v2");
+-MODULE_IMPORT_NS(DMA_BUF);
++MODULE_IMPORT_NS("DMA_BUF");
+diff --git a/hypervisor/virtio/hab_virq_hgy.c b/hypervisor/virtio/hab_virq_hgy.c
+index 28be859..3e55bdb 100644
+--- a/hypervisor/virtio/hab_virq_hgy.c
++++ b/hypervisor/virtio/hab_virq_hgy.c
+@@ -79,7 +79,7 @@ static void gh_dbl_recv_cb(int irq, void *data)
+ 	spin_lock_irq(&dbl->dbl_lock);
+ 	if (dbl->efd != NULL) {
+ 		pr_info("fd is %d for id %d lbl %d\n", dbl->fd, dbl->id, dbl->virtirq_label);
+-		eventfd_signal(dbl->efd, 1);
++		eventfd_signal(dbl->efd);
+ 	}
+ 	dbl->virq_recv++;
+ 	spin_unlock_irq(&dbl->dbl_lock);
+diff --git a/hypervisor/virtio/hab_virtio.c b/hypervisor/virtio/hab_virtio.c
+index ef1b0c0..b762f61 100644
+--- a/hypervisor/virtio/hab_virtio.c
++++ b/hypervisor/virtio/hab_virtio.c
+@@ -4,6 +4,7 @@
+  * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+  */
+ #include <linux/module.h>
++#include <linux/slab.h>
+ #include <linux/virtio.h>
+ #include <linux/virtio_config.h>
+ #include <uapi/linux/virtio_ids.h>
+@@ -502,8 +503,21 @@ static int virthab_init_vqs(struct virtio_hab *vh)
+ 	pr_debug("mmid %d request %d vqs\n", vh->mmid_start,
+ 		vh->mmid_range * HAB_PCHAN_VQ_MAX);
+ 
+-	ret = virtio_find_vqs(vh->vdev, vh->mmid_range * HAB_PCHAN_VQ_MAX,
+-				vh->vqs, cbs, (const char * const*)names, NULL);
++	({
++		int _nvqs = vh->mmid_range * HAB_PCHAN_VQ_MAX;
++		struct virtqueue_info *_vqi = kcalloc(_nvqs, sizeof(*_vqi),
++						GFP_KERNEL);
++		if (!_vqi) { ret = -ENOMEM; }
++		else {
++			for (int _i = 0; _i < _nvqs; _i++) {
++				_vqi[_i].name = names[_i];
++				_vqi[_i].callback = cbs[_i];
++			}
++			ret = virtio_find_vqs(vh->vdev, _nvqs,
++					vh->vqs, _vqi, NULL);
++			kfree(_vqi);
++		}
++	});
+ 	if (ret) {
+ 		pr_err("failed to find vqs %d\n", ret);
+ 		return ret;
+@@ -1082,7 +1096,7 @@ static int habvirtio_pchan_create(struct hab_device *dev, char *pchan_name)
+ 	}
+ 
+ 	pchan->closed = 0;
+-	strlspy(pchan->name, pchan_name, sizeof(pchan->name));
++	strscpy(pchan->name, pchan_name, sizeof(pchan->name));
+ 
+ 	link = kmalloc(sizeof(*link), GFP_KERNEL);
+ 	if (!link) {
+diff --git a/os/linux/hab_mem_linux.c b/os/linux/hab_mem_linux.c
+index 2db7f43..0b97f12 100644
+--- a/os/linux/hab_mem_linux.c
++++ b/os/linux/hab_mem_linux.c
+@@ -494,16 +494,16 @@ static int habmem_compress_pfns(
+ 
+ 			page = sg_page(s);
+ 			if (j == 0) {
+-				metadata->pfns.first_pfn = page_to_pfn(nth_page(page,
+-							page_offset));
++				metadata->pfns.first_pfn = page_to_pfn(
++							pfn_to_page(page_to_pfn(page) + (page_offset)));
+ 			} else {
+-				space = page_to_pfn(nth_page(page, 0)) -
++				space = page_to_pfn(pfn_to_page(page_to_pfn(page) + (0))) -
+ 					page_to_pfn(pre_page) - 1U;
+ 				metadata->pfns.region[j-1].space = (int32_t)space;
+ 				pr_debug("j %d, space %d, ppfn %lu, pfn %lu\n",
+ 					j, metadata->pfns.region[j-1].space,
+ 					page_to_pfn(pre_page),
+-					page_to_pfn(nth_page(page, 0)));
++					page_to_pfn(pfn_to_page(page_to_pfn(page) + (0))));
+ 			}
+ 
+ 			metadata->pfns.region[j].size = spage_size - (uint32_t)page_offset;
+@@ -514,7 +514,7 @@ static int habmem_compress_pfns(
+ 			}
+ 
+ 			page_count -= (int)metadata->pfns.region[j].size;
+-			pre_page = nth_page(page, metadata->pfns.region[j].size - 1U);
++			pre_page = pfn_to_page(page_to_pfn(page) + (metadata->pfns.region[j].size - 1U));
+ 			page_offset = 0;
+ 			j++;
+ 		}
+@@ -1083,7 +1083,6 @@ static void hab_mem_dma_buf_vunmap(struct dma_buf *dmabuf,
+ }
+ 
+ static struct dma_buf_ops dma_buf_ops = {
+-	.cache_sgt_mapping = (bool)true,
+ 	.map_dma_buf = hab_mem_map_dma_buf,
+ 	.unmap_dma_buf = hab_mem_unmap_dma_buf,
+ 	.mmap = hab_mem_mmap,
+-- 
+2.43.0
+
