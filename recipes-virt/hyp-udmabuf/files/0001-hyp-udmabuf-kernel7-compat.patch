@@ -1,0 +1,36 @@
+From ad6bddc7c8b0992fe3e58a8a0cd12463c2f85044 Mon Sep 17 00:00:00 2001
+From: pengy <pengy@qti.qualcomm.com>
+Date: Fri, 7 Aug 2026 10:59:31 +0800
+
+Upstream-Status: Inappropriate [kernel 7.0 API compatibility]
+
+kernel 7.0 removed dma_buf_ops.cache_sgt_mapping and changed
+MODULE_IMPORT_NS to require a string literal argument.
+
+Signed-off-by: pengy <pengy@qti.qualcomm.com>
+---
+ drivers/hyp_udmabuf.c | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/drivers/hyp_udmabuf.c b/drivers/hyp_udmabuf.c
+index fa6a8b5..bcdc431 100644
+--- a/drivers/hyp_udmabuf.c
++++ b/drivers/hyp_udmabuf.c
+@@ -138,7 +138,6 @@ static void hyp_udmabuf_release(struct dma_buf *buf)
+ }
+ 
+ static const struct dma_buf_ops hyp_udmabuf_ops = {
+-	.cache_sgt_mapping = true,
+ 	.map_dma_buf	   = hyp_udmabuf_map,
+ 	.unmap_dma_buf	   = hyp_udmabuf_unmap,
+ 	.release	   = hyp_udmabuf_release,
+@@ -329,5 +328,5 @@ static void __exit hyp_udmabuf_exit(void)
+ module_init(hyp_udmabuf_init)
+ module_exit(hyp_udmabuf_exit)
+ 
+-MODULE_IMPORT_NS(DMA_BUF);
++MODULE_IMPORT_NS("DMA_BUF");
+ MODULE_LICENSE("GPL v2");
+-- 
+2.34.1
+

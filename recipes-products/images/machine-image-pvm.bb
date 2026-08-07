@@ -30,7 +30,7 @@ ROOTFS_POSTPROCESS_COMMAND:append = " add_extra_modules;"
 ROOTFS_POSTPROCESS_COMMAND:remove:gen5 = "add_extra_modules;"
 
 # Makes image suitable for development (e.g. enable ssh for login, allows root logins and logins without passwords by ssh)
-IMAGE_FEATURES:append = " ${@bb.utils.contains('VARIANT', 'debug', 'debug-tweaks ssh-server-openssh', '', d)}"
+IMAGE_FEATURES:append = " ${@bb.utils.contains('VARIANT', 'debug', 'allow-empty-password allow-root-login empty-root-password ssh-server-openssh', '', d)}"
 IMAGE_FEATURES:remove = "${@bb.utils.contains('DISTRO_FEATURES', 'qti-rumi', 'ssh-server-openssh read-only-rootfs', '', d)}"
 IMAGE_FEATURES:append = " package-management"
 
