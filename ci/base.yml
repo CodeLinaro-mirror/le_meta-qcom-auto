@@ -140,7 +140,6 @@ local_conf_header:
     BBMASK:append = " /meta-qcom-auto/recipes-devtools/clang/llvm-project-source.bbappend"
     BBMASK:append = " /meta-qcom-auto/recipes-extra/recipes-core/systemd/systemd_%.bbappend"
     BBMASK:append = " /meta-qcom-auto/recipes-extra/recipes-core/systemd-conf/systemd-conf_%.bbappend"
-    BBMASK:append = " /meta-qcom-auto/recipes-graphics/drm/libdrm_2.4.%.bbappend"
     BBMASK:append = " /meta-qcom-auto/recipes-graphics/vulkan/vulkan-loader_%.bbappend"
     BBMASK:append = " /meta-qcom-auto/recipes-kernel/libbpf/libbpf_%.bbappend"
     BBMASK:append = " /meta-qcom-auto/recipes-kernel/linux/linux-qcom-custom_6.6.bb"

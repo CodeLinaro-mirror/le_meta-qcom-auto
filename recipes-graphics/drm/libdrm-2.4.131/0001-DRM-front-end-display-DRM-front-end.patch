@@ -9,35 +9,13 @@ Upstream-Status: Pending
 
 Signed-off-by: Wanteng Zhang <wantzhan@codeaurora.org>
 ---
- Makefile.sources     |  4 +-
  include/drm/fe_drm.h | 47 ++++++++++++++++++++++
- meson.build          | 24 +++++++++--
- meson_options.txt    |  6 +++
- xf86drm.c            | 94 +++++++++++++++++++++++++++++++++++++++++++-
- 5 files changed, 168 insertions(+), 7 deletions(-)
+ meson.build          | 38 +++++++++++++++++++++++++++++++-------
+ meson_options.txt    |  6 ++++++
+ xf86drm.c            | 94 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 4 files changed, 178 insertions(+), 7 deletions(-)
  create mode 100644 include/drm/fe_drm.h
 
-diff --git a/Makefile.sources b/Makefile.sources
-index 55290fe..70d8a88 100644
---- a/Makefile.sources
-+++ b/Makefile.sources
-@@ -8,14 +8,14 @@ LIBDRM_FILES := \
- 	xf86drmMode.c \
- 	xf86atomic.h \
- 	libdrm_macros.h \
--	libdrm_lists.h \
- 	util_double_list.h \
- 	util_math.h
- 
- LIBDRM_H_FILES := \
- 	libsync.h \
- 	xf86drm.h \
--	xf86drmMode.h
-+	xf86drmMode.h \
-+	libdrm_lists.h
- 
- LIBDRM_INCLUDE_H_FILES := \
- 	include/drm/drm.h \
 diff --git a/include/drm/fe_drm.h b/include/drm/fe_drm.h
 new file mode 100644
 index 0000000..e3bb956
@@ -93,9 +71,7 @@ index 0000000..e3bb956
 +#endif
 diff --git a/meson.build b/meson.build
 index 1a7dbbe..6ef4119 100644
---- a/meson.build
-+++ b/meson.build
-@@ -141,6 +141,20 @@ with_vc4 = get_option('vc4') \
+@@ -156,6 +156,20 @@
    .allowed()
  summary('VC4', with_vc4)
  
@@ -116,8 +92,8 @@ index 1a7dbbe..6ef4119 100644
  # Among others FreeBSD does not have a separate dl library.
  if not cc.has_function('dlsym')
    dep_dl = cc.find_library('dl', required : with_nouveau)
-@@ -254,11 +268,11 @@ else
-   libdrm_kw = {'version' : '2.4.0'}
+@@ -271,11 +285,11 @@
+   libdrm_kw = { 'version' : '2.@0@.0'.format(patch_ver) }
  endif
  
 -libdrm = library(
@@ -125,21 +101,21 @@ index 1a7dbbe..6ef4119 100644
    'drm',
    libdrm_files,
    c_args : libdrm_c_args,
--  dependencies : [dep_valgrind, dep_rt, dep_m],
-+  dependencies : [dep_valgrind, dep_rt, dep_m, fedep_dl],
+-  dependencies : [dep_valgrind, dep_rt],
++  dependencies : [dep_valgrind, dep_rt, fedep_dl],
    include_directories : inc_drm,
    install : true,
    kwargs : libdrm_kw,
-@@ -284,7 +298,7 @@ if meson.version().version_compare('>= 0.54.0')
-   meson.override_dependency('libdrm', ext_libdrm)
- endif
+@@ -299,7 +313,7 @@
+ 
+ meson.override_dependency('libdrm', ext_libdrm)
  
 -install_headers('libsync.h', 'xf86drm.h', 'xf86drmMode.h')
 +install_headers('libsync.h', 'xf86drm.h', 'xf86drmMode.h', 'libdrm_lists.h')
  install_headers(
    'include/drm/drm.h', 'include/drm/drm_fourcc.h', 'include/drm/drm_mode.h',
    'include/drm/drm_sarea.h', 'include/drm/i915_drm.h',
-@@ -345,3 +359,7 @@ subdir('data')
+@@ -360,3 +374,7 @@
  if with_tests
    subdir('tests')
  endif
