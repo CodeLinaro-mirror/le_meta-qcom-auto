@@ -8,9 +8,17 @@ SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/mm-auto-ksync/.git;protocol=${
 
 SRCREV = "${AUTOREV}"
 
+DEPENDS += "unifdef-native"
+
 S = "${UNPACKDIR}/vendor/qcom/opensource/mm-auto-ksync"
 
 inherit qti-techpack
+
+# Copy unifdef-native into ${STAGING_KERNEL_BUILDDIR}/scripts before headers_install runs.
+do_install:prepend() {
+    install -d ${STAGING_KERNEL_BUILDDIR}/scripts
+    [ -e ${STAGING_KERNEL_BUILDDIR}/scripts/unifdef ] || install -m 0755 ${RECIPE_SYSROOT_NATIVE}/usr/bin/unifdef ${STAGING_KERNEL_BUILDDIR}/scripts/unifdef
+}
 
 TECHPACK_MODULE_OUT = "${UNPACKDIR}/mm-auto-ksync"
 TECHPACK_MODULES = "qcom_ksync.ko"
