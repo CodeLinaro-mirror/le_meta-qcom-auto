@@ -6,6 +6,7 @@ LICENSE = "Apache-2.0"
 LIC_FILES_CHKSUM = "file://NOTICE;md5=9645f39e9db895a4aa6e02cb57294595"
 
 DEPENDS += "liblog"
+DEPENDS:append:class-native = " glib-2.0-native"
 
 PR = "r1"
 
