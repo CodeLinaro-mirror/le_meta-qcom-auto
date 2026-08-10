@@ -1,0 +1,52 @@
+From 000153bbd7d17cb3df5880fe557ee92fb7328c87 Mon Sep 17 00:00:00 2001
+From: Sriram Dash <quic_sriramd@quicinc.com>
+Date: Thu, 27 Feb 2025 15:46:38 +0530
+Subject: [PATCH 03/17] usb: host: xhci-plat: Add support for
+ XHCI_RESET_ON_RESUME from parent
+
+When power is lost for the controller during APPS suspend, the
+controller generates a Host Controller Error (HCE) upon APPS
+resume, necessitating a complete reinitialization of the Host
+Controller (HC).
+
+Upstream commit 8b328f8002bcf29ef517ee4bf234e09aabec4d2e
+("xhci: re-initialize the HC during resume if HCE was set")
+addresses this issue by using the XHCI_RESET_ON_RESUME
+mechanism.
+
+For targets which require a complete shutdown during APPS
+suspend, the controller must be reinitialized during APPS
+resume.
+
+Currently, the XHCI_RESET_ON_RESUME quirk is managed by
+updating quirks from the xhci platform glue for specific
+targets. Drivers like dwc3/host.c add quirks using software
+nodes for the xhci device.
+
+Ensures that the xhci quirk is set from device properties
+if enabled by the parent like dwc3/host.c via software properties.
+
+Ported from meta-qti-auto-kernel patch: 0008-PENDING-usb-host-xhci-plat-Add-support-for-XHCI_RESE.patch
+
+Signed-off-by: Sriram Dash <quic_sriramd@quicinc.com>
+---
+ drivers/usb/host/xhci-plat.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/drivers/usb/host/xhci-plat.c b/drivers/usb/host/xhci-plat.c
+index 6fd595f81a30..2a08c00b943c 100644
+--- a/drivers/usb/host/xhci-plat.c
++++ b/drivers/usb/host/xhci-plat.c
+@@ -277,6 +277,9 @@ int xhci_plat_probe(struct platform_device *pdev, struct device *sysdev, const s
+ 		if (device_property_read_bool(tmpdev, "xhci-skip-phy-init-quirk"))
+ 			xhci->quirks |= XHCI_SKIP_PHY_INIT;
+ 
++		if (device_property_read_bool(tmpdev, "xhci-reset-on-resume"))
++			xhci->quirks |= XHCI_RESET_ON_RESUME;
++
+ 		device_property_read_u32(tmpdev, "imod-interval-ns",
+ 					 &xhci->imod_interval);
+ 		device_property_read_u16(tmpdev, "num-hc-interrupters",
+-- 
+2.34.1
+

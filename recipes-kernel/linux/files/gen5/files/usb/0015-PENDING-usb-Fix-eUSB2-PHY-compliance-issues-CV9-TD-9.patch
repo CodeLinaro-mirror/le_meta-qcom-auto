@@ -1,0 +1,115 @@
+From 41c82311c560d7730ccee7815afaadf1561665c8 Mon Sep 17 00:00:00 2001
+From: Hiren Gohel <vhiren@qti.qualcomm.com>
+Date: Mon, 10 Aug 2026 13:51:04 +0530
+Subject: [PATCH 15/17] PENDING: usb: Fix eUSB2 PHY compliance issues (CV9 / TD
+ 9.23)
+
+Add register sequence as SW WA for CV9 compliance failure.
+
+Introduce snps_eusb2_hsphy_calibrate() to reprogram the eUSB2 PHY via
+the APB access registers and wire it up as phy_ops.calibrate.
+
+On repeated HS PIPO cycling, USB compliance flags a yellow-bang
+condition (TD 9.23). The workaround is to run the eUSB2 PHY calibrate
+sequence on every CONNECT_DONE. phy_calibrate() takes phy->mutex,
+which cannot be called from dwc3_gadget_conndone_interrupt() as it
+runs under dwc->lock (spinlock) inside the threaded IRQ handler.
+Defer only the call, not the timing: set a flag in the conndone
+handler under the lock, then run phy_calibrate() in
+dwc3_thread_interrupt() after local_bh_enable(), once fully back in
+preemptible thread context. This keeps the calibrate synchronous with
+the CONNECT_DONE event (no workqueue latency) while avoiding
+sleeping-in-atomic-context.
+
+Change-Id: Ib4484b1902dc8d2f8c4b38cf4cebc72c12b4f7bd
+Signed-off-by: Hiren Gohel <vhiren@qti.qualcomm.com>
+---
+ drivers/phy/phy-snps-eusb2.c | 28 ++++++++++++++++++++++++++++
+ drivers/usb/dwc3/core.h      |  1 +
+ drivers/usb/dwc3/gadget.c    |  8 ++++++++
+ 3 files changed, 37 insertions(+)
+
+diff --git a/drivers/phy/phy-snps-eusb2.c b/drivers/phy/phy-snps-eusb2.c
+index e46984db5752..acbf7d9cdfdb 100644
+--- a/drivers/phy/phy-snps-eusb2.c
++++ b/drivers/phy/phy-snps-eusb2.c
+@@ -616,10 +616,38 @@ static int snps_eusb2_hsphy_exit(struct phy *p)
+ 	return 0;
+ }
+ 
++static int snps_eusb2_hsphy_calibrate(struct phy *p)
++{
++
++	struct snps_eusb2_hsphy *phy = phy_get_drvdata(p);
++
++	snps_eusb2_hsphy_write_mask(phy->base, QCOM_USB_PHY_APB_ACCESS_CMD,
++				0xff, 0x0);
++	snps_eusb2_hsphy_write_mask(phy->base, QCOM_USB_PHY_APB_ADDRESS,
++				0xff, 0x5 );
++	snps_eusb2_hsphy_write_mask(phy->base, QCOM_USB_PHY_APB_WRDATA_LSB,
++				0xff, 0xc0);
++	snps_eusb2_hsphy_write_mask(phy->base, QCOM_USB_PHY_APB_ACCESS_CMD,
++				0xff, 0x3);
++	udelay(2);
++	snps_eusb2_hsphy_write_mask(phy->base, QCOM_USB_PHY_APB_ACCESS_CMD,
++				0xff, 0x0);
++	snps_eusb2_hsphy_write_mask(phy->base, QCOM_USB_PHY_APB_WRDATA_LSB,
++				0xff, 0x0);
++	snps_eusb2_hsphy_write_mask(phy->base, QCOM_USB_PHY_APB_ACCESS_CMD,
++				0xff, 0x3);
++	udelay(2);
++	snps_eusb2_hsphy_write_mask(phy->base, QCOM_USB_PHY_APB_ACCESS_CMD,
++                                 0xff, 0x0);
++	return 0;
++}
++
++
+ static const struct phy_ops snps_eusb2_hsphy_ops = {
+ 	.init		= snps_eusb2_hsphy_init,
+ 	.exit		= snps_eusb2_hsphy_exit,
+ 	.set_mode	= snps_eusb2_hsphy_set_mode,
++	.calibrate      = snps_eusb2_hsphy_calibrate,
+ 	.owner		= THIS_MODULE,
+ };
+ 
+diff --git a/drivers/usb/dwc3/core.h b/drivers/usb/dwc3/core.h
+index d83b82b3b6ad..e57523b3eb77 100644
+--- a/drivers/usb/dwc3/core.h
++++ b/drivers/usb/dwc3/core.h
+@@ -1243,6 +1243,7 @@ struct dwc3 {
+ 	u8			num_usb3_ports;
+ 
+ 	u32			eusb2_phy_bitmap;
++	bool			eusb2_needs_calibrate;
+ 
+ 	bool			phys_ready;
+ 	bool			phys_preinit;
+diff --git a/drivers/usb/dwc3/gadget.c b/drivers/usb/dwc3/gadget.c
+index fa0f16ffafef..408163b537f7 100644
+--- a/drivers/usb/dwc3/gadget.c
++++ b/drivers/usb/dwc3/gadget.c
+@@ -4234,6 +4234,9 @@ static void dwc3_gadget_conndone_interrupt(struct dwc3 *dwc)
+ 	speed = reg & DWC3_DSTS_CONNECTSPD;
+ 	dwc->speed = speed;
+ 
++	if (dwc->eusb2_phy_bitmap & BIT(0) && (speed >= DWC3_DSTS_SUPERSPEED))
++		dwc->eusb2_needs_calibrate = true;
++
+ 	if (DWC3_IP_IS(DWC32))
+ 		lanes = DWC3_DSTS_CONNLANES(reg) + 1;
+ 
+@@ -4631,6 +4634,11 @@ static irqreturn_t dwc3_thread_interrupt(int irq, void *_evt)
+ 	spin_unlock_irqrestore(&dwc->lock, flags);
+ 	local_bh_enable();
+ 
++	if (dwc->eusb2_needs_calibrate) {
++		dwc->eusb2_needs_calibrate = false;
++		phy_calibrate(dwc->usb2_generic_phy[0]);
++	}
++
+ 	return ret;
+ }
+ 
+-- 
+2.34.1
+

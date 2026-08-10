@@ -1,0 +1,97 @@
+From 5fb5f1ee0b94047fe1a6090c0061eb72251ab436 Mon Sep 17 00:00:00 2001
+From: Faisal Hassan <faisal.hassan@oss.qualcomm.com>
+Date: Thu, 13 Nov 2025 13:57:37 +0530
+Subject: [PATCH 14/17] PENDING: usb: dwc3: Program eUSB2 UTMI opmode in host
+ mode
+
+Some SoCs (such as Qualcomm SM8550) pair the DWC3 controller with an
+eUSB2 PHY. In host mode, the GUSB2PHYCFG.EUSB2OPMODE bit must be set to
+ensure proper UTMI signaling during USB2 test modes (e.g., TEST_J and
+TEST_K). Without this configuration, compliance issues can occur, such
+as D+/D- lines remaining low (SE0) during test sequences.
+
+This patch adds support for programming the eUSB2 opmode when switching
+to host mode. The core driver detects eUSB2 PHYs during probe and
+maintains a bitmap of USB2 ports using eUSB2 PHY. When entering host
+mode, the driver sets the EUSB2OPMODE bit for those ports.
+
+Change-Id: Idb5e8695ecc897c41119ec47ade48a6205db6ed7
+Signed-off-by: Faisal Hassan <faisal.hassan@oss.qualcomm.com>
+---
+ drivers/usb/dwc3/core.c | 16 ++++++++++++++++
+ drivers/usb/dwc3/core.h |  4 ++++
+ 2 files changed, 20 insertions(+)
+
+diff --git a/drivers/usb/dwc3/core.c b/drivers/usb/dwc3/core.c
+index f67d36fe8a59..cbea3de7c9eb 100644
+--- a/drivers/usb/dwc3/core.c
++++ b/drivers/usb/dwc3/core.c
+@@ -253,6 +253,14 @@ static void __dwc3_set_mode(struct work_struct *work)
+ 			for (i = 0; i < dwc->num_usb3_ports; i++)
+ 				phy_set_mode(dwc->usb3_generic_phy[i], PHY_MODE_USB_HOST);
+ 
++			for (i = 0; i < dwc->num_usb2_ports; i++) {
++				if (dwc->eusb2_phy_bitmap & BIT(i)) {
++					reg = dwc3_readl(dwc, DWC3_GUSB2PHYCFG(i));
++					reg |= DWC3_GUSB2PHYCFG_EUSB2OPMODE;
++					dwc3_writel(dwc, DWC3_GUSB2PHYCFG(i), reg);
++				}
++			}
++
+ 			if (dwc->dis_split_quirk) {
+ 				reg = dwc3_readl(dwc, DWC3_GUCTL3);
+ 				reg |= DWC3_GUCTL3_SPLITDISABLE;
+@@ -1552,6 +1560,11 @@ int dwc3_core_init(struct dwc3 *dwc)
+ }
+ EXPORT_SYMBOL_GPL(dwc3_core_init);
+ 
++static inline bool is_eusb2_phy(struct phy *p)
++{
++	return p && (phy_get_type(p) == PHY_TYPE_USB_EUSB2);
++}
++
+ static int dwc3_core_get_phy(struct dwc3 *dwc)
+ {
+ 	struct device		*dev = dwc->dev;
+@@ -1599,6 +1612,9 @@ static int dwc3_core_get_phy(struct dwc3 *dwc)
+ 				return dev_err_probe(dev, ret, "failed to lookup phy %s\n",
+ 							phy_name);
+ 		}
++
++		if (is_eusb2_phy(dwc->usb2_generic_phy[i]))
++			dwc->eusb2_phy_bitmap |= BIT(i);
+ 	}
+ 
+ 	for (i = 0; i < dwc->num_usb3_ports; i++) {
+diff --git a/drivers/usb/dwc3/core.h b/drivers/usb/dwc3/core.h
+index 13e5a48199db..d83b82b3b6ad 100644
+--- a/drivers/usb/dwc3/core.h
++++ b/drivers/usb/dwc3/core.h
+@@ -299,6 +299,7 @@
+ #define DWC3_GUSB2PHYCFG_PHYSOFTRST	BIT(31)
+ #define DWC3_GUSB2PHYCFG_U2_FREECLK_EXISTS	BIT(30)
+ #define DWC3_GUSB2PHYCFG_ULPIEXTVBUSDRV	BIT(17)
++#define DWC3_GUSB2PHYCFG_EUSB2OPMODE	BIT(14)
+ #define DWC3_GUSB2PHYCFG_SUSPHY		BIT(6)
+ #define DWC3_GUSB2PHYCFG_ULPI_UTMI	BIT(4)
+ #define DWC3_GUSB2PHYCFG_ENBLSLPM	BIT(8)
+@@ -1072,6 +1073,7 @@ struct dwc3_glue_ops {
+  * @usb3_generic_phy: pointer to array of USB3 PHYs
+  * @num_usb2_ports: number of USB2 ports
+  * @num_usb3_ports: number of USB3 ports
++ * @eusb2_phy_bitmap: Bitmap of USB2 ports using eUSB2 PHY.
+  * @phys_ready: flag to indicate that PHYs are ready
+  * @phys_preinit: PHY init was already performed early by the glue layer
+  * @ulpi: pointer to ulpi interface
+@@ -1240,6 +1242,8 @@ struct dwc3 {
+ 	u8			num_usb2_ports;
+ 	u8			num_usb3_ports;
+ 
++	u32			eusb2_phy_bitmap;
++
+ 	bool			phys_ready;
+ 	bool			phys_preinit;
+ 
+-- 
+2.34.1
+

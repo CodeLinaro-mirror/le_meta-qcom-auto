@@ -16,6 +16,23 @@ SRC_URI:append = " \
     file://files/0002-arm-smmu-add-qcom-secure-vmid.patch \
     file://files/0003-arm-smmu-qcom-enable-secure-pagetable-alloc.patch \
     file://files/0004-firmware-qcom_scm-add-assign_mem_regions.patch \
+    file://files/usb/0001-usb-dwc3-qcom-Ensure-VBUS_VALID-is-set-after-resume.patch \
+    file://files/usb/0002-usb-dwc3-qcom-Ensure-PIPE_UTMI_CLK_SEL-is-proper-aft.patch \
+    file://files/usb/0003-usb-host-xhci-plat-Add-support-for-XHCI_RESET_ON_RES.patch \
+    file://files/usb/0004-usb-dwc3-host-Set-XHCI_RESET_ON_RESUME-for-xhci.patch  \
+    file://files/usb/0005-phy-qcom-qmp-usb-Call-qmp_usb_remove-during-driver-r.patch \
+    file://files/usb/0006-phy-qcom-qmp-usb-Add-support-for-SA8255P.patch  \
+    file://files/usb/0007-usb-dwc3-qcom-Add-support-for-sa8255p-for-qcom-usb.patch  \
+    file://files/usb/0008-phy-qcom-snps-femto-v2-Call-remove-and-add-support-f.patch \
+    file://files/usb/0009-usb-dwc3-qcom-Add-support-for-sa8797p-for-qcom-usb.patch  \
+    file://files/usb/0010-phy-qcom-phy-qcom-snps-eusb2-Add-support-for-SA8797P.patch \
+    file://files/usb/0011-usb-phy-qmp-combo-Add-scmi-related-changes-for-SA879.patch \
+    file://files/usb/0012-PENDING-phy-core-Introduce-PHY-type-and-helper-API.patch  \
+    file://files/usb/0013-PENDING-phy-snps-eusb2-Set-PHY-type-for-Synopsys-eUS.patch \
+    file://files/usb/0014-PENDING-usb-dwc3-Program-eUSB2-UTMI-opmode-in-host-m.patch \
+    file://files/usb/0015-PENDING-usb-Fix-eUSB2-PHY-compliance-issues-CV9-TD-9.patch \
+    file://files/usb/0016-PENDING-phy-ptn3222-Add-support-to-parse-the-param-f.patch \
+    file://files/usb/0017-PENDING-phy-qcom-snps-femto-v2-Add-minimal-EUD-detec.patch \
 "
 
 # Pin to a specific commit once you know it
