@@ -117,7 +117,6 @@ local_conf_header:
     BBMASK:append = " /meta-qcom/dynamic-layers/openembedded-layer/recipes-security/"
     BBMASK:append = " /meta-qcom/recipes-graphics/wayland/weston_15.0.0.bbappend"
     # dangling bbappends — no base recipe in any layer (parse error without mask)
-    BBMASK:append = " /meta-qcom-auto/recipes-audio/alsa-lib/alsa-lib_1.2.11.bbappend"
     BBMASK:append = " /meta-qcom-auto/recipes-core/systemd/systemd-systemctl-native.bbappend"
     BBMASK:append = " /meta-qcom-auto/recipes-graphics/wayland/wayland_1.22.0.bbappend"
     BBMASK:append = " /meta-qcom-auto/recipes-graphics/wayland/weston_13.0.%.bbappend"
