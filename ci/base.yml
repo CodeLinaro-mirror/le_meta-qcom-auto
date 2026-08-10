@@ -113,7 +113,6 @@ local_conf_header:
     BBMASK:remove = " /meta-qcom/recipes-devtools/"
     BBMASK:remove = " /meta-qcom/recipes-bsp/"
     BBMASK:append = " /meta-qcom-auto/recipes-core/systemd/systemd-systemctl-native.bbappend"
-    BBMASK:append = " /meta-qcom-auto/recipes-graphics/wayland/wayland_1.22.0.bbappend"
     BBMASK:append = " /meta-qcom-auto/recipes-graphics/wayland/weston_13.0.%.bbappend"
     BBMASK:append = " /meta-qcom-auto/recipes-kernel/linux/linux-qcom-custom-rt_6.6.bbappend"
     # bbappends with base recipe present — masked because patch may not apply cleanly

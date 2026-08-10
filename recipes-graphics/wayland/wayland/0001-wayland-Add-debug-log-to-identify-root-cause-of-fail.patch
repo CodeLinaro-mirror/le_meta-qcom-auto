@@ -125,7 +125,7 @@ index 105f9be..735d3c4 100644
 @@ -1231,8 +1271,11 @@ wl_display_connect_to_fd(int fd)
  	display->proxy.version = 0;
  
- 	display->connection = wl_connection_create(display->fd);
+ 	display->connection = wl_connection_create(display->fd, 0);
 -	if (display->connection == NULL)
 +	if (display->connection == NULL) {
 +		wl_client_syslog("error: wl_connection_create failed for fd %d: %s",
