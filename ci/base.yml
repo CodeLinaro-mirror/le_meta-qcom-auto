@@ -117,7 +117,6 @@ local_conf_header:
     BBMASK:append = " /meta-qcom-auto/recipes-graphics/wayland/weston_13.0.%.bbappend"
     BBMASK:append = " /meta-qcom-auto/recipes-kernel/linux/linux-qcom-custom-rt_6.6.bbappend"
     BBMASK:append = " /meta-qcom-auto/recipes-multimedia/gstreamer/gstreamer1.0-plugins-bad_1.22.%.bbappend"
-    BBMASK:append = " /meta-qcom-auto/recipes-support/gflags/gflags_2.2.2.bbappend"
     # bbappends with base recipe present — masked because patch may not apply cleanly
     # linux-qcom-custom_6.6.bb: SRCREV unresolvable at parse time — must stay masked
     BBMASK:append = " /meta-qcom-auto/recipes-kernel/linux/linux-qcom-custom_6.6.bb"
