@@ -34,3 +34,9 @@ RPROVIDES:${PN} += "kernel-module-qcom-ksync-${KERNEL_VERSION}"
 
 FILES:${PN} += "${nonarch_base_libdir}/modules/${KERNEL_VERSION}/*"
 FILES:${PN} += "${sysconfdir}/*"
+
+FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
+SRC_URI:append = " file://0001-ksync-add-vmalloc-h.patch \
+                   file://0002-ksync-remove-dma-fence-ops-value-str-members.patch \
+                   file://0003-ksync-fence-remove-dma-fence-ops-value-str-members.patch \
+                   file://0004-ksync-platform-remove-returns-void.patch"

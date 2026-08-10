@@ -1,0 +1,56 @@
+From c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4 Mon Sep 17 00:00:00 2001
+From: Ajender Reddy Mallikarjuna <ajenderr@qti.qualcomm.com>
+Date: Fri, 07 Aug 2026 08:36:32 +0000
+Subject: [PATCH 3/4] ksync: remove fence_value_str/timeline_value_str from ksync_fence dma_fence_ops
+
+ksync_fence.c also defines fence_value_str and timeline_value_str in its
+dma_fence_ops struct. Remove them to match the updated kernel API
+(kernel 6.3+ removed these members from struct dma_fence_ops).
+
+Upstream-Status: Inappropriate [kernel 6.3+ removed fence_value_str/timeline_value_str from dma_fence_ops]
+Signed-off-by: Ajender Reddy Mallikarjuna <ajenderr@qti.qualcomm.com>
+---
+ src/ksync_fence.c | 26 --------------------------
+ 1 file changed, 26 deletions(-)
+
+diff --git a/src/ksync_fence.c b/src/ksync_fence.c
+index 0000000..0000001 100644
+--- a/src/ksync_fence.c
++++ b/src/ksync_fence.c
+@@ -347,36 +347,12 @@
+ 	return;
+ }
+ 
+-static void ksync_fence_value_str(struct dma_fence *base,
+-				char *str, s32 size)
+-{
+-	struct ksync_fence *fence = to_ksync_fence(base);
+-	struct ksync_timeline *timeline = NULL;
+-
+-	if (!fence)
+-		goto out;
+-
+-	timeline = ksync_timeline_get(fence->timeline);
+-	if (!timeline) {
+-		pr_warn("[%s:%d] timeline is NULL fence:%p seqno:%llu\n",
+-			__func__, __LINE__, fence, fence->seqno);
+-		goto out;
+-	}
+-
+-	snprintf(str, size, "%llu-%llu", base->context, fence->seqno);
+-	ksync_timeline_put(timeline);
+-out:
+-	return;
+-}
+-
+ static const struct dma_fence_ops ksync_fence_ops = {
+ 	.get_driver_name = ksync_get_driver_name,
+ 	.get_timeline_name = ksync_get_timeline_name,
+ 	.enable_signaling = ksync_enable_signaling,
+ 	.signaled = ksync_is_signaled,
+ 	.release = ksync_fence_release,
+-	.fence_value_str = ksync_fence_value_str,
+-	.timeline_value_str = ksync_timeline_value_str,
+ };
+ 
+ long ksync_ioctl_fence_create(struct ksync_priv *dev_priv,

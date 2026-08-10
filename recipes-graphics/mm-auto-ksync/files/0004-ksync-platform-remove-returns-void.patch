@@ -1,0 +1,36 @@
+From d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5 Mon Sep 17 00:00:00 2001
+From: Ajender Reddy Mallikarjuna <ajenderr@qti.qualcomm.com>
+Date: Fri, 07 Aug 2026 08:36:32 +0000
+Subject: [PATCH 4/4] ksync: platform_driver.remove returns void
+
+Since kernel commit b7de3f36 (v6.11), platform_driver.remove must return
+void instead of int. Change qcom_ksync_remove return type to void and
+remove the redundant return 0.
+
+Upstream-Status: Inappropriate [kernel 6.11+: platform_driver.remove returns void, not int]
+Signed-off-by: Ajender Reddy Mallikarjuna <ajenderr@qti.qualcomm.com>
+---
+ src/ksync.c | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/src/ksync.c b/src/ksync.c
+index 0000000..0000001 100644
+--- a/src/ksync.c
++++ b/src/ksync.c
+@@ -229,7 +229,7 @@
+ 	return 0;
+ }
+ 
+-static s32 qcom_ksync_remove(struct platform_device *pdev)
++static void qcom_ksync_remove(struct platform_device *pdev)
+ {
+ 	struct qcom_ksync *ksync = platform_get_drvdata(pdev);
+ 
+@@ -238,7 +238,6 @@
+ 	idr_destroy(&ksync->timeline_idr);
+ 	qcom_ksync_deregister(pdev);
+ 	platform_device_unregister(pdev);
+-	return 0;
+ }
+ 
+ static struct platform_driver qcom_ksync_driver = {

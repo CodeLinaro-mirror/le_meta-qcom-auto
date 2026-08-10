@@ -1,0 +1,73 @@
+From b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3 Mon Sep 17 00:00:00 2001
+From: Ajender Reddy Mallikarjuna <ajenderr@qti.qualcomm.com>
+Date: Fri, 07 Aug 2026 08:36:32 +0000
+Subject: [PATCH 2/4] ksync: remove fence_value_str/timeline_value_str from ksync_source dma_fence_ops
+
+kernel 6.3+ removed fence_value_str and timeline_value_str from
+struct dma_fence_ops. Remove the callback implementation and its
+reference in ksync_source_fence_ops, and remove the dead code in
+ksync_debugfs.c that called these callbacks.
+
+Upstream-Status: Inappropriate [kernel 6.3+ removed fence_value_str/timeline_value_str from dma_fence_ops]
+Signed-off-by: Ajender Reddy Mallikarjuna <ajenderr@qti.qualcomm.com>
+---
+ src/ksync_debugfs.c | 18 ------------------
+ src/ksync_source.c  | 16 ----------------
+ 2 files changed, 34 deletions(-)
+
+diff --git a/src/ksync_source.c b/src/ksync_source.c
+index 0000000..0000001 100644
+--- a/src/ksync_source.c
++++ b/src/ksync_source.c
+@@ -332,16 +332,6 @@
+ 	return "ksync-syncsource-timeline";
+ }
+ 
+-static void ksync_source_fence_value_str(struct dma_fence *base,
+-						char *str, int size)
+-{
+-	/*
+-	 * Each fence is independent of the others on the same timeline.
+-	 * We use a different context for each of them.
+-	 */
+-	snprintf(str, size, "%llu", base->context);
+-}
+-
+ static const struct dma_fence_ops ksync_source_fence_ops = {
+ 	.get_driver_name = ksync_source_driver_name,
+ 	.get_timeline_name = ksync_source_get_timeline_name,
+@@ -349,5 +339,4 @@
+ 	.wait = dma_fence_default_wait,
+ 	.release = ksync_source_fence_release,
+ 
+-	.fence_value_str = ksync_source_fence_value_str,
+ };
+diff --git a/src/ksync_debugfs.c b/src/ksync_debugfs.c
+index 0000000..0000001 100644
+--- a/src/ksync_debugfs.c
++++ b/src/ksync_debugfs.c
+@@ -43,24 +43,6 @@
+ 		seq_printf(s, "@%lld.%09ld", (s64)ts64.tv_sec, ts64.tv_nsec);
+ 	}
+ 
+-	if (base->ops->timeline_value_str &&
+-		base->ops->fence_value_str) {
+-		char value[64];
+-		bool success;
+-
+-		base->ops->fence_value_str(base, value, sizeof(value));
+-		success = strlen(value);
+-
+-		if (success) {
+-			seq_printf(s, ": %s", value);
+-
+-			base->ops->timeline_value_str(base, value,
+-						       sizeof(value));
+-
+-			if (strlen(value))
+-				seq_printf(s, " / %s", value);
+-		}
+-	}
+ 
+ 	seq_putc(s, '\n');
+ }
