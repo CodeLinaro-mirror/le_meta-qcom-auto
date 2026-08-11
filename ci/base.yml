@@ -106,15 +106,6 @@ local_conf_header:
     # qcom-common.inc from meta-qcom adds "qcom:" to MACHINEOVERRIDES — needed for
     # linux-qcom-next COMPATIBLE_MACHINE = "(qcom)" to match sa8797-ride-sx
     MACHINEOVERRIDES =. "qcom:"
-    # qcom-image-boot and edk2 not targeted in this build
-    # EXTRA_IMAGEDEPENDS:remove = "qcom-image-boot:do_sign_boot_img" — removed: let gen5.inc trigger qcom-image-boot
-    # do_makeboot is the task in the simplified recipe (no do_sign_boot_img)
-    EXTRA_IMAGEDEPENDS:remove = "edk2"
-    # PACKAGE_INSTALL:remove:pn-core-image-platform was here — removed:
-    # safelinux-cfg-modules, safelinux-system-cfg, libkiumd, kernel-modules are now built
-    # and should be installed as per CL 6776705
-    # kernel-topics.git early/hwe/nord provides nord DTBs; sa8797-ride-sx.conf sets
-    # KERNEL_DEVICETREE ?= "qcom/nord-evk.dtb qcom/nord-ride.dtb"
   masking: |
     # Remove the bare meta-qcom mask added by qclinux-bbmask.inc
     BBMASK:remove = " meta-qcom"
