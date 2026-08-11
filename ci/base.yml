@@ -150,7 +150,6 @@ local_conf_header:
     BBMASK:append = " /meta-qcom-auto/recipes-kernel/libbpf/libbpf_%.bbappend"
     BBMASK:append = " /meta-qcom-auto/recipes-kernel/linux/linux-qcom-custom_6.6.bb"
     BBMASK:append = " /meta-qcom-auto/recipes-security/selinux/libselinux/libselinux_%.bbappend"
-    BBMASK:append = " /meta-qcom-auto-extras/recipes-products/images/machine-image.bbappend"
     BBMASK:append = " /meta-qcom-auto-extras/recipes-products/images/machine-image-lagvm.bbappend"
     BBMASK:append = " /meta-qcom-auto-extras/recipes-products/images/qti-image-boot.bbappend"
     BBMASK:append = " /meta-qcom-auto-extras/recipes-tools/fpga-test/fpga-test_git.bb"
