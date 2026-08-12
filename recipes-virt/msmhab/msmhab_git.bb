@@ -7,7 +7,10 @@ LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/${LICENSE};md5
 
 DEPENDS += "gunyah-drivers"
 
+FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
+
 SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/mmhab-drv/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/mmhab-drv;usehead=1"
+SRC_URI += "file://0001-msmhab-kernel7-gcc15-compat.patch;patchdir=${S}"
 
 SRCREV = "${AUTOREV}"
 
