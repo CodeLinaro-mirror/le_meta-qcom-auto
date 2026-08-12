@@ -1,0 +1,151 @@
+From 0000000000000000000000000000000000000004 Mon Sep 17 00:00:00 2001
+From: Ninad Naik <ninanaik@qti.qualcomm.com>
+Date: Mon, 20 Jul 2026 00:00:02 -0700
+Subject: [PATCH] firmware/qcom_scm: expose qcom_scm_assign_mem_regions and helpers
+
+Move struct qcom_scm_current_perm_info and struct qcom_scm_mem_map_info
+from qcom_scm.c into the public header include/linux/firmware/qcom/qcom_scm.h
+so out-of-tree modules (qcom_secure_dmabuf) can populate them directly.
+
+Add two inline helpers that centralise the little-endian populate logic
+already used by qcom_scm_assign_mem():
+
+  qcom_scm_populate_vmperm_info(destvm, vmid, perm)
+  qcom_scm_populate_mem_map_info(mem_to_map, mem_addr, mem_size)
+
+Add qcom_scm_assign_mem_regions(): batch variant of qcom_scm_assign_mem
+that accepts pre-populated mem_map_info + current_perm_info arrays (used
+by scatter-gather callers that already build these structures in place)
+and hands them straight to __qcom_scm_assign_mem().
+
+Exports qcom_scm_assign_mem_regions via EXPORT_SYMBOL_GPL so a Qualcomm
+vendor secure-dmabuf module can link against it. No existing in-tree
+caller behaviour changes; the private struct definitions in qcom_scm.c
+are simply relocated to the public header and referenced from the same
+site.
+
+Signed-off-by: Ninad Naik <ninanaik@qti.qualcomm.com>
+---
+ drivers/firmware/qcom/qcom_scm.c            | 45 +++++++++++++++++++++++++++++++++------------
+ include/linux/firmware/qcom/qcom_scm.h      | 40 ++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 73 insertions(+), 12 deletions(-)
+
+diff --git a/drivers/firmware/qcom/qcom_scm.c b/drivers/firmware/qcom/qcom_scm.c
+--- a/drivers/firmware/qcom/qcom_scm.c
++++ b/drivers/firmware/qcom/qcom_scm.c
+@@ -62,18 +62,6 @@
+ 	unsigned int wq_cnt;
+ };
+ 
+-struct qcom_scm_current_perm_info {
+-	__le32 vmid;
+-	__le32 perm;
+-	__le64 ctx;
+-	__le32 ctx_size;
+-	__le32 unused;
+-};
+-
+-struct qcom_scm_mem_map_info {
+-	__le64 mem_addr;
+-	__le64 mem_size;
+-};
+ 
+ /**
+  * struct qcom_scm_qseecom_resp - QSEECOM SCM call response.
+@@ -1436,6 +1424,39 @@
+ EXPORT_SYMBOL_GPL(qcom_scm_assign_mem);
+ 
+ /**
++ *  qcom_scm_assign_mem_regions() - Make a secure call to reassign memory
++ *                                   ownership of several memory regions
++ *  @mem_regions:    A buffer describing the set of memory regions that need to
++ *                   be reassigned
++ *  @mem_regions_sz: The size of the buffer describing the set of memory
++ *                   regions that need to be reassigned (in bytes)
++ *  @srcvms:         A buffer populated with the vmid(s) for the current set of
++ *                   owners
++ *  @src_sz:         The size of the src_vms buffer (in bytes)
++ *  @newvms:         A buffer populated with the new owners and corresponding
++ *                   permission flags.
++ *  @newvms_sz:      The size of the new_vms buffer (in bytes)
++ *
++ *  NOTE: It is up to the caller to ensure that the buffers that will be accessed
++ *  by the secure world are cache aligned, and have been flushed prior to
++ *  invoking this call.
++ *
++ *  Return negative errno on failure, 0 on success.
++ */
++int qcom_scm_assign_mem_regions(struct qcom_scm_mem_map_info *mem_regions,
++		size_t mem_regions_sz, u32 *srcvms,
++		size_t src_sz,
++		struct qcom_scm_current_perm_info *newvms,
++		size_t newvms_sz)
++{
++	return __qcom_scm_assign_mem(__scm ? __scm->dev : NULL,
++		virt_to_phys(mem_regions), mem_regions_sz,
++		virt_to_phys(srcvms), src_sz,
++		virt_to_phys(newvms), newvms_sz);
++}
++EXPORT_SYMBOL_GPL(qcom_scm_assign_mem_regions);
++
++/**
+  * qcom_scm_ocmem_lock_available() - is OCMEM lock/unlock interface available
+  */
+ bool qcom_scm_ocmem_lock_available(void)
+diff --git a/include/linux/firmware/qcom/qcom_scm.h b/include/linux/firmware/qcom/qcom_scm.h
+--- a/include/linux/firmware/qcom/qcom_scm.h
++++ b/include/linux/firmware/qcom/qcom_scm.h
+@@ -62,6 +62,42 @@
+ #define QCOM_SCM_VM_WORD_SIZE       64
+ #define QCOM_SCM_MAX_VMID       128
+ 
++struct qcom_scm_current_perm_info {
++	__le32 vmid;
++	__le32 perm;
++	__le64 ctx;
++	__le32 ctx_size;
++	__le32 unused;
++};
++
++struct qcom_scm_mem_map_info {
++	__le64 mem_addr;
++	__le64 mem_size;
++};
++
++static inline void qcom_scm_populate_vmperm_info(
++		struct qcom_scm_current_perm_info *destvm, int vmid, int perm)
++{
++	if (!destvm)
++		return;
++
++	destvm->vmid = cpu_to_le32(vmid);
++	destvm->perm = cpu_to_le32(perm);
++	destvm->ctx = 0;
++	destvm->ctx_size = 0;
++}
++
++static inline void qcom_scm_populate_mem_map_info(
++		struct qcom_scm_mem_map_info *mem_to_map,
++		phys_addr_t mem_addr, size_t mem_size)
++{
++	if (!mem_to_map)
++		return;
++
++	mem_to_map->mem_addr = cpu_to_le64(mem_addr);
++	mem_to_map->mem_size = cpu_to_le64(mem_size);
++}
++
+ bool qcom_scm_is_available(void);
+ 
+ int qcom_scm_set_cold_boot_addr(void *entry);
+@@ -110,6 +146,10 @@
+ int qcom_scm_iommu_set_cp_pool_size(u32 spare, u32 size);
+ int qcom_scm_mem_protect_video_var(u32 cp_start, u32 cp_size,
+ 				   u32 cp_nonpixel_start, u32 cp_nonpixel_size);
++int qcom_scm_assign_mem_regions(struct qcom_scm_mem_map_info *mem_regions,
++		size_t mem_regions_sz, u32 *srcvms, size_t src_sz,
++		struct qcom_scm_current_perm_info *newvms,
++		size_t newvms_sz);
+ int qcom_scm_assign_mem(phys_addr_t mem_addr, size_t mem_sz, u64 *src,
+ 			const struct qcom_scm_vmperm *newvm,
+ 			unsigned int dest_cnt);

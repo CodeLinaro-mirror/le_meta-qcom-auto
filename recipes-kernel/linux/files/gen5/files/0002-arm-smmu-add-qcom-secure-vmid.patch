@@ -1,0 +1,35 @@
+From 0000000000000000000000000000000000000002 Mon Sep 17 00:00:00 2001
+From: Ninad Naik <ninanaik@qti.qualcomm.com>
+Date: Sun, 19 Jul 2026 00:00:00 -0700
+Subject: [PATCH] iommu/arm-smmu: add qcom secure_vmid field to arm_smmu_domain
+
+Add a per-domain u32 secure_vmid slot so a Qualcomm SMMU vendor
+implementation can record the secure VMID a context bank is bound
+to (parsed from the "qcom,iommu-vmid" DT property). The value is
+consumed by the secure page-table allocator added in a follow-up
+patch (qcom_alloc_pages / qcom_free_pages).
+
+Signed-off-by: Ninad Naik <ninanaik@qti.qualcomm.com>
+---
+ drivers/iommu/arm/arm-smmu/arm-smmu.h | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/drivers/iommu/arm/arm-smmu/arm-smmu.h b/drivers/iommu/arm/arm-smmu/arm-smmu.h
+--- a/drivers/iommu/arm/arm-smmu/arm-smmu.h
++++ b/drivers/iommu/arm/arm-smmu/arm-smmu.h
+@@ -385,6 +385,14 @@ struct arm_smmu_domain {
+ 	struct mutex			init_mutex; /* Protects smmu pointer */
+ 	spinlock_t			cb_lock; /* Serialises ATS1* ops and TLB syncs */
+ 	struct iommu_domain		domain;
++	/*
++	 * Use to store parse vmid value for those clients which want HLOS
++	 * to share pgtable to different entity(VMID).
++	 * Fix Me: Ideally this should be implemented on arm-smmu vendor
++	 * implementation driver, but as per current design of
++	 * arm_smmu_domain_alloc there is no way to call implementation callbacks.
++	 */
++	u32				secure_vmid;
+ };
+ 
+ struct arm_smmu_master_cfg {
+
