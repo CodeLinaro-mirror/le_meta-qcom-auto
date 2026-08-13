@@ -12,10 +12,10 @@ Signed-off-by: pengy <pengy@qti.qualcomm.com>
  drivers/hyp_udmabuf.c | 3 +--
  1 file changed, 1 insertion(+), 2 deletions(-)
 
-diff --git a/drivers/hyp_udmabuf.c b/drivers/hyp_udmabuf.c
+diff --git a/hyp_udmabuf.c b/hyp_udmabuf.c
 index fa6a8b5..bcdc431 100644
---- a/drivers/hyp_udmabuf.c
-+++ b/drivers/hyp_udmabuf.c
+--- a/hyp_udmabuf.c
++++ b/hyp_udmabuf.c
 @@ -138,7 +138,6 @@ static void hyp_udmabuf_release(struct dma_buf *buf)
  }
  

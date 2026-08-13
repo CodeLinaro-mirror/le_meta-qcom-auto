@@ -16,6 +16,9 @@ SRCREV = "${AUTOREV}"
 
 S = "${UNPACKDIR}/vendor/qcom/opensource/vhost-user-scmi"
 
+# GCC 14: pthread_* used without <pthread.h> triggers implicit-declaration errors
+CFLAGS:append = " -Wno-implicit-function-declaration"
+
 do_install:append:gen5() {
     install -d ${D}${systemd_unitdir}/system/
     install -m 0644 ${S}/vhost-user-scmi-sa8797.service ${D}/${systemd_unitdir}/system/vhost-user-scmi.service

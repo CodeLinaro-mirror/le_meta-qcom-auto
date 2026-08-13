@@ -7,7 +7,7 @@ LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/BSD-3-Clause-C
                     file://${COREBASE}/meta/files/common-licenses/Apache-2.0;md5=89aea4e17d99a7cacdbeed46a0096b10 \
                     file://${COREBASE}/meta/files/common-licenses/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 
-DEPENDS += "cargo-native libcap rust-native rust-llvm-native pkgconfig-native"
+DEPENDS += "cargo-native libcap rust-native "
 
 SRC_URI = "\
     ${PATH_TO_REPO}/vendor/qcom/opensource/crosvm-gunyah/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/crosvm-gunyah;name=crosvm-gunyah;usehead=1 \
@@ -28,9 +28,16 @@ SRCREV_FORMAT = "crosvm-gunyah_crosvm_minijail_android-logger_simplelog_vmm-vhos
 
 S = "${UNPACKDIR}/vendor/qcom/opensource/crosvm-gunyah"
 
-inherit cargo systemd cargo-update-recipe-crates
+inherit cargo systemd cargo-update-recipe-crates pkgconfig
 
 require ${BPN}-crates.inc
+
+# Deps are all vendored path deps; Cargo.lock has no git sources, so the
+# auto [patch] table is inapplicable. Its crate names (e.g. name=crosvm-gunyah
+# vs package qcrosvm — the root package itself) fail to resolve. Disable it.
+python cargo_common_do_patch_paths () {
+    return
+}
 
 CARGO_BUILD_FLAGS += "${@bb.utils.contains('DISTRO_FEATURES', 'qti-qcvirtio', '--features=vhost-user-generic', '', d)}"
 

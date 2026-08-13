@@ -1,0 +1,53 @@
+From: Yongkui Yang <yongkuiy@qti.qualcomm.com>
+Date: Wed, 29 Jul 2026 12:00:00 +0800
+Subject: [PATCH] hab: avoid MM_ID_MAX collision with kernel 7.0 mm_types.h
+
+Kernel 7.0's MM_ID_MAX in <linux/mm_types.h> overrides HAB's MM_ID_MAX
+(1903), making HABCFG_MMID_AREA_MAX 21474836 instead of 19 and inflating
+msm_hab.ko to 2.6 GB. Use a private HAB_MM_ID_MAX instead.
+
+Upstream-Status: Pending
+Signed-off-by: Yongkui Yang <yongkuiy@qti.qualcomm.com>
+---
+ hab.c | 2 +-
+ hab.h | 5 ++++-
+ 2 files changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/hab.h b/hab.h
+index 1234567..abcdefg 100644
+--- a/hab.h
++++ b/hab.h
+@@ -7,6 +7,9 @@
+ #define __HAB_H
+
+ #include "hab_os.h"	/* OS-specific part in the core header file */
++
++/* Private name for habmmid.h's MM_ID_MAX: kernel 7.0 mm_types.h redefines it. */
++#define HAB_MM_ID_MAX 1903
+
+ #ifdef CONFIG_MSM_VHOST_HAB
+ #define spin_lock_bh spin_lock
+@@ -99,7 +102,7 @@
+ #define MAX_EXP_PAYLOAD_COUNT 0xFFFFF
+
+ #define HABCFG_FILE_SIZE_MAX   256
+-#define HABCFG_MMID_AREA_MAX   (MM_ID_MAX/100)
++#define HABCFG_MMID_AREA_MAX   (HAB_MM_ID_MAX/100)
+
+ #define HABCFG_VMID_MAX        16
+ #define HABCFG_VMID_INVALID    (-1)
+diff --git a/hab.c b/hab.c
+index 2345678..bcdefgh 100644
+--- a/hab.c
++++ b/hab.c
+@@ -1246,7 +1246,7 @@ int do_hab_parse(void)
+ 		pr_err("hab config open failed, prepare default gvm %d settings\n",
+ 				default_gvmid);
+ 		(void)fill_default_gvm_settings(&hab_driver.settings, default_gvmid,
+-				MM_AUD_START, MM_ID_MAX);
++				MM_AUD_START, HAB_MM_ID_MAX);
+ 	}
+
+ 	/* now generate hab pchan list */
+--
+2.43.0

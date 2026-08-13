@@ -11,6 +11,7 @@ FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
 
 SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/mmhab-drv/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/mmhab-drv;usehead=1"
 SRC_URI += "file://0001-msmhab-kernel7-gcc15-compat.patch;patchdir=${S}"
+SRC_URI += "file://0002-hab-avoid-MM_ID_MAX-collision-with-kernel-7.patch;patchdir=${S}"
 
 SRCREV = "${AUTOREV}"
 

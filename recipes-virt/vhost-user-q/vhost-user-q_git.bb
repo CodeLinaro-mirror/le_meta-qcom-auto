@@ -79,6 +79,8 @@ CFLAGS += "\
     --sysroot=${STAGING_DIR_TARGET} \
     -DCONFIG_HGY_PLATFORM \
     -D__linux__ \
+    -Wno-error=implicit-function-declaration \
+    -Wno-error=incompatible-pointer-types \
 "
 TARGET_CC_ARCH += "${LDFLAGS}"
 
