@@ -1,4 +1,3 @@
-inherit qimage
 SECTION = "kernel"
 
 COMPATIBLE_MACHINE .= "|sa8797-ride-sx"

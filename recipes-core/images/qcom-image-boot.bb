@@ -76,16 +76,51 @@ do_makeboot[depends] += "virtual/kernel:do_deploy mkbootimg-native:do_populate_s
 
 addtask do_makeboot before do_build after do_make_dtb
 
-# EXTRA_IMAGEDEPENDS (gen5.inc) references qcom-image-boot:do_sign_boot_img.
-# The full production recipe (recipes-products/) that provides real signing is
-# BBMASK'd in local.conf. This simplified recipe provides a pass-through task so
-# the dependency resolves; NO signing is performed — the unsigned boot image is
-# used as-is. Remove once the production recipe is un-masked.
+#sign boot img
 do_sign_boot_img () {
-    bbnote "qcom-image-boot (simplified): no signing performed; using unsigned ${PRODUCT}-boot.img"
-    :
+    imgname="${DEPLOY_DIR_IMAGE}/${BOOTIMAGE_TARGET}"
+    if ${@bb.utils.contains('DISTRO_FEATURES', 'qti-avb', 'true', 'false', d)}; then
+        avb_sign_boot_image ${imgname}
+        if [ -f "${DEPLOY_DIR_IMAGE_LAGVM}/${PRODUCT}-lagvm-boot.img" ]; then
+            imgname="${DEPLOY_DIR_IMAGE_LAGVM}/${PRODUCT}-lagvm-boot.img"
+            avb_sign_boot_image ${imgname}
+        fi
+        if [ -f "${DEPLOY_DIR_IMAGE_PVM}/${PRODUCT}-pvm-boot.img" ]; then
+            imgname="${DEPLOY_DIR_IMAGE_PVM}/${PRODUCT}-pvm-boot.img"
+            avb_sign_boot_image ${imgname}
+        fi
+    fi
 }
+
+avb_sign_boot_image() {
+    img="$1"
+    boot_partition_size=$(avbtool calc_min_partition_size \
+                              --image ${img} \
+                              --partition_name boot \
+                              --hash_algorithm sha256 \
+                              --no_hashtree)
+    avbtool add_hash_footer  \
+        --image ${img}  \
+        --partition_size ${boot_partition_size}  \
+        --partition_name boot \
+        --algorithm SHA256_RSA4096 \
+        --key ${STAGING_DIR_NATIVE}${sysconfdir}/signing_tools/sigkeys/testkey_rsa4096.pem \
+        --rollback_index 0
+    if ${@bb.utils.contains('MACHINE_FEATURES', 'dt-overlay', 'true', 'false', d)}; then
+       avbtool add_hash_footer  \
+              --image ${DEPLOY_DIR_IMAGE}/${PRODUCT}-dtbo.img  \
+              --partition_size 0x00200000 \
+              --partition_name dtbo \
+              --algorithm SHA256_RSA4096 \
+              --key ${STAGING_DIR_NATIVE}${sysconfdir}/signing_tools/sigkeys/testkey_rsa4096.pem \
+              --rollback_index 0
+    fi
+}
+
+#Sign boot image after generation
 do_sign_boot_img[dirs] = "${DEPLOY_DIR_IMAGE}"
+do_sign_boot_img[depends] += "sectools-native:do_populate_sysroot avbtool-native:do_populate_sysroot"
+
 addtask do_sign_boot_img after do_makeboot before do_build
 
 do_rootfs[noexec] = "1"
