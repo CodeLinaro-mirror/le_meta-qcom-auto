@@ -6,7 +6,7 @@ FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
 
 DEPENDS += "skales-native xxd-native"
 
-SRC_URI = "git://github.com/qualcomm-linux/kernel-topics.git;branch=early/hwe/nord;protocol=https"
+SRC_URI = "git://github.com/qualcomm-linux/kernel-topics.git;branch=refs/tags/nord-next-20260831;nobranch=1;protocol=https"
 # Additional kernel configs.
 SRC_URI:append = " \
     file://configs/bsp-additions.cfg \
@@ -19,7 +19,8 @@ SRC_URI:append = " \
 "
 
 # Pin to a specific commit once you know it
-SRCREV = "96a62f5aca96193f402373d0269f7c877ff1876a"
+# tag: early/hwe/nord-next tip as of 2026-08-17 (previous pin fell off history after upstream branch rewrite)
+SRCREV = "c0bd3ab23cd9fe3f6938bf9373572a4d3ada7c19"
 
 KERNEL_CONFIG_FRAGMENTS = "\
     arch/arm64/configs/hardening.config \
@@ -36,7 +37,6 @@ KERNEL_DEFCONFIG = "defconfig"
 KBUILD_CONFIG_EXTRA = "${@bb.utils.contains('DISTRO_FEATURES', 'hardened', '${S}/kernel/configs/hardening.config', '', d)}"
 
 KERNEL_MACHINE_DTB = "\
-    arch/arm64/boot/dts/qcom/nord-evk.dtb \
     arch/arm64/boot/dts/qcom/nord-ride.dtb \
 "
 
