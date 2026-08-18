@@ -97,7 +97,7 @@ local_conf_header:
     # Use QTI selinux-policy over meta-selinux refpolicy-targeted
     PREFERRED_PROVIDER_virtual/refpolicy = "selinux-policy"
   srcrev-policy: |
-    BB_SRCREV_POLICY = "cache"
+    BB_SRCREV_POLICY = "clear"
   qa-overrides: |
     # Allow fuzzy patches and upstream-status-less patches during porting
     ERROR_QA:remove = "patch-fuzz"
