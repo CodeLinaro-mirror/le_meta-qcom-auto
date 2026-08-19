@@ -117,7 +117,6 @@ local_conf_header:
     # bbappends with base recipe present — masked because patch may not apply cleanly
     # linux-qcom-custom_6.6.bb: SRCREV unresolvable at parse time — must stay masked
     BBMASK:append = " /meta-qcom-auto/recipes-kernel/linux/linux-qcom-custom_6.6.bb"
-    BBMASK:append = " /meta-qcom-auto-extras/recipes-products/images/machine-image-lagvm.bbappend"
     # qti-image-boot.bbappend: dangling bbappend — base recipe masked by qclinux-bbmask.inc
     BBMASK:append = " /meta-qcom-auto-extras/recipes-products/images/qti-image-boot.bbappend"
     ERROR_QA:remove = "buildpaths"
