@@ -10,7 +10,11 @@ DEPENDS += "libcutils libhardware-headers liblog libutils virtual/kernel-headers
 
 PR = "r3"
 
-SRC_URI = "${PATH_TO_REPO}/${TARGET_DIR}vendor/qcom/opensource/commonsys-intf/display/.git;protocol=${PROTO};destsuffix=${TARGET_DIR}vendor/qcom/opensource/commonsys-intf/display;usehead=1"
+FILESEXTRAPATHS:prepend := "${THISDIR}/display-commonsys-intf-linux:"
+
+SRC_URI = "${PATH_TO_REPO}/${TARGET_DIR}vendor/qcom/opensource/commonsys-intf/display/.git;protocol=${PROTO};destsuffix=${TARGET_DIR}vendor/qcom/opensource/commonsys-intf/display;usehead=1 \
+           file://0001-configure-support-sanitized-kernel-headers.patch \
+"
 
 SRCREV = "${AUTOREV}"
 
@@ -21,7 +25,6 @@ S = "${UNPACKDIR}/${TARGET_DIR}vendor/qcom/opensource/commonsys-intf/display"
 inherit autotools pkgconfig
 
 EXTRA_OECONF += "--with-sanitized-headers=${STAGING_INCDIR}/${PREFERRED_PROVIDER_virtual/kernel}"
-EXTRA_OECONF:remove:gen5 = "--with-sanitized-headers=${STAGING_INCDIR}/${PREFERRED_PROVIDER_virtual/kernel}"
 
 LDFLAGS += "-llog -lutils -lcutils"
 

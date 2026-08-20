@@ -1,0 +1,43 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jim Wang <jimwan@qti.qualcomm.com>
+Date: Tue, 18 Aug 2026 13:20:00 -0400
+Subject: [PATCH] sdm-backend: port early renderer callbacks to paint nodes
+
+Weston 15 renderer attach and damage callbacks receive a weston_paint_node
+instead of the older surface/buffer arguments. Recover the surface and current
+buffer from the paint node before applying the existing GBM-buffer detection.
+
+Upstream-Status: Pending
+
+Signed-off-by: Jim Wang <jimwan@qti.qualcomm.com>
+---
+ sdm-backend/early-renderer.c | 10 ++++++----
+ 1 file changed, 6 insertions(+), 4 deletions(-)
+
+diff --git a/sdm-backend/early-renderer.c b/sdm-backend/early-renderer.c
+index 6cc1e28..90b0de1 100644
+--- a/sdm-backend/early-renderer.c
++++ b/sdm-backend/early-renderer.c
+@@ -99,16 +99,17 @@ early_renderer_destroy(struct weston_compositor *ec){
+ }
+ 
+ static void
+-early_renderer_flush_damage(struct weston_surface *surface)
++early_renderer_flush_damage(struct weston_paint_node *pnode)
+ {
+ }
+ 
+-
+ static void
+-early_renderer_attach(struct weston_surface *es, struct weston_buffer *buffer)
++early_renderer_attach(struct weston_paint_node *pnode)
+ {
++	struct weston_surface *es = pnode->surface;
++	struct weston_buffer *buffer = es->buffer_ref.buffer;
+ 	struct wl_shm_buffer *shm_buffer;
+ 	struct gbm_buffer *gbmbuf;
+ 
+ 	weston_log("early renderer attach\n");
+ 	if (!buffer)
+-- 
+2.34.1

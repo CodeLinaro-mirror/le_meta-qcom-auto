@@ -1,0 +1,55 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jim Wang <jimwan@qti.qualcomm.com>
+Date: Tue, 18 Aug 2026 14:20:00 -0400
+Subject: [PATCH] sdm-backend: fix remaining Weston 15 C build breaks
+
+Fix the last stale C compile breaks after the renderbuffer and callback
+signature port.
+
+Upstream-Status: Pending
+
+Signed-off-by: Jim Wang <jimwan@qti.qualcomm.com>
+---
+ sdm-backend/compositor-sdm.c | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/sdm-backend/compositor-sdm.c b/sdm-backend/compositor-sdm.c
+index f4b7773..9d36efb 100644
+--- a/sdm-backend/compositor-sdm.c
++++ b/sdm-backend/compositor-sdm.c
+@@ -2222,7 +2222,7 @@ err:
+ 		if (output->dumb[i])
+ 			drm_fb_unref(output->dumb[i]);
+ 		if (output->renderbuffer[i])
+-			weston_renderbuffer_unref(output->renderbuffer[i]);
++			renderer->destroy_renderbuffer(output->renderbuffer[i]);
+ 
+ 		output->dumb[i] = NULL;
+ 		output->renderbuffer[i] = NULL;
+@@ -3127,7 +3127,7 @@ static int create_sdm_display(struct drm_backend *backend, int idx)
+ 		goto err_stat;
+ 	}
+ 
+-	sdm_cbs.hotplug_cb = hotplug_handler,
++	sdm_cbs.hotplug_cb = (hotplug_cb_t)hotplug_handler,
+ 	sdm_cbs.pageflip_cb = (pageflip_cb_t)pageflip_handler;
+ 	sdm_service->RegisterCbs(idx, &sdm_cbs);
+ 	connector_id = sdm_service->GetConnectorId(idx);
+@@ -3146,5 +3146,5 @@ static int create_sdm_display(struct drm_backend *backend, int idx)
+ 		goto err_stat;
+ 	}
+ 
+-	sdm_service->SetHead(idx, head);
++	sdm_service->SetHead(idx, (struct drm_head *)head);
+ 	return 0;
+@@ -3153,7 +3153,7 @@ err_stat:
+ 	sdm_service->UpdateDisplayStatus(idx, false);
+ 	return -1;
+ }
+-udev_drm_event(int fd, uint32_t mask, void *data)
++static int udev_drm_event(int fd, uint32_t mask, void *data)
+ {
+ 	struct drm_backend *b = data;
+ 	struct udev_device *event;
+-- 
+2.34.1

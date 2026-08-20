@@ -1,0 +1,264 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jim Wang <jimwan@qti.qualcomm.com>
+Date: Thu, 13 Aug 2026 16:15:00 -0400
+Subject: [PATCH] weston-15: install SDM backend helper interfaces
+
+The detached Qualcomm SDM backend is built outside the Weston tree and links
+against helper libraries that Weston normally keeps private. Install the helper
+libraries and private headers needed by weston-sdm-extension, matching the
+downstream Weston 13 integration model while keeping the Weston 15 delta small.
+
+Upstream-Status: Inappropriate [qti specific]
+
+Signed-off-by: Jim Wang <jimwan@qti.qualcomm.com>
+---
+ libweston/backend-drm/libbacklight.c | 14 +++++++-------
+ libweston/backend-drm/meson.build    |  9 ++++++++-
+ libweston/libinput-seat.c            | 10 +++++-----
+ libweston/meson.build                | 26 ++++++++++++++++++++++----
+ libweston/renderer-gl/meson.build    |  5 +++++
+ shared/meson.build                   |  8 ++++++++
+ 6 files changed, 55 insertions(+), 17 deletions(-)
+
+diff --git a/libweston/backend-drm/libbacklight.c b/libweston/backend-drm/libbacklight.c
+index 84eeb93..149c849 100644
+--- a/libweston/backend-drm/libbacklight.c
++++ b/libweston/backend-drm/libbacklight.c
+@@ -30,6 +30,7 @@
+ #include <libgen.h>
+ #include <string.h>
+ #include <errno.h>
++#include <wayland-util.h>
+ 
+ #include "shared/string-helpers.h"
+ #include "libbacklight.h"
+@@ -87,22 +88,22 @@ out:
+ 	return ret;
+ }
+ 
+-long backlight_get_brightness(struct backlight *backlight)
++WL_EXPORT long backlight_get_brightness(struct backlight *backlight)
+ {
+ 	return backlight_get(backlight, "brightness");
+ }
+ 
+-long backlight_get_max_brightness(struct backlight *backlight)
++WL_EXPORT long backlight_get_max_brightness(struct backlight *backlight)
+ {
+ 	return backlight_get(backlight, "max_brightness");
+ }
+ 
+-long backlight_get_actual_brightness(struct backlight *backlight)
++WL_EXPORT long backlight_get_actual_brightness(struct backlight *backlight)
+ {
+ 	return backlight_get(backlight, "actual_brightness");
+ }
+ 
+-long backlight_set_brightness(struct backlight *backlight, long brightness)
++WL_EXPORT long backlight_set_brightness(struct backlight *backlight, long brightness)
+ {
+ 	char *path;
+ 	char *buffer = NULL;
+@@ -147,7 +148,7 @@ out:
+ 	return ret;
+ }
+ 
+-void backlight_destroy(struct backlight *backlight)
++WL_EXPORT void backlight_destroy(struct backlight *backlight)
+ {
+ 	if (!backlight)
+ 		return;
+@@ -158,8 +159,7 @@ void backlight_destroy(struct backlight *backlight)
+ 	free(backlight);
+ }
+ 
+-struct backlight *backlight_init(struct udev_device *drm_device,
+-				 uint32_t connector_type)
++WL_EXPORT struct backlight *backlight_init(struct udev_device *drm_device, uint32_t connector_type)
+ {
+ 	const char *syspath = NULL;
+ 	char *path = NULL;
+diff --git a/libweston/backend-drm/meson.build b/libweston/backend-drm/meson.build
+index 71135dc..1c05c75 100644
+--- a/libweston/backend-drm/meson.build
++++ b/libweston/backend-drm/meson.build
+@@ -2,7 +2,7 @@ if not get_option('backend-drm')
+ 	subdir_done()
+ endif
+ 
+-lib_backlight = static_library(
++lib_backlight = shared_library(
+ 	'backlight',
+ 	'libbacklight.c',
+ 	dependencies: [
+@@ -10,7 +10,7 @@ lib_backlight = static_library(
+ 		dependency('libudev')
+ 	],
+ 	include_directories: common_inc,
+-	install: false
++	install: true
+ )
+ dep_backlight = declare_dependency(
+ 	link_with: lib_backlight,
+@@ -94,3 +94,13 @@ plugin_drm = shared_library(
+ )
+ env_modmap += 'drm-backend.so=@0@;'.format(plugin_drm.full_path())
+ install_headers(backend_drm_h, subdir: dir_include_libweston_install)
++
++install_headers(
++	'libbacklight.h',
++	subdir: dir_include_libweston / 'libweston-private'
++)
++
++install_headers(
++	'drm-kms-enums.h',
++	subdir: dir_include_libweston / 'libweston-private' / 'backend-drm'
++)
+diff --git a/libweston/libinput-seat.c b/libweston/libinput-seat.c
+index 352a662..1bce22f 100644
+--- a/libweston/libinput-seat.c
++++ b/libweston/libinput-seat.c
+@@ -173,7 +173,7 @@ notify_output_destroy(struct wl_listener *listener, void *data)
+ 	free(device);
+ }
+ 
+-void
++WL_EXPORT void
+ udev_input_disable(struct udev_input *input)
+ {
+ 	if (input->suspended)
+@@ -270,7 +270,7 @@ udev_input_process_event(struct libinput_event *event)
+ 	}
+ }
+ 
+-int
++WL_EXPORT int
+ udev_input_enable(struct udev_input *input)
+ {
+ 	struct wl_event_loop *loop;
+@@ -333,7 +333,7 @@ input_device_added(struct udev_input *input, struct libinput_device *libinput_de
+ 	evdev_device_set_output(device, device->output_name);
+ }
+ 
+-int
++WL_EXPORT int
+ udev_input_init(struct udev_input *input, struct weston_compositor *c,
+ 		struct udev *udev, const char *seat_id,
+ 		udev_configure_device_t configure_device)
+@@ -383,7 +383,7 @@ udev_input_init(struct udev_input *input, struct weston_compositor *c,
+ 	return udev_input_enable(input);
+ }
+ 
+-void
++WL_EXPORT void
+ udev_input_destroy(struct udev_input *input)
+ {
+ 	struct udev_seat *seat, *next;
+@@ -493,7 +493,7 @@ udev_seat_destroy(struct udev_seat *seat)
+ 	free(seat);
+ }
+ 
+-struct udev_seat *
++WL_EXPORT struct udev_seat *
+ udev_seat_get_named(struct udev_input *input, const char *seat_name)
+ {
+ 	struct udev_seat *seat;
+diff --git a/libweston/meson.build b/libweston/meson.build
+index be88faa..4a97243 100644
+--- a/libweston/meson.build
++++ b/libweston/meson.build
+@@ -197,43 +197,58 @@ if get_option('backend-drm')
+ 	deps_session_helper = [
+ 		dep_libseat,
+ 		dep_libweston_private_h,
++		dep_libweston_public,
+ 	]
+ 
+-	lib_session_helper = static_library(
++	lib_session_helper = shared_library(
+ 		'session-helper',
+ 		srcs_session_helper,
+ 		include_directories: common_inc,
+ 		dependencies: deps_session_helper,
+-		install: false
++		install: true
+ 	)
+ 	dep_session_helper = declare_dependency(link_with: lib_session_helper)
+ endif
+ 
+-lib_libinput_backend = static_library(
++lib_libinput_backend = shared_library(
+ 	'libinput-backend',
+ 	[
+ 		'libinput-device.c',
+ 		'libinput-seat.c',
+ 		tablet_unstable_v2_server_protocol_h
+ 	],
+ 	dependencies: [
+ 		dep_libweston_private,
+ 		dep_libinput,
+-		dependency('libudev', version: '>= 136')
++		dependency('libudev', version: '>= 136'),
++		dep_session_helper,
+ 	],
+ 	include_directories: common_inc,
+-	install: false
++	install: true
+ )
+ dep_libinput_backend = declare_dependency(
+ 	link_with: lib_libinput_backend,
+ 	include_directories: include_directories('.')
+ )
+ 
+ dep_vertex_clipping = declare_dependency(
+ 	sources: 'vertex-clipping.c',
+ 	include_directories: include_directories('.')
+ )
+ 
++install_headers(
++	'backend.h',
++	'libinput-seat.h',
++	'libweston-internal.h',
++	'linux-dmabuf.h',
++	'linux-explicit-synchronization.h',
++	'color.h',
++	'launcher-util.h',
++	'pixman-renderer.h',
++	'pixel-formats.h',
++	subdir: dir_include_libweston / 'libweston-private'
++)
++
+ lib_renderer_borders = static_library(
+ 	'renderer-borders',
+ 	'renderer-borders.c',
+diff --git a/libweston/renderer-gl/meson.build b/libweston/renderer-gl/meson.build
+index cf290a2..1a4315c 100644
+--- a/libweston/renderer-gl/meson.build
++++ b/libweston/renderer-gl/meson.build
+@@ -50,3 +50,8 @@ plugin_gl = shared_library(
+ 	install_dir: dir_module_libweston
+ )
+ env_modmap += 'gl-renderer.so=@0@;'.format(plugin_gl.full_path())
++
++install_headers(
++	'gl-renderer.h',
++	subdir: dir_include_libweston / 'libweston-private'
++)
+diff --git a/shared/meson.build b/shared/meson.build
+index 11d277a..a792163 100644
+--- a/shared/meson.build
++++ b/shared/meson.build
+@@ -105,3 +105,11 @@ dep_matrix_c = declare_dependency(
+ 	include_directories: public_inc,
+ 	dependencies: dep_libm
+ )
++
++install_headers(
++	'helpers.h',
++	'timespec-util.h',
++	'weston-egl-ext.h',
++	'string-helpers.h',
++	subdir: dir_include_libweston / 'shared'
++)
+-- 
+2.34.1

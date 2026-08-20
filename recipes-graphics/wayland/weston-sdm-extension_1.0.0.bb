@@ -8,7 +8,7 @@ LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/BSD-3-Clause;m
                     file://${COREBASE}/meta/files/common-licenses/Apache-2.0;md5=89aea4e17d99a7cacdbeed46a0096b10 \
                     file://${COREBASE}/meta/files/common-licenses/BSD-3-Clause-Clear;md5=7a434440b651f4a472ca93716d01033a"
 
-WESTON_MAJOR_VERSION = "13"
+WESTON_MAJOR_VERSION = "15"
 
 DEPENDS += "cairo \
             display-hal-headers display-hal-linux display-noship-linux \
@@ -33,7 +33,15 @@ CODE_DIR = "${@bb.utils.contains_any('PREFERRED_PROVIDER_virtual/kernel', 'linux
 CODE_DIR:sa8775 = "${TARGET_DIR}graphics/weston-sdm-extension"
 CODE_DIR:sa7255 = "${TARGET_DIR}graphics/weston-sdm-extension"
 
-SRC_URI = "${PATH_TO_REPO}/${CODE_DIR}/.git;protocol=${PROTO};destsuffix=${CODE_DIR};usehead=1"
+SRC_URI = "${PATH_TO_REPO}/${CODE_DIR}/.git;protocol=${PROTO};destsuffix=${CODE_DIR};usehead=1 \
+           file://0001-meson-build-use-weston-15.patch \
+           file://0002-build-fix-weston-15-headers-and-callback.patch \
+           file://0003-port-early-renderer-to-weston-15-paint-node-api.patch \
+           file://0004-port-sdm-backend-core-to-weston-15.patch \
+           file://0005-finish-weston-15-compositor-sdm-port.patch \
+           file://0006-fix-remaining-weston-15-c-build-breaks.patch \
+           file://0007-fix-drm-head-and-renderbuffer-cleanup.patch \
+"
 SRCREV = "${AUTOREV}"
 
 S = "${UNPACKDIR}/${CODE_DIR}"

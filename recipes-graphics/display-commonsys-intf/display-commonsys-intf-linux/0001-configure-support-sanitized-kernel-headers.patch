@@ -1,0 +1,44 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jim Wang <jimwan@qti.qualcomm.com>
+Date: Thu, 13 Aug 2026 17:45:00 -0400
+Subject: [PATCH] configure: support sanitized kernel headers
+
+The Yocto recipe passes --with-sanitized-headers so display interface headers
+are checked against the staged kernel UAPI. Define the option in configure and
+add the requested directory to CPPFLAGS, making the dependency explicit for
+linux-qcom-next 7.x based builds.
+
+Upstream-Status: Pending
+
+Signed-off-by: Jim Wang <jimwan@qti.qualcomm.com>
+---
+ configure.ac | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/configure.ac b/configure.ac
+index 40ae6eb..426038f 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -21,6 +21,20 @@ AC_SUBST([AM_CPPFLAGS], [--std=c++11])
+ AC_PROG_CC
+ AM_PROG_CC_C_O
+ AC_PROG_CXX
++
++AC_ARG_WITH([sanitized-headers],
++  [AS_HELP_STRING([--with-sanitized-headers=DIR],
++    [path to staged sanitized kernel headers])],
++  [sanitized_headers="$withval"],
++  [sanitized_headers=""])
++
++AS_IF([test "x$sanitized_headers" != "x" && test "x$sanitized_headers" != "xno"], [
++  AS_IF([test ! -d "$sanitized_headers"], [
++    AC_MSG_ERROR([sanitized kernel header path does not exist: $sanitized_headers])
++  ])
++  CPPFLAGS="$CPPFLAGS -I$sanitized_headers"
++])
++
+ AC_PROG_LIBTOOL
+ AC_PROG_AWK
+ AC_PROG_CPP
+-- 
+2.34.1

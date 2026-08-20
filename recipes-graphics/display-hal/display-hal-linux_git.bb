@@ -28,8 +28,15 @@ DISPLAY_DIR = "${@bb.utils.contains_any('PREFERRED_PROVIDER_virtual/kernel', 'li
 DISPLAY_DIR:sa8775 = "${TARGET_DIR}display/display-hal"
 DISPLAY_DIR:sa7255 = "${TARGET_DIR}display/display-hal"
 
-SRC_URI = "${PATH_TO_REPO}/${DISPLAY_DIR}/.git;protocol=${PROTO};destsuffix=${DISPLAY_DIR};usehead=1"
-SRCREV = "${AUTOREV}"
+LIBDRM_COMPAT_DIR = "${TARGET_DIR}vendor/qcom/opensource/display/libdrm"
+
+SRC_URI = "\
+    ${PATH_TO_REPO}/${DISPLAY_DIR}/.git;protocol=${PROTO};destsuffix=${DISPLAY_DIR};name=displaycore;usehead=1 \
+    ${PATH_TO_REPO}/${LIBDRM_COMPAT_DIR}/.git;protocol=${PROTO};destsuffix=${LIBDRM_COMPAT_DIR};name=libdrmcompat;usehead=1 \
+"
+SRCREV_displaycore = "${AUTOREV}"
+SRCREV_libdrmcompat = "${AUTOREV}"
+SRCREV_FORMAT = "displaycore_libdrmcompat"
 S = "${UNPACKDIR}/${DISPLAY_DIR}"
 
 inherit autotools-brokensep pkgconfig
@@ -50,6 +57,7 @@ CPPFLAGS += "-I${UNPACKDIR}/${DISPLAY_DIR}/libdrmutils"
 CPPFLAGS += "-I${UNPACKDIR}/${DISPLAY_DIR}/gpu_tonemapper"
 CPPFLAGS += "-I${UNPACKDIR}/${DISPLAY_DIR}/libqdutils"
 CPPFLAGS += "-I${UNPACKDIR}/${DISPLAY_DIR}/libqservice"
+CPPFLAGS += "-I${UNPACKDIR}/${LIBDRM_COMPAT_DIR}"
 CPPFLAGS += "-I${STAGING_INCDIR}/libdrm"
 
 CPPFLAGS:append:gen5 = " -DDEMURA_STAND_ALONE"

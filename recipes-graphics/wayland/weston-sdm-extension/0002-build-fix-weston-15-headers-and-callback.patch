@@ -1,0 +1,42 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jim Wang <jimwan@qti.qualcomm.com>
+Date: Thu, 13 Aug 2026 16:25:00 -0400
+Subject: [PATCH] build: fix Weston 15 headers and fd callback
+
+Add the local public include directory for SDM backend headers and update the
+sleep-notify fd callback to match the current Wayland event-loop callback
+signature.
+
+Upstream-Status: Pending
+
+Signed-off-by: Jim Wang <jimwan@qti.qualcomm.com>
+---
+ meson.build                              | 2 +-
+ sdm-backend/compositor-pm-ds-snservice.c | 4 +++-
+ 2 files changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/meson.build b/meson.build
+index 8ad5360..b02f0f1 100644
+--- a/meson.build
++++ b/meson.build
+@@ -23 +23 @@ dir_module_libweston = join_paths(dir_lib, 'libweston-@0@'.format(libweston_major))
+-common_inc = include_directories('.')
++common_inc = include_directories('.', 'include')
+diff --git a/sdm-backend/compositor-pm-ds-snservice.c b/sdm-backend/compositor-pm-ds-snservice.c
+index e26b487..49f49a7 100644
+--- a/sdm-backend/compositor-pm-ds-snservice.c
++++ b/sdm-backend/compositor-pm-ds-snservice.c
+@@ -7,0 +8 @@
++#include <unistd.h>
+@@ -105 +106 @@ weston_compositor_lpm_impose(void *data, int level)
+-static void
++static int
+@@ -132,4 +134,6 @@ snservice_ds_handler(int fd, uint32_t mask, void* data)
+ 			weston_log("PM: Unknown pm event type %d\n", event_type);
+ 			break;
+ 	}
++
++	return 0;
+ }
+-- 
+2.34.1

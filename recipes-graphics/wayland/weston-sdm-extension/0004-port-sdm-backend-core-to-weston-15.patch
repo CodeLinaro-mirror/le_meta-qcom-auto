@@ -1,0 +1,161 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jim Wang <jimwan@qti.qualcomm.com>
+Date: Tue, 18 Aug 2026 13:45:00 -0400
+Subject: [PATCH] sdm-backend: port core backend code to Weston 15
+
+Update the remaining mechanical Weston 15 API changes in the SDM backend:
+backend repaint callbacks now return void, renderbuffers are opaque handles
+created and destroyed through the renderer, assign_planes takes a weston_output,
+and dmabuf_attributes exposes a scalar modifier.
+
+Upstream-Status: Pending
+
+Signed-off-by: Jim Wang <jimwan@qti.qualcomm.com>
+---
+ include/compositor-sdm-output.h  |  2 +-
+ sdm-backend/compositor-sdm.c     | 30 +++++++++++++-----------------
+ sdm-service/sdm_display.cpp      |  2 +-
+ 3 files changed, 15 insertions(+), 19 deletions(-)
+
+diff --git a/include/compositor-sdm-output.h b/include/compositor-sdm-output.h
+index f4fe3c1..cfe2cd4 100644
+--- a/include/compositor-sdm-output.h
++++ b/include/compositor-sdm-output.h
+@@ -278,7 +278,7 @@ struct drm_output {
+   struct backlight *backlight;
+ 
+   struct drm_fb *dumb[2];
+-  struct weston_renderbuffer *renderbuffer[2];
++  weston_renderbuffer_t renderbuffer[2];
+   int current_image;
+ 
+   struct vaapi_recorder *recorder;
+diff --git a/sdm-backend/compositor-sdm.c b/sdm-backend/compositor-sdm.c
+index 4c2ecbe..30f8d3a 100644
+--- a/sdm-backend/compositor-sdm.c
++++ b/sdm-backend/compositor-sdm.c
+@@ -996,6 +996,6 @@ finish_frame:
+  * output repaint functions until the repaint is flushed or cancelled.
+  */
+-static void *
++static void
+ drm_repaint_begin(struct weston_backend *backend)
+ {
+ 	struct drm_backend *b = container_of(backend, struct drm_backend, base);
+@@ -1008,6 +1008,4 @@ drm_repaint_begin(struct weston_backend *backend)
+ 		drm_debug(b, "%s", dbg);
+ 		free(dbg);
+ 	}
+-
+-	return NULL;
+ }
+ 
+ /**
+@@ -1020,11 +1018,9 @@ drm_repaint_begin(struct weston_backend *backend)
+  * state will be freed.
+  */
+-static int
++static void
+ drm_repaint_flush(struct weston_backend *backend)
+ {
+ 	struct drm_backend *b = container_of(backend, struct drm_backend, base);
+ 
+ 	drm_debug(b, "[repaint] flushed\n");
+-
+-	return 0;
+ }
+ 
+ /**
+@@ -1648,7 +1644,7 @@ drm_assign_planes(struct weston_output *output_base)
+ 			 * to virtual output as they will be used by SDM and GPU composition. */
+ 			prepare_virtual_output(virtual_output, output_base);
+ 
+ 			/* TODO: Update output buffer */
+-			screen_cap->fallback_gpu = assign_planes(virtual_output, true);
++			screen_cap->fallback_gpu = assign_planes(&virtual_output->base, true);
+ 		} else {
+ 			screen_cap->fallback_gpu = true;
+ 		}
+@@ -2206,28 +2202,24 @@ drm_output_init_pixman(struct drm_output *output, struct drm_backend *b)
+ 		if (!output->dumb[i])
+ 			goto err;
+ 
+ 		output->renderbuffer[i] =
+-			pixman->create_image_from_ptr(&output->base,
+-						      options.format, w, h,
+-						      output->dumb[i]->map,
+-						      output->dumb[i]->stride);
++			renderer->create_renderbuffer(&output->base,
++						      options.format,
++						      output->dumb[i]->map,
++						      output->dumb[i]->stride,
++						      NULL, NULL);
+ 		if (!output->renderbuffer[i])
+ 			goto err;
+-
+-		pixman_region32_init_rect(&output->renderbuffer[i]->damage,
+-					output->base.pos.c.x,
+-					output->base.pos.c.y,
+-					output->base.width,
+-					output->base.height);
+ 	}
+@@ -2230,8 +2222,10 @@ err:
+ 		if (output->dumb[i])
+ 			drm_fb_unref(output->dumb[i]);
+ 		if (output->renderbuffer[i])
+-			weston_renderbuffer_unref(output->renderbuffer[i]);
++			renderer->destroy_renderbuffer(output->renderbuffer[i]);
+ 
+ 		output->dumb[i] = NULL;
+ 		output->renderbuffer[i] = NULL;
+ 	}
+@@ -2247,8 +2241,10 @@ drm_output_fini_pixman(struct drm_output *output)
+ 
+ 	for (i = 0; i < ARRAY_LENGTH(output->dumb); i++) {
+-		weston_renderbuffer_unref(output->renderbuffer[i]);
+-		drm_fb_unref(output->dumb[i]);
++		if (output->renderbuffer[i])
++			renderer->destroy_renderbuffer(output->renderbuffer[i]);
++		if (output->dumb[i])
++			drm_fb_unref(output->dumb[i]);
+ 		output->dumb[i] = NULL;
+ 		output->renderbuffer[i] = NULL;
+ 	}
+@@ -3136,7 +3132,7 @@ static int create_sdm_display(struct drm_backend *backend, int idx)
+ 		goto err_stat;
+ 	}
+ 
+-	sdm_cbs.hotplug_cb = hotplug_handler,
++	sdm_cbs.hotplug_cb = (hotplug_cb_t)hotplug_handler,
+ 	sdm_cbs.pageflip_cb = (pageflip_cb_t)pageflip_handler;
+ 	sdm_service->RegisterCbs(idx, &sdm_cbs);
+ 	connector_id = sdm_service->GetConnectorId(idx);
+@@ -3155,11 +3151,12 @@ static int create_sdm_display(struct drm_backend *backend, int idx)
+ 		goto err_stat;
+ 	}
+ 
+-	sdm_service->SetHead(idx, head);
++	sdm_service->SetHead(idx, (struct drm_head *)head);
+ 	return 0;
+@@ -3162,6 +3159,7 @@ err_stat:
+ 	return -1;
+ }
++static int
+ udev_drm_event(int fd, uint32_t mask, void *data)
+ {
+ 	struct drm_backend *b = data;
+diff --git a/sdm-service/sdm_display.cpp b/sdm-service/sdm_display.cpp
+index 71205ec..87adbb4 100644
+--- a/sdm-service/sdm_display.cpp
++++ b/sdm-service/sdm_display.cpp
+@@ -716,7 +716,7 @@ DisplayError SdmDisplay::PopulateLayerBuffer(struct drm_output *output, struct s
+         .height  = attributes->height,
+         .format  = attributes->format,
+         .num_fds = 1,
+-        .modifier = attributes->modifier[0]
++        .modifier = attributes->modifier
+       };
+       bo_fd = attributes->fd[0];
+       gbm_dmabuf.fds[0] = attributes->fd[0];
+-- 
+2.34.1

@@ -1,0 +1,45 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jim Wang <jimwan@qti.qualcomm.com>
+Date: Tue, 18 Aug 2026 14:55:00 -0400
+Subject: [PATCH] sdm-backend: fix drm head and renderbuffer cleanup
+
+Weston 15 removed the old renderbuffer unref helper from the private
+API used by the SDM backend. Use the renderer destroy hook in the
+remaining pixman cleanup path, matching the Weston 15 renderbuffer API.
+
+Also declare struct drm_head before including the SDM service interface.
+Without a visible tag declaration, C treats the header's SetHead
+parameter as a prototype-local struct type, which makes the backend's
+real struct drm_head incompatible with the service callback signature.
+
+Upstream-Status: Pending
+
+Signed-off-by: Jim Wang <jimwan@qti.qualcomm.com>
+---
+ sdm-backend/compositor-sdm.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/sdm-backend/compositor-sdm.c b/sdm-backend/compositor-sdm.c
+index 9d36efb..e2c5e9a 100644
+--- a/sdm-backend/compositor-sdm.c
++++ b/sdm-backend/compositor-sdm.c
+@@ -94,6 +94,8 @@
+ 
+ #include <gbm-buffer-backend.h>
+ #include <screen-capture.h>
++
++struct drm_head;
+ #include "../sdm-service/sdm_display_connect.h"
+ #include <compositor-sdm-output.h>
+ #include "drm-service/drm_display.h"
+@@ -2249,7 +2251,7 @@ drm_output_fini_pixman(struct drm_output *output)
+ 	unsigned int i;
+ 
+ 	for (i = 0; i < ARRAY_LENGTH(output->dumb); i++) {
+-		weston_renderbuffer_unref(output->renderbuffer[i]);
++		renderer->destroy_renderbuffer(output->renderbuffer[i]);
+ 		drm_fb_unref(output->dumb[i]);
+ 		output->dumb[i] = NULL;
+ 		output->renderbuffer[i] = NULL;
+-- 
+2.34.1
