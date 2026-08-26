@@ -22,5 +22,6 @@ RDEPENDS:${PN} += "\
 # LY.AU.0.3.0 wrynose porting exclusions
 # NOTE: This section will be removed once the blocked recipes are unblocked.
 # =============================================================================
-# ksyncdlkm: dma_fence_ops API removed in kernel 6.3+; patch 0002 context mismatch
-RDEPENDS:${PN}:remove = "ksyncdlkm"
+# ksyncdlkm is required by kgsl@.service ExecStartPre=modprobe qcom_ksync.
+# The kernel 7.x porting patches now build qcom_ksync.ko successfully, so keep
+# ksyncdlkm in packagegroup-qti-graphics when qti-umd is enabled.
