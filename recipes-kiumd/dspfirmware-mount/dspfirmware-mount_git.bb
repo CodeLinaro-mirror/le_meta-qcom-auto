@@ -52,7 +52,34 @@ do_install:append() {
 
     if [ -f ${S}/99-persist-storage-ab.rules ]; then
         install -m 0644 ${S}/99-persist-storage-ab.rules -D ${D}${sysconfdir}/udev/rules.d/99-persist-storage-ab.rules
+    else
+        install -d ${D}${sysconfdir}/udev/rules.d
     fi
+
+    # Restore event-driven symlink rules for A/B slot partitions (no race vs disksymlink-service oneshot).
+    # kiumd commit 3e0376b cleared 99-persist-storage-ab.rules; rules depend on
+    # androidboot.slot_suffix cmdline (provided by sa8797-ride-sx.conf fix).
+    # Creates symlinks for dsp, modem, bootloaders, bluetooth, and keymaster partitions.
+    cat > ${D}${sysconfdir}/udev/rules.d/99-persist-storage-ab.rules <<'EOF'
+ACTION=="remove", GOTO="persistent_storage_ab_end"
+SUBSYSTEM!="block", GOTO="persistent_storage_ab_end"
+IMPORT{cmdline}="androidboot.slot_suffix"
+
+# Slot A partitions
+ENV{ID_PART_ENTRY_SCHEME}=="gpt", ENV{androidboot.slot_suffix}=="_a", ENV{ID_PART_ENTRY_NAME}=="dsp_a", SYMLINK+="disk/by-partlabel/dsp"
+ENV{ID_PART_ENTRY_SCHEME}=="gpt", ENV{androidboot.slot_suffix}=="_a", ENV{ID_PART_ENTRY_NAME}=="modem_a", SYMLINK+="disk/by-partlabel/modem"
+ENV{ID_PART_ENTRY_SCHEME}=="gpt", ENV{androidboot.slot_suffix}=="_a", ENV{ID_PART_ENTRY_NAME}=="bluetooth_a", SYMLINK+="disk/by-partlabel/bluetooth"
+ENV{ID_PART_ENTRY_SCHEME}=="gpt", ENV{androidboot.slot_suffix}=="_a", ENV{ID_PART_ENTRY_NAME}=="keymaster_a", SYMLINK+="disk/by-partlabel/keymaster"
+
+# Slot B partitions
+ENV{ID_PART_ENTRY_SCHEME}=="gpt", ENV{androidboot.slot_suffix}=="_b", ENV{ID_PART_ENTRY_NAME}=="dsp_b", SYMLINK+="disk/by-partlabel/dsp"
+ENV{ID_PART_ENTRY_SCHEME}=="gpt", ENV{androidboot.slot_suffix}=="_b", ENV{ID_PART_ENTRY_NAME}=="modem_b", SYMLINK+="disk/by-partlabel/modem"
+ENV{ID_PART_ENTRY_SCHEME}=="gpt", ENV{androidboot.slot_suffix}=="_b", ENV{ID_PART_ENTRY_NAME}=="bluetooth_b", SYMLINK+="disk/by-partlabel/bluetooth"
+ENV{ID_PART_ENTRY_SCHEME}=="gpt", ENV{androidboot.slot_suffix}=="_b", ENV{ID_PART_ENTRY_NAME}=="keymaster_b", SYMLINK+="disk/by-partlabel/keymaster"
+
+LABEL="persistent_storage_ab_end"
+EOF
+    chmod 0644 ${D}${sysconfdir}/udev/rules.d/99-persist-storage-ab.rules
 
     install -d -p ${D}${nonarch_base_libdir}/firmware/qcom
 
