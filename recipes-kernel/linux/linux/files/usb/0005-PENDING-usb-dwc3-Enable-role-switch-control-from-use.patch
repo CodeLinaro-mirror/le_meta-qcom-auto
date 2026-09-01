@@ -1,0 +1,49 @@
+From c42c33f6b11cd37ac139ba6e918b2f914c70fa59 Mon Sep 17 00:00:00 2001
+From: Sriram Dash <quic_sriramd@quicinc.com>
+Date: Fri, 28 Feb 2025 11:19:10 +0530
+Subject: [PATCH 05/20] PENDING: usb: dwc3: Enable role-switch control from
+ userspace
+
+Enable the role switch to be controlled from userspace for
+carplay usecases.
+
+Change-Id: I62297038edbf4b5c2c0e5be171c9ef533936c420
+Signed-off-by: Sriram Dash <quic_sriramd@quicinc.com>
+---
+ drivers/usb/dwc3/dwc3-qcom.c | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+diff --git a/drivers/usb/dwc3/dwc3-qcom.c b/drivers/usb/dwc3/dwc3-qcom.c
+index 2ea09ada65560..7b759e4789f0c 100644
+--- a/drivers/usb/dwc3/dwc3-qcom.c
++++ b/drivers/usb/dwc3/dwc3-qcom.c
+@@ -744,6 +744,15 @@ static int dwc3_qcom_clk_init(struct dwc3_qcom *qcom, int count)
+ 	return 0;
+ }
+ 
++static const struct property_entry dwc3_qcom_props[] = {
++	PROPERTY_ENTRY_BOOL("snps,allow-role-switch-userspace-control"),
++	{ },
++};
++
++static const struct software_node dwc3_qcom_swnode_prop = {
++	.properties = dwc3_qcom_props,
++};
++
+ static const struct property_entry dwc3_qcom_acpi_properties[] = {
+ 	PROPERTY_ENTRY_STRING("dr_mode", "host"),
+ 	{}
+@@ -1054,6 +1063,10 @@ static int dwc3_qcom_probe(struct platform_device *pdev)
+ 	qcom->dev = &pdev->dev;
+ 	qcom->dwc.dev = qcom->dev;
+ 
++	ret = device_add_software_node(&pdev->dev, &dwc3_qcom_swnode_prop);
++	if (ret)
++		return ret;
++
+ 	if (has_acpi_companion(dev)) {
+ 		ret = dwc3_qcom_acpi_register_core(pdev, qcom);
+ 		if (ret < 0)
+-- 
+2.17.1
+

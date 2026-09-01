@@ -1,0 +1,58 @@
+From 11039bf80aaee5259fa92b2f59d091abe1281926 Mon Sep 17 00:00:00 2001
+From: Aniket Randive <aniket.randive@oss.qualcomm.com>
+Date: Fri, 31 Oct 2025 11:50:33 +0530
+Subject: [PATCH] ccu: WARN_ON once at CCU_RETRY_CNT during GSI pdev lookup
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The CCU probe path keeps polling for the GSI pdev node for ~7500 ms
+(150 × 50 ms). Emit a one-time WARN and ERR log when retry_cnt reaches
+CCU_RETRY_CNT to mark the terminal failure condition.
+
+Change-Id: Id7cbbd9299c07415c5e599a9a57c9d6336fae580
+Signed-off-by: Aniket Randive <aniket.randive@oss.qualcomm.com>
+---
+ drivers/soc/qcom/qcom_ccu_qup.c | 17 ++++++++++++++---
+ 1 file changed, 14 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/soc/qcom/qcom_ccu_qup.c b/drivers/soc/qcom/qcom_ccu_qup.c
+index 34282309e53e..bf706eb9ba14 100644
+--- a/drivers/soc/qcom/qcom_ccu_qup.c
++++ b/drivers/soc/qcom/qcom_ccu_qup.c
+@@ -47,7 +47,8 @@
+ #define CCU_MAX_QUP		2
+ #define CCU_MAX_SE		5
+ #define GPII_IRQ_COUNT		(GPII_14_IRQ - GPII_0_IRQ + 1)
+-#define CCU_RETRY_TIME		30
++#define CCU_RETRY_TIME		50
++#define CCU_RETRY_CNT          150
+ 
+ struct ccu_qup *ccud;
+ 
+@@ -849,10 +850,20 @@ static void get_set_child_dev_node(struct work_struct *work)
+ 
+ 	device_for_each_child(ccu->dev, child_status, check_probe_status);
+ 	if (!child_status->probe_state) {
+-		if (retry_cnt++ < 30)
++		if (retry_cnt++ < CCU_RETRY_CNT) {
+ 			queue_delayed_work(ccu->gpi_wq, &ccu->get_child_dev_node,
+ 					   msecs_to_jiffies(CCU_RETRY_TIME));
+-		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, " Retry cnt:%d\n", retry_cnt);
++			/* Log every 10th retry to track progress without flooding logs */
++			if (retry_cnt % 10 == 0)
++				CCU_ERR_LOG(LOG_LVL_INFO, ccu->dev,
++					    "GSI pdev lookup retry count: %d\n", retry_cnt);
++		}
++
++		if (retry_cnt == CCU_RETRY_CNT) {
++			CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev,
++				    "Retry limit is reached:%d\n", retry_cnt);
++			WARN_ONCE(1, "CCU GSI pdev lookup failed after %d retries\n", retry_cnt);
++		}
+ 		kfree(child_status);
+ 		return;
+ 	}
+-- 
+2.34.1
+

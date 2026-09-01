@@ -13,9 +13,9 @@ DEPENDS += "\
 "
 
 SRC_URI = "\
-    ${PATH_TO_REPO}/external/open-avb/.git;protocol=${PROTO};destsuffix=external/open-avb;usehead=1 \
+    ${CLO_LA_GIT}/platform/external/Open-AVB.git;branch=vnw-gptp.lnx.2.0.r67-rel;protocol=${OSS_PROTO};destsuffix=external/open-avb \
 "
-SRCREV = "${AUTOREV}"
+SRCREV = "0462fde6f47b887e8128fe038479d241beff9dd9"
 
 S = "${WORKDIR}/external/open-avb"
 

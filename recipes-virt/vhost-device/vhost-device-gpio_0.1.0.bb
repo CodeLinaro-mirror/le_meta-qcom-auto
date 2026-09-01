@@ -10,8 +10,8 @@ DEPENDS += "libgpiod"
 # libgpiod-sys generates bindings using bindgen, which depends on clang
 DEPENDS += "clang-native"
 
-SRC_URI = "${PATH_TO_REPO}/external/vhost-device/.git;protocol=${PROTO};destsuffix=external/vhost-device;usehead=1"
-SRCREV = "${AUTOREV}"
+SRC_URI = "${CLO_LE_GIT}/platform/external/rust-vmm/vhost-device.git;branch=auto-vmm.lnx.1.0.r29-rel;protocol=${OSS_PROTO};destsuffix=external/vhost-device"
+SRCREV = "52a18c22e012532f7804ba9b94dc554313e16486"
 
 S = "${WORKDIR}/external/vhost-device"
 CARGO_SRC_DIR = "vhost-device-gpio"

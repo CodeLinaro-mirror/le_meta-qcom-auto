@@ -1,0 +1,45 @@
+From 8ed1d0cc965a4f61fc4ce6747df6f02dda8ddfb9 Mon Sep 17 00:00:00 2001
+From: Aniket Randive <arandive@qti.qualcomm.com>
+Date: Thu, 24 Apr 2025 15:52:29 +0530
+Subject: [PATCH 03/13] ccu: Add support to load the CCU QUP FW
+
+Add support to load the firmware for CCU QUP using SCM
+call.
+
+Change-Id: Idd83a37372f2daf9414dc51832efde3e158872a4
+Signed-off-by: Aniket Randive <arandive@qti.qualcomm.com>
+---
+ drivers/soc/qcom/qcom_ccu_qup.c       | 2 +-
+ include/linux/soc/qcom/qcom_ccu_qup.h | 3 +--
+ 2 files changed, 2 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/soc/qcom/qcom_ccu_qup.c b/drivers/soc/qcom/qcom_ccu_qup.c
+index fdaf933459c8..273309dc9a8f 100644
+--- a/drivers/soc/qcom/qcom_ccu_qup.c
++++ b/drivers/soc/qcom/qcom_ccu_qup.c
+@@ -396,7 +396,7 @@ int ccu_qup_load_firmware(void)
+ 	}
+ 
+ 	/* Make SCM call, to load the TZ FW */
+-	ret = qcom_scm_restore_sec_cfg(SCM_AUTH_GSI_QUP_PROC, SCM_LOAD_QUP_FW_ARG);
++	ret = qcom_scm_load_ccu_qup_fw(SCM_LOAD_QUP_TYPE);
+ 	if (ret) {
+ 		dev_err(ccud->dev, "Unable to load the FW\n");
+ 		ccud->fw_loaded = false;
+diff --git a/include/linux/soc/qcom/qcom_ccu_qup.h b/include/linux/soc/qcom/qcom_ccu_qup.h
+index 7930aca2e914..d34ecb65bf1e 100644
+--- a/include/linux/soc/qcom/qcom_ccu_qup.h
++++ b/include/linux/soc/qcom/qcom_ccu_qup.h
+@@ -10,8 +10,7 @@
+ #include <linux/i2c.h>
+ #include <uapi/linux/ccu_qup/ccu_qup.h>
+ 
+-#define SCM_LOAD_QUP_FW_ARG	0x3E3E3E3E
+-#define SCM_AUTH_GSI_QUP_PROC	0x13
++#define SCM_LOAD_QUP_TYPE	0x3
+ 
+ /* CCU QUP Interrupt Register */
+ #define CCU_QUP_IRQ_STATUS	0x0
+-- 
+2.34.1
+

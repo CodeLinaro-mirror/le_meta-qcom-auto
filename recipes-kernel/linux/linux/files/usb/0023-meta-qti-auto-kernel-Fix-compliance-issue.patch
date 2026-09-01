@@ -1,0 +1,58 @@
+From 613eb7903f07fdef45fb48789a6f2275dd165419 Mon Sep 17 00:00:00 2001
+From: Hiren Gohel <vhiren@qti.qualcomm.com>
+Date: Wed, 18 Feb 2026 20:42:19 +0530
+Subject: [PATCH] meta-qti-auto-kernel: Fix compliance issue
+
+Add register sequence as SW WA for CV9 compliance failure
+
+Signed-off-by: Hiren Gohel <vhiren@qti.qualcomm.com>
+---
+ drivers/phy/qualcomm/phy-qcom-snps-eusb2.c | 28 ++++++++++++++++++++++
+ 1 file changed, 28 insertions(+)
+
+diff --git a/drivers/phy/qualcomm/phy-qcom-snps-eusb2.c b/drivers/phy/qualcomm/phy-qcom-snps-eusb2.c
+index e3dcdc5e49f5..7b3783711804 100644
+--- a/drivers/phy/qualcomm/phy-qcom-snps-eusb2.c
++++ b/drivers/phy/qualcomm/phy-qcom-snps-eusb2.c
+@@ -459,10 +459,38 @@ static int snps_eusb2_hsphy_exit(struct phy *p)
+ 	return 0;
+ }
+ 
++static int snps_eusb2_hsphy_calibrate(struct phy *p)
++{
++
++	struct snps_eusb2_hsphy *phy = phy_get_drvdata(p);
++
++	snps_eusb2_hsphy_write_mask(phy->base, QCOM_USB_PHY_APB_ACCESS_CMD,
++				0xff, 0x0);
++	snps_eusb2_hsphy_write_mask(phy->base, QCOM_USB_PHY_APB_ADDRESS,
++				0xff, 0x5 );
++	snps_eusb2_hsphy_write_mask(phy->base, QCOM_USB_PHY_APB_WRDATA_LSB,
++				0xff, 0xc0);
++	snps_eusb2_hsphy_write_mask(phy->base, QCOM_USB_PHY_APB_ACCESS_CMD,
++				0xff, 0x3);
++	udelay(2);
++	snps_eusb2_hsphy_write_mask(phy->base, QCOM_USB_PHY_APB_ACCESS_CMD,
++				0xff, 0x0);
++	snps_eusb2_hsphy_write_mask(phy->base, QCOM_USB_PHY_APB_WRDATA_LSB,
++				0xff, 0x0);
++	snps_eusb2_hsphy_write_mask(phy->base, QCOM_USB_PHY_APB_ACCESS_CMD,
++				0xff, 0x3);
++	udelay(2);
++	snps_eusb2_hsphy_write_mask(phy->base, QCOM_USB_PHY_APB_ACCESS_CMD,
++                                 0xff, 0x0);
++	return 0;
++}
++
++
+ static const struct phy_ops snps_eusb2_hsphy_ops = {
+ 	.init		= snps_eusb2_hsphy_init,
+ 	.exit		= snps_eusb2_hsphy_exit,
+ 	.set_mode	= snps_eusb2_hsphy_set_mode,
++	.calibrate      = snps_eusb2_hsphy_calibrate,
+ 	.owner		= THIS_MODULE,
+ };
+ 
+-- 
+2.34.1
+

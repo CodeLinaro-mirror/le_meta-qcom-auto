@@ -5,9 +5,9 @@ LICENSE = "GPL-2.0-only"
 LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/\
 ${LICENSE};md5=801f80980d171dd6425610833a22dbe6"
 
-SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/wlan/platform/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/wlan/platform;;usehead=1 \
+SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/wlan/platform.git;branch=auto-wlan-platform.qclinux.1.1.r11-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/wlan/platform \
 "
-SRCREV = "${AUTOREV}"
+SRCREV = "cf54bd8f47dd883c9d6b1732ad5f923485b59125"
 
 S = "${WORKDIR}/vendor/qcom/opensource/wlan/platform"
 

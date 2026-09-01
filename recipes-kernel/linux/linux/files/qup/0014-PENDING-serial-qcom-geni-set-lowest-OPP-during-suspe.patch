@@ -1,0 +1,39 @@
+From b723b66090a41db0927f2be603ac906a75628566 Mon Sep 17 00:00:00 2001
+From: Praveen Talari <ptalari@qti.qualcomm.com>
+Date: Tue, 13 May 2025 09:44:14 +0530
+Subject: [PATCH 2/2] PENDING: serial: qcom-geni: set lowest OPP during suspend
+ to ensure proper resume
+
+When a port is suspended, the current OPP is retained, which can
+cause the OPP framework to skip reapplying the same OPP upon resume.
+This can cause hardware misconfigurations, such as incorrect UART
+clock rates(baud rate), due to missing perf level request to the
+firmware.
+
+To address this, explicitly set the lowest OPP during suspend,
+ensuring that the OPP framework correctly reapplies the desired
+same OPP (perf level) upon resume.
+
+Change-Id: Id2ac44569cd53ea1cc03833fb687497d5c3f79bf
+Signed-off-by: Praveen Talari <ptalari@qti.qualcomm.com>
+---
+ drivers/tty/serial/qcom_geni_serial.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/drivers/tty/serial/qcom_geni_serial.c b/drivers/tty/serial/qcom_geni_serial.c
+index 2d428728c96f..9377d7bf8639 100644
+--- a/drivers/tty/serial/qcom_geni_serial.c
++++ b/drivers/tty/serial/qcom_geni_serial.c
+@@ -1669,6 +1669,9 @@ static int geni_serial_transition_d3d0(struct uart_port *uport, bool state)
+ {
+ 	struct qcom_geni_serial_port *port = to_dev_port(uport);
+ 
++	if (!state)
++		port->dev_data->geni_se_set_rate(&port->se, 300);
++
+ 	return geni_se_transition_d3d0(&port->se, state);
+ }
+ 
+-- 
+2.34.1
+

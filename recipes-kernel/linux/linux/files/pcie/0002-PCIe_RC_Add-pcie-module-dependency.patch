@@ -1,0 +1,31 @@
+From 853fa509470fe59265fbf18be146cb64998c2f8d Mon Sep 17 00:00:00 2001
+From: Xiaoning Ma <mxiaonin@qti.qualcomm.com>
+Date: Sun, 12 Jan 2025 11:59:21 +0800
+Subject: [PATCH] pci: Add pcie module dependency
+
+For PCIe upstream driver with SCMI GearVM, downstream device
+need power before RC, otherwise there doesn't have chances
+to do PCIe link training for downstram device. So add module
+loading dependency to ensure wlan driver load before PCIe.
+
+Change-Id: I2de7681058ce47df614f0a89a3fdc5031ca1187f
+Signed-off-by: Xiaoning Ma <mxiaonin@qti.qualcomm.com>
+---
+ drivers/pci/controller/pcie-qcom-ecam.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/drivers/pci/controller/pcie-qcom-ecam.c b/drivers/pci/controller/pcie-qcom-ecam.c
+index 4477c7ecacc2..ac1644b15ded 100644
+--- a/drivers/pci/controller/pcie-qcom-ecam.c
++++ b/drivers/pci/controller/pcie-qcom-ecam.c
+@@ -574,6 +574,7 @@ static struct platform_driver qcom_pcie_ecam_driver = {
+ 	},
+ };
+ module_platform_driver(qcom_pcie_ecam_driver);
++MODULE_SOFTDEP("pre: cnss2");
+ 
+ MODULE_DESCRIPTION("Qualcomm PCIe ECAM root complex driver");
+ MODULE_LICENSE("GPL");
+-- 
+2.17.1
+

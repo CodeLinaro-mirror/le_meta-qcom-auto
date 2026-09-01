@@ -8,9 +8,9 @@ DEPENDS += "tinyalsa-new tinycompress expat dbus \
     audioreach-conf alsa-lib\
 "
 
-SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/agm/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/agm;usehead=1"
+SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom/opensource/agm.git;branch=audio-core-auto.lnx.2.0.r5-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/agm"
 
-SRCREV = "${AUTOREV}"
+SRCREV = "fed09055b4e061fa1cd78095fe9623f83ad51f6c"
 
 S = "${WORKDIR}/vendor/qcom/opensource/agm"
 

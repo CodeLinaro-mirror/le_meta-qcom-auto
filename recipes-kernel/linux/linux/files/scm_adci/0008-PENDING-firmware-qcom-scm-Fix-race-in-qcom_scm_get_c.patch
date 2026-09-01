@@ -1,0 +1,106 @@
+From 653b5f18194186790e7624f4755f23f15f1c286f Mon Sep 17 00:00:00 2001
+From: Yuvaraj Ranganathan <yrangana@qti.qualcomm.com>
+Date: Thu, 2 Apr 2026 12:17:40 +0530
+Subject: [PATCH] PENDING: drivers: firmware: scm: Fix race in
+ qcom_scm_get_completion between waiter and IRQ handler
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+qcom_scm_get_completion() uses a non-atomic xa_load + xa_store sequence
+to lazily allocate and insert a struct completion for a given wq_ctx.
+This creates a race window between the waiter path
+(qcom_scm_wait_for_wq_completion) and the IRQ handler path
+(qcom_scm_waitq_wakeup):
+
+  CPU0 (waiter)                       CPU1 (IRQ handler)
+  xa_load(wq_ctx) -> NULL
+  kzalloc() -> wq_A
+  init_completion(wq_A)               xa_load(wq_ctx) -> NULL
+  <preempted>                         kzalloc() -> wq_B
+                                      init_completion(wq_B)
+                                      xa_store(wq_ctx, wq_B)
+                                      complete(wq_B)  <- done=1
+  xa_store(wq_ctx, wq_A)  <- overwrites wq_B in xarray; wq_B leaked
+  wait_for_completion_state(wq_A)  <- done=0, stuck forever
+
+The IRQ fires complete() on wq_B, but the waiter sleeps on wq_A.
+complete(wq_A) is never called because the firmware will not send
+another wakeup for this wq_ctx. The task hangs indefinitely.
+
+This was confirmed via crash dump: wq_A (done=0) had the waiter task
+linked in its swait_queue task_list (a stack-local entry on the sleeping
+task's kernel stack), while wq_B (done=1) had an empty task_list — the
+completion was consumed by nobody.
+
+Change-Id: I262be5e712d53959e95ec1d0f1c6c6c27c19014b
+Signed-off-by: Yuvaraj Ranganathan <yrangana@qti.qualcomm.com>
+---
+ drivers/firmware/qcom_scm.c | 43 ++++++++++++++++++++++++++++++-------------
+ 1 file changed, 30 insertions(+), 13 deletions(-)
+
+diff --git a/drivers/firmware/qcom_scm.c b/drivers/firmware/qcom_scm.c
+index 9a4281a0775f..1b2c3d4a8f0e 100644
+--- a/drivers/firmware/qcom_scm.c
++++ b/drivers/firmware/qcom_scm.c
+@@ -1805,7 +1805,7 @@ bool qcom_scm_fw_supports_skip_mutex(struct device *dev)
+ static struct completion *qcom_scm_get_completion(struct qcom_scm *scm, u32 wq_ctx)
+ {
+ 	struct completion *wq;
+-	int err;
++	struct completion *curr;
+
+ 	wq = xa_load(&scm->waitq, wq_ctx);
+ 	if (wq) {
+@@ -1819,19 +1820,36 @@ static struct completion *qcom_scm_get_completion(struct qcom_scm *scm, u32 wq_
+ 	 * here only a few times right at the beginning of the device's uptime
+ 	 * and then early-exit from idr_find() above subsequently.
+ 	 */
+-
+-	wq = kzalloc(sizeof(*wq), GFP_ATOMIC);
+-	if (!wq) {
+-		wq = ERR_PTR(-ENOMEM);
+-		goto out;
+- 	}
+-	init_completion(wq);
+-
+-	err = xa_err(xa_store(&scm->waitq, wq_ctx, wq, GFP_ATOMIC));
+-	if (err) {
+-		/* Don't wait for driver to be unloaded to free wq */
++	wq = kzalloc(sizeof(*wq), GFP_ATOMIC);
++	if (!wq) {
++		wq = ERR_PTR(-ENOMEM);
++		goto out;
++	}
++	init_completion(wq);
++
++	/*
++	 * Use xa_cmpxchg_irq() to atomically install wq only if the slot is still
++	 * NULL. This closes the race condition between the waiter path and the
++	 * IRQ handler path: both may reach here concurrently for the same
++	 * wq_ctx before either has stored into the xarray.
++	 *
++	 * If xa_cmpxchg_irq() returns non-NULL, the IRQ handler already stored and
++	 * completed its own object. Discard our allocation and return theirs so
++	 * that wait_for_completion_state() sees done=1 and returns immediately.
++	 *
++	 * If xa_cmpxchg_irq() returns NULL, we won the race and our object is now
++	 * in the xarray.
++	 */
++	curr = xa_cmpxchg_irq(&scm->waitq, wq_ctx, NULL, wq, GFP_ATOMIC);
++	if (curr == NULL)
++		return wq;
++	if (curr != wq) {
++		kfree(wq);
++		return curr;
++	}
++	if (curr == XA_ERROR(-EINVAL)) {
+ 		kfree(wq);
+-		wq = ERR_PTR(err);
++		wq = ERR_PTR(-EINVAL);
+ 	}
+
+ out:
+-- 
+2.48.1
+

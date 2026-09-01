@@ -1,0 +1,93 @@
+From 9454329ebdcbd5c314372d69fd24c3262bd7fe6b Mon Sep 17 00:00:00 2001
+From: Ram Kumar Dwivedi <rdwivedi@qti.qualcomm.com>
+Date: Mon, 30 Jun 2025 11:57:12 +0530
+Subject: [PATCH 3/3] PENDING: ufs: ufs-qcom: Skip UFS link startup in HLOS
+
+Skip UFS link startup in HLOS for SCMI-based targets where firmware
+already manages link initialization. This avoids redundancy and reduces
+UFS probe time by approximately 21ms.
+
+Change-Id: Idba091e21a4d26984161bb2bb0d5eb894120ce8f
+Signed-off-by: Ram Kumar Dwivedi <rdwivedi@qti.qualcomm.com>
+---
+ drivers/ufs/core/ufshcd.c   | 13 ++++++++++++-
+ drivers/ufs/host/ufs-qcom.c |  4 +---
+ 2 files changed, 13 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/ufs/core/ufshcd.c b/drivers/ufs/core/ufshcd.c
+index 5b9ef3379fe3..07519b6cc955 100644
+--- a/drivers/ufs/core/ufshcd.c
++++ b/drivers/ufs/core/ufshcd.c
+@@ -4896,6 +4896,9 @@ static int ufshcd_hba_execute_hce(struct ufs_hba *hba)
+ 	int retry_inner;
+ 
+ start:
++	if (!strncmp(hba->vops->name, "qcom-fmr", 8))
++		goto fmr_managed;
++
+ 	if (ufshcd_is_hba_active(hba))
+ 		/* change controller state to "reset state" */
+ 		ufshcd_hba_stop(hba);
+@@ -4903,6 +4906,7 @@ static int ufshcd_hba_execute_hce(struct ufs_hba *hba)
+ 	/* UniPro link is disabled at this point */
+ 	ufshcd_set_link_off(hba);
+ 
++fmr_managed:
+ 	ufshcd_vops_hce_enable_notify(hba, PRE_CHANGE);
+ 
+ 	/* start controller initialization sequence */
+@@ -5041,6 +5045,12 @@ static int ufshcd_link_startup(struct ufs_hba *hba)
+ 	int retries = DME_LINKSTARTUP_RETRIES;
+ 	bool link_startup_again = false;
+ 
++	if (!strncmp(hba->vops->name, "qcom-fmr", 8)) {
++		ufshcd_init_pwr_info(hba);
++		ret = ufshcd_make_hba_operational(hba);
++		return ret;
++	}
++
+ 	/*
+ 	 * If UFS device isn't active then we will have to issue link startup
+ 	 * 2 times to make sure the device state move to active.
+@@ -7854,7 +7864,8 @@ static int ufshcd_host_reset_and_restore(struct ufs_hba *hba)
+ 	 * Stop the host controller and complete the requests
+ 	 * cleared by h/w
+ 	 */
+-	ufshcd_hba_stop(hba);
++	if (strncmp(hba->vops->name, "qcom-fmr", 8))
++		ufshcd_hba_stop(hba);
+ 	hba->silence_err_logs = true;
+ 	ufshcd_complete_requests(hba, true);
+ 	hba->silence_err_logs = false;
+diff --git a/drivers/ufs/host/ufs-qcom.c b/drivers/ufs/host/ufs-qcom.c
+index 9eddd6afa130..e3f8b6d438b1 100644
+--- a/drivers/ufs/host/ufs-qcom.c
++++ b/drivers/ufs/host/ufs-qcom.c
+@@ -1441,7 +1441,7 @@ static int ufs_qcom_common_init(struct ufs_hba *hba)
+ 		return err;
+ 
+ 	host->device_reset = devm_gpiod_get_optional(dev, "reset",
+-						     GPIOD_OUT_HIGH);
++						     GPIOD_OUT_LOW);
+ 	if (IS_ERR(host->device_reset)) {
+ 		err = PTR_ERR(host->device_reset);
+ 		if (err != -EPROBE_DEFER)
+@@ -1570,7 +1570,6 @@ static int ufs_qcom_fmr_init(struct ufs_hba *hba)
+ 		goto out_variant_clear;
+ 
+ 	hba->caps |= UFSHCD_CAP_WB_EN;
+-	ufs_qcom_advertise_quirks(hba);
+ 	hba->quirks |= UFSHCD_QUIRK_BROKEN_AUTO_HIBERN8;
+ 
+ 	return 0;
+@@ -2290,7 +2289,6 @@ static const struct ufs_hba_variant_ops ufs_hba_qcom_fmr_vops = {
+ 	.suspend		= ufs_qcom_fmr_suspend,
+ 	.resume			= ufs_qcom_fmr_resume,
+ 	.dbg_register_dump	= ufs_qcom_dump_dbg_regs,
+-	.device_reset		= ufs_qcom_device_reset,
+ 	.config_scaling_param   = ufs_qcom_config_scaling_param,
+ 	.program_key		= ufs_qcom_ice_program_key,
+ 	.derive_sw_secret	= ufs_qcom_ice_derive_sw_secret,
+-- 
+2.50.1
+

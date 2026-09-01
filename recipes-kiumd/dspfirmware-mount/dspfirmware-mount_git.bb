@@ -5,10 +5,10 @@ LICENSE = "BSD-3-Clause-Clear"
 LIC_FILES_CHKSUM = "file://${QTI_LICENSE_DIR}/${LICENSE};md5=b796c0007db682166a1721da80267bb2"
 
 SRC_URI = "\
-    ${PATH_TO_REPO}/vendor/qcom/opensource/kiumd/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/kiumd;usehead=1 \
+    ${CLO_LE_GIT}/platform/vendor/qcom-opensource/kiumd.git;branch=safe-services.lnx.1.0.r24-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/kiumd \
     file://mnt_fs.conf \
 "
-SRCREV = "${AUTOREV}"
+SRCREV = "f6e8c384a2d0cc0e7b79e1d8615a1ad5af55e860"
 
 S = "${WORKDIR}/vendor/qcom/opensource/kiumd/dspfirmware-mount"
 inherit systemd

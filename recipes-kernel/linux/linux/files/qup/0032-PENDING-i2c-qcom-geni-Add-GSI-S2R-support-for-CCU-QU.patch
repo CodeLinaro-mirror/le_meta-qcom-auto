@@ -1,0 +1,123 @@
+From 78e12303aca4895847388a4547500b2fcf1702b7 Mon Sep 17 00:00:00 2001
+From: Aniket Randive <arandive@qti.qualcomm.com>
+Date: Mon, 8 Sep 2025 17:22:48 +0530
+Subject: [PATCH 08/13] PENDING: i2c: qcom-geni: Add GSI S2R support for CCU
+ QUP I2C
+
+Add support for the Suspend-to-RAM (S2R) feature,where the SoC is powered
+down and its state is preserved in DRAM. Upon resume, the hardware context
+is lost and must be re-initialized, while the software context remains
+intact.
+
+During suspend, the driver issues the QCOM_GPI_CHANNEL_DECONFIGURE control
+command and invokes dmaengine_pause(). This stops and resets the GPII
+channels, deallocates channels, and tears down associated event channels.
+
+On resume, the driver issues the QCOM_GPI_CHANNEL_CONFIGURE command to
+reinitialize the channels via dmaengine_resume(). This process resets ring
+pointers, restores interrupt configurations, and restarts channel
+operations.
+
+Change-Id: I5fefefaa15bff34bde6f4251e8d5ab0b7f5a11fb
+Signed-off-by: Praveen Talari <ptalari@qti.qualcomm.com>
+Signed-off-by: Maramaina Naresh <mnaresh@qti.qualcomm.com>
+Signed-off-by: Aniket Randive <arandive@qti.qualcomm.com>
+---
+ drivers/i2c/busses/i2c-qcom-geni.c | 50 +++++++++++++++++++++---------
+ 1 file changed, 35 insertions(+), 15 deletions(-)
+
+diff --git a/drivers/i2c/busses/i2c-qcom-geni.c b/drivers/i2c/busses/i2c-qcom-geni.c
+index e6ff6b883bd5..dc12561f08b7 100644
+--- a/drivers/i2c/busses/i2c-qcom-geni.c
++++ b/drivers/i2c/busses/i2c-qcom-geni.c
+@@ -244,6 +244,7 @@ struct geni_i2c_dev {
+ 	bool is_ccu_qup;
+ 	struct ccu_i2c_config ccu;
+ 	int msgs;
++	struct gpi_chan_ctrl tx_gchan_ctrl;
+ };
+ 
+ struct geni_i2c_err_log {
+@@ -401,18 +402,25 @@ static int geni_i2c_power_on_off(struct i2c_adapter *adap, bool suspend)
+ 	}
+ 	if (suspend) {
+ 		for (i = 0; i < CCU_MAX_GPII; i++) {
+-			if (gi2c->tx_c[i])
+-				dmaengine_free_chan_resources(gi2c->tx_c[i]);
+-
+-			if (gi2c->rx_c[i])
+-				dmaengine_free_chan_resources(gi2c->rx_c[i]);
++			if (gi2c->tx_c[i]) {
++				gi2c->tx_gchan_ctrl.cmd = QCOM_GPI_CHANNEL_DECONFIGURE;
++				gi2c->tx_c[i]->private = &gi2c->tx_gchan_ctrl;
++				ret = dmaengine_pause(gi2c->tx_c[i]);
++				if (ret) {
++					dev_err(gi2c->se.dev, "dmaengine_pause failed: ret:%d\n",
++						ret);
++					return -EAGAIN;
++				}
++			}
+ 		}
+ 
+-		/* Decrement the device usage counter and call pm runtime idle */
+-		ret = pm_runtime_put_sync(gi2c->se.dev);
+-		if (ret < 0) {
+-			I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "error turning off device :%d\n", ret);
+-			return ret;
++		if (pm_runtime_active(gi2c->se.dev)) {
++			/* Decrement the device usage counter and call pm runtime idle */
++			ret = pm_runtime_put_sync(gi2c->se.dev);
++			if (ret < 0) {
++				dev_err(gi2c->se.dev, "error turning off device :%d\n", ret);
++				return ret;
++			}
+ 		}
+ 	} else {
+ 		/* Increment the device usage counter and resume */
+@@ -421,12 +429,18 @@ static int geni_i2c_power_on_off(struct i2c_adapter *adap, bool suspend)
+ 			I2C_ERR_LOG(LOG_LVL_ERROR, gi2c->se.dev, "error turning on device :%d\n", ret);
+ 			return ret;
+ 		}
+-		for (i = 0; i < CCU_MAX_GPII; i++) {
+-			if (gi2c->tx_c[i])
+-				dmaengine_alloc_chan_resources(gi2c->tx_c[i]);
+ 
+-			if (gi2c->rx_c[i])
+-				dmaengine_alloc_chan_resources(gi2c->rx_c[i]);
++		for (i = 0; i < CCU_MAX_GPII; i++) {
++			if (gi2c->tx_c[i]) {
++				gi2c->tx_gchan_ctrl.cmd = QCOM_GPI_CHANNEL_CONFIGURE;
++				gi2c->tx_c[i]->private = &gi2c->tx_gchan_ctrl;
++				ret = dmaengine_resume(gi2c->tx_c[i]);
++				if (ret) {
++					dev_err(gi2c->se.dev, "dmaengine_resume failed: ret:%d\n",
++						ret);
++					return -EAGAIN;
++				}
++			}
+ 		}
+ 	}
+ 
+@@ -2210,6 +2224,9 @@ static int __maybe_unused geni_i2c_suspend_noirq(struct device *dev)
+ 	struct geni_i2c_dev *gi2c = dev_get_drvdata(dev);
+ 	int ret = 0;
+ 
++	if (gi2c->is_ccu_qup)
++		return 0;
++
+ 	pm_runtime_enable(gi2c->se.dev);
+ 	i2c_mark_adapter_suspended(&gi2c->adap);
+ 
+@@ -2226,6 +2243,9 @@ static int __maybe_unused geni_i2c_resume_noirq(struct device *dev)
+ 	struct geni_i2c_dev *gi2c = dev_get_drvdata(dev);
+ 	int ret = 0;
+ 
++	if (gi2c->is_ccu_qup)
++		return 0;
++
+ 	ret = pm_runtime_force_resume(dev);
+ 	if (ret)
+ 		return ret;
+-- 
+2.34.1
+

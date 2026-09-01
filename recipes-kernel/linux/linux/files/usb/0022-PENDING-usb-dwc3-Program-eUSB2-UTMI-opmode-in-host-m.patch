@@ -1,0 +1,95 @@
+From 73f6b60636ad98a6ee1e69d44b0dc7093102ee6f Mon Sep 17 00:00:00 2001
+From: Faisal Hassan <faisal.hassan@oss.qualcomm.com>
+Date: Thu, 13 Nov 2025 13:57:37 +0530
+Subject: [PATCH 3/3] PENDING: usb: dwc3: Program eUSB2 UTMI opmode in host
+ mode
+
+Some SoCs (such as Qualcomm SM8550) pair the DWC3 controller with an
+eUSB2 PHY. In host mode, the GUSB2PHYCFG.EUSB2OPMODE bit must be set to
+ensure proper UTMI signaling during USB2 test modes (e.g., TEST_J and
+TEST_K). Without this configuration, compliance issues can occur, such
+as D+/D- lines remaining low (SE0) during test sequences.
+
+This patch adds support for programming the eUSB2 opmode when switching
+to host mode. The core driver detects eUSB2 PHYs during probe and
+maintains a bitmap of USB2 ports using eUSB2 PHY. When entering host
+mode, the driver sets the EUSB2OPMODE bit for those ports.
+
+Change-Id: Idb5e8695ecc897c41119ec47ade48a6205db6ed7
+Signed-off-by: Faisal Hassan <faisal.hassan@oss.qualcomm.com>
+---
+ drivers/usb/dwc3/core.c | 15 +++++++++++++++
+ drivers/usb/dwc3/core.h |  3 +++
+ 2 files changed, 18 insertions(+)
+
+diff --git a/drivers/usb/dwc3/core.c b/drivers/usb/dwc3/core.c
+index 4f8712284d42..3b2dc69b9fa7 100644
+--- a/drivers/usb/dwc3/core.c
++++ b/drivers/usb/dwc3/core.c
+@@ -244,6 +244,13 @@ static void __dwc3_set_mode(struct work_struct *work)
+ 				otg_set_vbus(dwc->usb2_phy->otg, true);
+ 			phy_set_mode(dwc->usb2_generic_phy, PHY_MODE_USB_HOST);
+ 			phy_set_mode(dwc->usb3_generic_phy, PHY_MODE_USB_HOST);
++
++			if (dwc->eusb2_phy_bitmap & BIT(0)) {
++				reg = dwc3_readl(dwc->regs, DWC3_GUSB2PHYCFG(0));
++				reg |= DWC3_GUSB2PHYCFG_EUSB2OPMODE;
++				dwc3_writel(dwc->regs, DWC3_GUSB2PHYCFG(0), reg);
++			}
++
+ 			if (dwc->dis_split_quirk) {
+ 				reg = dwc3_readl(dwc->regs, DWC3_GUCTL3);
+ 				reg |= DWC3_GUCTL3_SPLITDISABLE;
+@@ -1401,6 +1408,11 @@ static int dwc3_core_init(struct dwc3 *dwc)
+ 	return ret;
+ }
+ 
++static inline bool is_eusb2_phy(struct phy *p)
++{
++	return p && (phy_get_type(p) == PHY_TYPE_USB_EUSB2);
++}
++
+ static int dwc3_core_get_phy(struct dwc3 *dwc)
+ {
+ 	struct device		*dev = dwc->dev;
+@@ -1440,6 +1452,9 @@ static int dwc3_core_get_phy(struct dwc3 *dwc)
+ 			return dev_err_probe(dev, ret, "no usb2 phy configured\n");
+ 	}
+ 
++	if (is_eusb2_phy(dwc->usb2_generic_phy))
++		dwc->eusb2_phy_bitmap |= BIT(0);
++
+ 	dwc->usb3_generic_phy = devm_phy_get(dev, "usb3-phy");
+ 	if (IS_ERR(dwc->usb3_generic_phy)) {
+ 		ret = PTR_ERR(dwc->usb3_generic_phy);
+diff --git a/drivers/usb/dwc3/core.h b/drivers/usb/dwc3/core.h
+index 6ccfb4923e29..c319311d912b 100644
+--- a/drivers/usb/dwc3/core.h
++++ b/drivers/usb/dwc3/core.h
+@@ -289,6 +289,7 @@
+ #define DWC3_GUSB2PHYCFG_PHYSOFTRST	BIT(31)
+ #define DWC3_GUSB2PHYCFG_U2_FREECLK_EXISTS	BIT(30)
+ #define DWC3_GUSB2PHYCFG_ULPIEXTVBUSDRV	BIT(17)
++#define DWC3_GUSB2PHYCFG_EUSB2OPMODE	BIT(14)
+ #define DWC3_GUSB2PHYCFG_SUSPHY		BIT(6)
+ #define DWC3_GUSB2PHYCFG_ULPI_UTMI	BIT(4)
+ #define DWC3_GUSB2PHYCFG_ENBLSLPM	BIT(8)
+@@ -1171,6 +1172,7 @@ struct dwc3_glue_data {
+  * @glue_data: Private data stored by core to be passed on to glue during
+  *		role switch notifications.
+  * @glue_ops: Store pointers to glue notifcation callbacks.
++ * @eusb2_phy_bitmap: Bitmap of USB2 ports using eUSB2 PHY.
+  */
+ struct dwc3 {
+ 	struct work_struct	drd_work;
+@@ -1401,6 +1403,7 @@ struct dwc3 {
+ 
+ 	bool			cable_disconnected;
+ 	bool			dwc3_guctl_resbwhseps_quirk;
++	u32			eusb2_phy_bitmap;
+ };
+ 
+ #define INCRX_BURST_MODE 0
+-- 
+2.34.1
+

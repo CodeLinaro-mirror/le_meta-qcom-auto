@@ -5,12 +5,16 @@ LICENSE = "GPLv2.0-with-linux-syscall-note"
 LIC_FILES_CHKSUM = "file://${QTI_LICENSE_DIR}/${LICENSE};md5=8afb6abdac9a14cb18a0d6c9c151e9b4"
 
 SRC_URI = "\
-    ${PATH_TO_REPO}/${TARGET_DIR}vendor/qcom/opensource/virtio-video/.git;protocol=${PROTO};destsuffix=${TARGET_DIR}vendor/qcom/opensource/virtio-video;usehead=1 \
+    ${CLO_LA_GIT}/platform/vendor/opensource/virtio-video.git;branch=video-hyp.lnx.3.0.r22-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/virtio-video \
+"
+SRC_URI:sa8775-flex = "\
+    ${CLO_LA_GIT}/platform/vendor/opensource/gen4-5/virtio-video.git;branch=video-hyp_gen4-5.lnx.2.0.r2-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/virtio-video \
 "
 
-SRCREV = "${AUTOREV}"
+SRCREV = "eaa1d7cd1455aa6762f0bfce7e80cc626571284d"
 
-S = "${WORKDIR}/${TARGET_DIR}vendor/qcom/opensource/virtio-video"
+SRCREV:sa8775-flex = "18bbe5158f7dee12a364b1094a66d74c060e1070"
+S = "${WORKDIR}/vendor/qcom/opensource/virtio-video"
 
 
 do_configure[noexec] = "1"

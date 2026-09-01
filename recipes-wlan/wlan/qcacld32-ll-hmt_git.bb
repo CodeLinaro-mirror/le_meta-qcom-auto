@@ -10,15 +10,24 @@ HOMEPAGE = "https://git.codelinaro.org/"
 LICENSE = "ISC"
 LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/${LICENSE};md5=f3b90e78ea0cffb20bf5cca7947a896d"
 
-SRC_URI = "${PATH_TO_REPO}/${TARGET_DIR}wlan/qcacld-3.0/.git;protocol=${PROTO};name=qcacld;destsuffix=${TARGET_DIR}wlan/qcacld-3.0;usehead=1 \
-           ${PATH_TO_REPO}/${TARGET_DIR}wlan/qca-wifi-host-cmn/.git;protocol=${PROTO};name=qca-wifi-host-cmn;destsuffix=${TARGET_DIR}wlan/qca-wifi-host-cmn;usehead=1 \
-           ${PATH_TO_REPO}/${TARGET_DIR}wlan/fw-api/.git;protocol=${PROTO};name=fw-api;destsuffix=${TARGET_DIR}wlan/fw-api/;usehead=1 \
-           ${PATH_TO_REPO}/device/qcom/wlan/.git;protocol=${PROTO};name=wlan;destsuffix=device/qcom/wlan;usehead=1 \
+SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/wlan/qcacld-3.0.git;branch=auto-wlan-cld3-driver.lnx.2.1.r37-rel;protocol=${OSS_PROTO};name=qcacld;destsuffix=wlan/qcacld-3.0 \
+           ${CLO_LE_GIT}/platform/vendor/qcom-opensource/wlan/qca-wifi-host-cmn.git;branch=auto-wlan-cmn-driver.lnx.2.4.r21-rel;protocol=${OSS_PROTO};name=qca-wifi-host-cmn;destsuffix=wlan/qca-wifi-host-cmn \
+           ${CLO_LE_GIT}/platform/vendor/qcom-opensource/wlan/fw-api.git;branch=auto-wlan-api.lnx.1.4.r21-rel;protocol=${OSS_PROTO};name=fw-api;destsuffix=wlan/fw-api/ \
+           ${CLO_LA_GIT}/platform/vendor/qcom/wlan.git;branch=auto-wlan-service.lnx.1.4.r8-rel;protocol=${OSS_PROTO};name=wlan;destsuffix=device/qcom/wlan \
            "
-SRCREV_qcacld = "${AUTOREV}"
-SRCREV_qca-wifi-host-cmn = "${AUTOREV}"
-SRCREV_fw-api = "${AUTOREV}"
-SRCREV_wlan = "${AUTOREV}"
+SRC_URI:sa8775-flex = "${CLO_LA_GIT}/platform/vendor/qcom-opensource/wlan/gen4-5/qcacld-3.0.git;branch=auto-wlan-cld3-driver_gen4-5.lnx.2.1.r2-rel;protocol=${OSS_PROTO};name=qcacld;destsuffix=wlan/qcacld-3.0 \
+           ${CLO_LA_GIT}/platform/vendor/qcom-opensource/wlan/gen4-5/qca-wifi-host-cmn.git;branch=auto-wlan-cmn-driver_gen4-5.lnx.2.1.r1-rel;protocol=${OSS_PROTO};name=qca-wifi-host-cmn;destsuffix=wlan/qca-wifi-host-cmn \
+           ${CLO_LA_GIT}/platform/vendor/qcom-opensource/wlan/gen4-5/fw-api.git;branch=auto-wlan-api_gen4-5.lnx.1.1.r1-rel;protocol=${OSS_PROTO};name=fw-api;destsuffix=wlan/fw-api/ \
+           ${CLO_LA_GIT}/platform/vendor/qcom/wlan.git;branch=auto-wlan-service.lnx.1.4.r8-rel;protocol=${OSS_PROTO};name=wlan;destsuffix=device/qcom/wlan \
+           "
+SRCREV_qcacld = "a8efb16618257a91038c8b49427222332c4f7df4"
+SRCREV_qcacld:sa8775-flex = "f6a89d48725211db18e73ca46c235d0ecb52c863"
+SRCREV_qca-wifi-host-cmn = "69be777fc7fdf55a139822cba4053f38a93c05b1"
+SRCREV_qca-wifi-host-cmn:sa8775-flex = "b83321acd3775fce9b59951b65b25fb5fb1e01bc"
+SRCREV_fw-api = "913e7274d2d8219359bfff4132e90f3ec8239bec"
+SRCREV_fw-api:sa8775-flex = "4e7fbfa23c97c619a3404bb249c125925edffc8c"
+SRCREV_wlan = "2536a284a5ccc942c51507b53bcf1ec1ff6a0928"
+SRCREV_wlan:sa8775-flex = "2536a284a5ccc942c51507b53bcf1ec1ff6a0928"
 SRCREV_FORMAT = "qcacld_cmn_fw_msm"
 
 _MODNAME = "qca6797"
@@ -26,8 +35,8 @@ _WLAN_CTRL_NAME = "wlan"
 FW_PATH_NAME = "kiwi"
 FIRMWARE_PATH = "${D}${nonarch_base_libdir}/firmware/wlan/qca_cld/${_MODNAME}"
 
-S1 = "${WORKDIR}/${TARGET_DIR}wlan/qca-wifi-host-cmn"
-S = "${WORKDIR}/${TARGET_DIR}wlan/qcacld-3.0"
+S1 = "${WORKDIR}/wlan/qca-wifi-host-cmn"
+S = "${WORKDIR}/wlan/qcacld-3.0"
 
 # Explicitly disable HL to enable LL as current WLAN driver is not having
 # simultaneous support of HL and LL.

@@ -1,0 +1,308 @@
+From 6ea3e42705d637f8decab6c49f15905048a5aef9 Mon Sep 17 00:00:00 2001
+From: Aniket Randive <aniket.randive@oss.qualcomm.com>
+Date: Fri, 8 May 2026 11:42:43 +0530
+Subject: [PATCH] qcom_ccu_qup: Fix NULL pointer dereference and add input
+ validation
+
+Fix kernel crash caused by NULL pointer dereference when accessing
+ccu->adap for commands that don't require an I2C adapter. Skip adapter
+initialization for FUSA_IRQ_STATUS, SYNC_ID_CH_MAP, and LOAD_QUP_FW
+commands.
+
+Add comprehensive input validation to prevent crashes with invalid data:
+- Validate command range before processing
+- Check ccud initialization status
+- Verify adapter availability for commands that need it
+- Validate gpii_no and qup_no parameters are within bounds
+- Check function pointers are registered before calling
+- Validate sync array pointer is not NULL
+
+Fix double-free issue by using single cleanup point for ccu->cfg and
+saving command type before processing.
+
+Fix copy_from_user error handling to return proper error code (-EFAULT)
+instead of bytes-not-copied count.
+
+Add NULL check for ccu->client->adapter in ccu_get_se_adapter to prevent
+dereferencing NULL adapter pointer.
+
+Add error handling to ensure that if firmware loading fails, the probe
+function returns -EPROBE_DEFER to allow retry at a later stage.
+
+These changes ensure the driver handles malformed input gracefully
+without crashing the kernel.
+
+Change-Id: I51cb6aaad3c2ec0ffe4366594cc150c3368a4c13
+Signed-off-by: Aniket Randive <aniket.randive@oss.qualcomm.com>
+---
+ drivers/dma/qcom/gpi.c               |   7 +-
+ drivers/soc/qcom/qcom_ccu_qup.c      | 138 +++++++++++++++++++++++----
+ include/uapi/linux/ccu_qup/ccu_qup.h |   2 +-
+ 3 files changed, 127 insertions(+), 20 deletions(-)
+
+diff --git a/drivers/dma/qcom/gpi.c b/drivers/dma/qcom/gpi.c
+index 2bfab3612899..6c89c24d23ed 100644
+--- a/drivers/dma/qcom/gpi.c
++++ b/drivers/dma/qcom/gpi.c
+@@ -3085,7 +3085,12 @@ static int gpi_probe(struct platform_device *pdev)
+ 		gpi_dev->cfg = *data;
+ 		register_gpi_irq(ccu_gpi_handle_isr);
+ 		GPI_DBG_LOG(LOG_LVL_INFO, gpi_dev->dev, "Loading CCU QUP FW\n");
+-		ccu_qup_load_firmware();
++		ret = ccu_qup_load_firmware();
++		if (ret) {
++			GPI_ERR_LOG(LOG_LVL_ERROR, gpi_dev->dev,
++				"Failed to load CCU QUP FW, ret:%d. Deferring probe.\n", ret);
++				return -EPROBE_DEFER;
++		}
+ 	}
+ 
+ 	gpi_dev->ee_base = gpi_dev->ee_base - data->ee_offset;
+diff --git a/drivers/soc/qcom/qcom_ccu_qup.c b/drivers/soc/qcom/qcom_ccu_qup.c
+index e140adc2394b..a3444fe6b9ed 100644
+--- a/drivers/soc/qcom/qcom_ccu_qup.c
++++ b/drivers/soc/qcom/qcom_ccu_qup.c
+@@ -45,6 +45,7 @@
+ #define CCU_MAX_GPII		14
+ #define CCU_MAX_GPII_PER_SE	3
+ #define CCU_MAX_SE		5
++#define MAX_CCU_CMD		9
+ #define GPII_IRQ_COUNT		(GPII_14_IRQ - GPII_0_IRQ + 1)
+ #define CCU_RETRY_TIME		50
+ #define CCU_RETRY_CNT          150
+@@ -860,20 +861,20 @@ static inline int ccu_get_se_adapter(int fd, struct ccu_qup *ccu)
+ 	}
+ 
+ 	ccu->client = file->private_data;
++	fput(file);
++
+ 	if (!ccu->client) {
+ 		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, "Client is NULL\n");
+-		fput(file);
+ 		return -ENODEV;
+ 	}
+ 
+-	ccu->adap = ccu->client->adapter;
+-	fput(file);
+-
+-	if (!ccu->adap) {
+-		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, "Adapter is NULL\n");
++	if (!ccu->client->adapter) {
++		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, "Client adapter is NULL\n");
+ 		return -ENODEV;
+ 	}
+ 
++	ccu->adap = ccu->client->adapter;
++
+ 	return 0;
+ }
+ 
+@@ -897,6 +898,7 @@ static ssize_t ccu_config_write(struct file *filp, const char __user *buf,
+ 	struct ccu_qup *ccu;
+ 	struct ccu_qup_config cfg;
+ 	int ret = 0;
++	int cmd;
+ 
+ 	if (!filp || !buf || !len || !filp->private_data)
+ 		return -EINVAL;
+@@ -907,7 +909,13 @@ static ssize_t ccu_config_write(struct file *filp, const char __user *buf,
+ 		return -EINVAL;
+ 	}
+ 
+-	ccu->cfg = kmalloc (sizeof(struct ccu_qup_config), GFP_KERNEL);
++	/* Validate ccud is initialized for commands that need it */
++	if (!ccud) {
++		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, "CCU device not initialized\n");
++		return -ENODEV;
++	}
++
++	ccu->cfg = kmalloc(sizeof(struct ccu_qup_config), GFP_KERNEL);
+ 	if (!ccu->cfg) {
+ 		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, "failed to allocate memory\n");
+ 		return -ENOMEM;
+@@ -917,45 +925,127 @@ static ssize_t ccu_config_write(struct file *filp, const char __user *buf,
+ 	if (ret) {
+ 		kfree(ccu->cfg);
+ 		ccu->cfg = NULL;
+-		return ret;
++		return -EFAULT;
+ 	}
+ 
+ 	memcpy(ccu->cfg, &cfg, sizeof(struct ccu_qup_config));
+ 
+-	ret = ccu_get_se_adapter(cfg.fd, ccu);
+-	if (ret) {
+-		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, "failed to get SE Adapter\n");
++	/* Save command type before processing */
++	cmd = ccu->cfg->cmd;
++
++	/* Validate command is within valid range */
++	if (cmd < 0 || cmd >= MAX_CCU_CMD) {
++		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, "Invalid cmd:%d\n", cmd);
++		kfree(ccu->cfg);
++		ccu->cfg = NULL;
++		return -EINVAL;
++	}
++
++	/* Commands that don't require adapter */
++	if (cmd != FUSA_IRQ_STATUS &&
++	    cmd != SYNC_ID_CH_MAP &&
++	    cmd != LOAD_QUP_FW) {
++		ret = ccu_get_se_adapter(cfg.fd, ccu);
++		if (ret) {
++			CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, "failed to get SE Adapter\n");
++			kfree(ccu->cfg);
++			ccu->cfg = NULL;
++			return ret;
++		}
++	}
++
++	/* Validate adapter for commands that need it */
++	if ((cmd == I2C_GPII_RESET || cmd == UPDATE_CH_TYPE || 
++	     cmd == INTER_DELAY || cmd == BUS_CLEAR) && !ccu->adap) {
++		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, "Adapter not initialized for cmd:%d\n", cmd);
+ 		kfree(ccu->cfg);
+ 		ccu->cfg = NULL;
+ 		return -EINVAL;
+ 	}
+ 
+-	CCU_DBG_LOG(LOG_LVL_INFO, ccud->dev, "%s: CMD:%d\n", __func__, ccu->cfg->cmd);					   
+-	switch (ccu->cfg->cmd) {
++	CCU_DBG_LOG(LOG_LVL_INFO, ccud->dev, "%s: CMD:%d\n", __func__, cmd);
++	
++	switch (cmd) {
+ 	case I2C_GPII_RESET:
++		/* Validate gpii_no */
++		if (ccu->cfg->gpii_no > CCU_MAX_GPII) {
++			CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, 
++				    "Invalid gpii_no:%d (max:%d)\n", 
++				    ccu->cfg->gpii_no, CCU_MAX_GPII);
++			ret = -EINVAL;
++			break;
++		}
++		/* Validate function pointer */
++		if (!ccu_reset) {
++			CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, 
++				    "Reset function not registered\n");
++			ret = -ENOTSUPP;
++			break;
++		}
+ 		ret = ccu_gpii_reset(ccu->adap, ccu->cfg->gpii_no, ccu->cfg->rst_flag,
+ 				     ccu->cfg->premature_cancel);
+ 		break;
+ 	case SYNC_ID_CH_MAP:
++		/* Validate sync array pointer */
++		if (!ccu->cfg->sync) {
++			CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, "Sync array is NULL\n");
++			ret = -EINVAL;
++			break;
++		}
+ 		ret = ccu_sync_id_to_sync_ch_mapping(ccu, ccu->cfg->sync);
+ 		break;
+ 	case LOAD_QUP_FW:
+ 		ret = ccu_qup_load_firmware();
+ 		break;
+ 	case UPDATE_CH_TYPE:
++		/* Validate function pointer */
++		if (!ccu_cfg_mode) {
++			CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, 
++				    "Config mode function not registered\n");
++			ret = -ENOTSUPP;
++			break;
++		}
+ 		ret = ccu_configure_mode(ccu->adap, ccu->cfg);
+ 		break;
+ 	case INTER_DELAY:
++		/* Validate function pointer */
++		if (!ccu_delay) {
++			CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, 
++				    "Delay function not registered\n");
++			ret = -ENOTSUPP;
++			break;
++		}
+ 		ccu_configure_inter_trans_delay(ccu->adap, ccu->cfg->delay);
+ 		ret = 0;
+ 		break;
+ 	case BUS_CLEAR:
++		/* Validate function pointer */
++		if (!ccu_recover) {
++			CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, 
++				    "Recover function not registered\n");
++			ret = -ENOTSUPP;
++			break;
++		}
+ 		ret = ccu_check_recover_bus(ccu->adap);
+ 		break;
+ 	case POWER_ON:
++		/* Validate function pointer */
++		if (!ccu_on_off) {
++			CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, 
++				    "Power on/off function not registered\n");
++			ret = -ENOTSUPP;
++			break;
++		}
+ 		ret = ccu_power_on_off(ccu, false);
+ 		break;
+ 	case POWER_OFF:
++		/* Validate function pointer */
++		if (!ccu_on_off) {
++			CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, 
++				    "Power on/off function not registered\n");
++			ret = -ENOTSUPP;
++			break;
++		}
+ 		ret = ccu_power_on_off(ccu, true);
+ 		break;
+ 	case FUSA_IRQ_STATUS:
+@@ -965,18 +1055,30 @@ static ssize_t ccu_config_write(struct file *filp, const char __user *buf,
+ 		 *    0 : no recovery needed
+ 		 *   <0 : negative error code on failure
+ 		 */
++		/* Validate qup_no */
++		if (ccu->cfg->qup_no > CCU_MAX_QUP) {
++			CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, 
++				    "Invalid qup_no:%d (max:%d)\n", 
++				    ccu->cfg->qup_no, CCU_MAX_QUP);
++			ret = -EINVAL;
++			break;
++		}
+ 		ret = ccu_qup_fusa_irq_get_status(ccu, ccu->cfg->qup_no);
+-		kfree(ccu->cfg);
+-		ccu->cfg = NULL;
+-		return ret;
++		break;
+ 	default:
+-		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, "Invalid cmd:%d\n", ccu->cfg->cmd);
+-		ret =  -EINVAL;
++		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, "Invalid cmd:%d\n", cmd);
++		ret = -EINVAL;
+ 		break;
+ 	}
++
++	/* Free cfg after processing */
+ 	kfree(ccu->cfg);
+ 	ccu->cfg = NULL;
+ 
++	/* For FUSA_IRQ_STATUS, return the status mask directly */
++	if (cmd == FUSA_IRQ_STATUS)
++		return ret;
++
+ 	if (ret)
+ 		return ret;
+ 
+diff --git a/include/uapi/linux/ccu_qup/ccu_qup.h b/include/uapi/linux/ccu_qup/ccu_qup.h
+index 35b9c5cd6185..e64fb766da30 100644
+--- a/include/uapi/linux/ccu_qup/ccu_qup.h
++++ b/include/uapi/linux/ccu_qup/ccu_qup.h
+@@ -4,7 +4,7 @@
+  */
+ #ifndef __UAPI_LINUX_CCU_QUP_H
+ #define __UAPI_LINUX_CCU_QUP_H
+-#include <uapi/linux/types.h>
++#include <linux/types.h>
+ #include <linux/i2c-dev.h>
+ 
+ /*
+-- 
+2.34.1
+

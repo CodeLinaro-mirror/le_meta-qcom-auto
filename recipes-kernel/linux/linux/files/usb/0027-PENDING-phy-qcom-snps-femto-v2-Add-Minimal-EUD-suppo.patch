@@ -1,0 +1,205 @@
+From 7ca853f7819891e376d57212e98299101546c8f0 Mon Sep 17 00:00:00 2001
+From: Sriram Dash <sriram.dash@oss.qualcomm.com>
+Date: Mon, 23 Mar 2026 18:20:39 +0530
+Subject: [PATCH] PENDING: phy: qcom-snps-femto-v2: Add minimal EUD detection
+ and bypass support
+
+Introduce minimal Embedded USB Debugger (EUD) detection support to
+preserve debug functionality when EUD is enabled during bootup. This
+implementation provides a transitional solution while comprehensive
+EUD support is being finalized.
+
+The EUD is a hardware IP block that enables USB-based debugging
+capabilities. When EUD is active at boot time, the PHY must not be
+reprogrammed or have its resources modified, as doing so would
+disrupt the active debug session. This patch adds detection logic
+to identify when EUD is enabled and bypasses PHY initialization,
+suspend/resume operations, and power domain transitions accordingly.
+
+Key implementation details:
+
+1. EUD Configuration via Device Tree:
+   EUD is physically paired with a single USB controller instance
+   (USB0), but the HS-PHY driver's of_device_id match table is keyed
+   on a per-SoC compatible string shared by every HS-PHY instance on
+   that SoC (USB0, USB1, and on SA8255P also USB2). Storing the EUD
+   base address in the shared of_device_id .data would make every
+   instance matching that compatible string bypass PHY init, not just
+   the one paired with EUD. The EUD base address is therefore read
+   from an optional per-node "qcom,eud-base-addr" device tree property
+   instead, so only the PHY node that actually has the property set
+   (the USB0 node) performs EUD detection; other instances are
+   unaffected.
+
+2. Non-Managed I/O Mapping:
+   The implementation uses ioremap() instead of devm_ioremap() for the
+   EUD register access. This deliberate choice ensures that other
+   drivers in the system can independently access the EUD address space
+   without resource conflicts. The mapping is immediately released after
+   reading the EUD enable status, preventing any resource contention.
+
+3. PHY Programming Bypass:
+   When EUD is detected as active, the driver skips all PHY
+   initialization, configuration, and power management operations. This
+   preserves the PHY state established by the bootloader/firmware for
+   EUD operation, ensuring uninterrupted debug connectivity throughout
+   the boot process and runtime.
+
+4. Minimal Scope:
+   This implementation provides only the essential functionality needed
+   to detect and accommodate an active EUD session. It does not attempt
+   to manage EUD lifecycle, handle dynamic EUD enable/disable scenarios,
+   or provide EUD control interfaces. The sole purpose is to maintain
+   debug connectivity when EUD is enabled at boot.
+
+The current implementation supports SA7255P and SA8255P platforms.
+The "qcom,eud-base-addr" property is set only on the USB0 HS-PHY
+device tree node on each of those platforms; other HS-PHY instances,
+and other platform variants without EUD support, remain unaffected by
+these changes.
+
+Signed-off-by: Sriram Dash <sriram.dash@oss.qualcomm.com>
+Signed-off-by: Faisal Hassan <faisalh@qti.qualcomm.com>
+---
+ drivers/phy/qualcomm/phy-qcom-snps-femto-v2.c | 44 ++++++++++++++++++++++++--
+ 1 file changed, 42 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/phy/qualcomm/phy-qcom-snps-femto-v2.c b/drivers/phy/qualcomm/phy-qcom-snps-femto-v2.c
+index 44269c576ec3..1e5fcf9dbd96 100644
+--- a/drivers/phy/qualcomm/phy-qcom-snps-femto-v2.c
++++ b/drivers/phy/qualcomm/phy-qcom-snps-femto-v2.c
+@@ -79,6 +79,8 @@
+
+ #define LS_FS_OUTPUT_IMPEDANCE_MASK		GENMASK(3, 0)
+
++#define EUD_EN_SIZE			0x4
++
+ static const char * const qcom_snps_hsphy_vreg_names[] = {
+ 	"vdda-pll", "vdda33", "vdda18",
+ };
+@@ -124,6 +126,7 @@ struct phy_override_seq {
+  * @mode: contains the current mode the PHY is in
+  * @update_seq_cfg: tuning parameters for phy init
+  * @pd_list: list of power domains associated with the device
++ * @eud_enable: EUD (Embedded USB Debugger) enable flag
+  */
+ struct qcom_snps_hsphy {
+ 	struct device *dev;
+@@ -141,6 +144,7 @@ struct qcom_snps_hsphy {
+ 	struct phy_override_seq update_seq_cfg[NUM_HSPHY_TUNING_PARAMS];
+
+ 	struct dev_pm_domain_list *pd_list;
++	bool eud_enable;
+ };
+
+ static void qcom_snps_domain_detach(struct qcom_snps_hsphy *hsphy)
+@@ -240,6 +244,9 @@ static int qcom_snps_hsphy_suspend(struct qcom_snps_hsphy *hsphy)
+ {
+ 	dev_dbg(&hsphy->phy->dev, "Suspend QCOM SNPS PHY\n");
+
++	if (hsphy->eud_enable)
++		return 0;
++
+ 	if (hsphy->mode == PHY_MODE_USB_HOST) {
+ 		/* Enable auto-resume to meet remote wakeup timing */
+ 		qcom_snps_hsphy_write_mask(hsphy->base,
+@@ -259,6 +266,9 @@ static int qcom_snps_hsphy_resume(struct qcom_snps_hsphy *hsphy)
+ {
+ 	dev_dbg(&hsphy->phy->dev, "Resume QCOM SNPS PHY, mode\n");
+
++	if (hsphy->eud_enable)
++		return 0;
++
+ 	return 0;
+ }
+
+@@ -372,6 +382,10 @@ static const struct override_param ls_fs_output_impedance_sc7280[] = {
+ 	{ 1310, 0 },
+ };
+
++static const struct override_param_map sa7255p_snps_hs_phy = {
++	.fw_managed = true,
++};
++
+ static const struct override_param_map sa8255p_snps_hs_phy = {
+ 	.fw_managed = true,
+ };
+@@ -459,6 +473,9 @@ static int qcom_snps_hsphy_init(struct phy *phy)
+
+ 	dev_vdbg(&phy->dev, "%s(): Initializing SNPS HS phy\n", __func__);
+
++	if (hsphy->eud_enable)
++		return 0;
++
+ 	ret = qcom_snps_d3_to_d0(hsphy);
+ 	if (ret < 0) {
+ 		dev_err(hsphy->dev, "Failed to transition to d0 state\n");
+@@ -555,7 +572,8 @@ static int qcom_snps_hsphy_exit(struct phy *phy)
+ {
+ 	struct qcom_snps_hsphy *hsphy = phy_get_drvdata(phy);
+
+-	qcom_snps_d0_to_d3(hsphy);
++	if (!hsphy->eud_enable)
++		qcom_snps_d0_to_d3(hsphy);
+
+ 	reset_control_assert(hsphy->phy_reset);
+ 	clk_bulk_disable_unprepare(hsphy->num_clks, hsphy->clks);
+@@ -575,7 +593,7 @@ static const struct phy_ops qcom_snps_hsphy_gen_ops = {
+ static const struct of_device_id qcom_snps_hsphy_of_match_table[] = {
+ 	{
+ 		.compatible	= "qcom,sa7255p-usb-hs-phy",
+-		.data		= &sa8255p_snps_hs_phy,
++		.data		= &sa7255p_snps_hs_phy,
+
+ 	},
+ 	{
+@@ -648,6 +666,31 @@ static void qcom_snps_hsphy_read_override_param_seq(struct device *dev)
+ 	}
+ }
+
++static int qcom_snps_enable_eud(struct qcom_snps_hsphy *hsphy)
++{
++	struct device_node *node = hsphy->dev->of_node;
++	void __iomem *eud_en;
++	u32 eud_base_addr;
++	u32 val;
++	int ret;
++
++	ret = of_property_read_u32(node, "qcom,eud-base-addr", &eud_base_addr);
++	if (ret)
++		return 0;
++
++	eud_en = ioremap(eud_base_addr, EUD_EN_SIZE);
++	if (!eud_en)
++		return -ENOMEM;
++
++	val = readl_relaxed(eud_en);
++	if (val)
++		hsphy->eud_enable = true;
++
++	iounmap(eud_en);
++
++	return 0;
++}
++
+ static int qcom_snps_hsphy_probe(struct platform_device *pdev)
+ {
+ 	struct device *dev = &pdev->dev;
+@@ -698,6 +741,15 @@ static int qcom_snps_hsphy_probe(struct platform_device *pdev)
+ 		return dev_err_probe(dev, ret,
+ 				     "failed to get regulator supplies\n");
+
++	/* EUD is paired with a specific USB controller instance; the
++	 * association is described per PHY node via qcom,eud-base-addr
++	 * rather than shared platform data, since multiple PHY instances
++	 * can match the same compatible string.
++	 */
++	ret = qcom_snps_enable_eud(hsphy);
++	if (ret)
++		return dev_err_probe(dev, ret, "failed to map eud reg\n");
++
+ 	pm_runtime_set_active(dev);
+ 	pm_runtime_enable(dev);
+ 	/*
+--
+2.34.1

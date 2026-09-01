@@ -1,0 +1,1218 @@
+From f9c52de329811b936f346e634877b5a03c7ef4cd Mon Sep 17 00:00:00 2001
+From: Aniket Randive <quic_arandive@quicinc.com>
+Date: Mon, 21 Oct 2024 11:54:44 +0530
+Subject: [PATCH 05/12] PENDING: soc: qcom: ccu-qup: Add CCU QUP platform
+ driver
+
+This patch adds the CCU QUP platform driver and implements
+the following APIs to support CCU QUP use cases:
+- Firmware load support for CCU QUP
+- Reset the GPII
+- Configure CCU mode and channel type
+- API for sync ID to sync channel mapping
+- API to set inter-transfer delay
+- API for power on and power off
+- Support for GPII interrupt aggregation
+
+These changes enhance the functionality and flexibility
+of the CCU QUP platform.
+
+Change-Id: If89569f6aba5107d9777b2d8717ecc5d7fa6cf1b
+Signed-off-by: Aniket Randive <quic_arandive@quicinc.com>
+---
+ drivers/i2c/busses/i2c-qcom-geni.c    |  28 +-
+ drivers/soc/qcom/Kconfig              |  11 +
+ drivers/soc/qcom/Makefile             |   1 +
+ drivers/soc/qcom/qcom_ccu_qup.c       | 775 ++++++++++++++++++++++++++
+ include/linux/soc/qcom/qcom_ccu_qup.h | 140 +++++
+ include/uapi/linux/ccu_qup/ccu_qup.h  | 102 ++++
+ 6 files changed, 1048 insertions(+), 9 deletions(-)
+ create mode 100644 drivers/soc/qcom/qcom_ccu_qup.c
+ create mode 100644 include/linux/soc/qcom/qcom_ccu_qup.h
+ create mode 100644 include/uapi/linux/ccu_qup/ccu_qup.h
+
+diff --git a/drivers/i2c/busses/i2c-qcom-geni.c b/drivers/i2c/busses/i2c-qcom-geni.c
+index d7e8c842eda9..e9c7664c302c 100644
+--- a/drivers/i2c/busses/i2c-qcom-geni.c
++++ b/drivers/i2c/busses/i2c-qcom-geni.c
+@@ -139,7 +139,7 @@ struct ccu_gpii_info {
+  * @gpii_no: represents the GPII no on which transfer need to send
+  * @sync: represents the synchronous or asynchornous transfer
+  * @priority: represents high priority data transfer
+- * @nop_last: when SW wants to NOP the FRAME(s)
++ * @nop_frame: when SW wants to NOP the FRAME(s)
+  * @pre_delay: insert predefined delay before I2C transaction
+  * @post_delay: insert predefined delay after I2C transaction
+  * @pkt_len: tx sub-packet length for multiple random write
+@@ -152,7 +152,7 @@ struct ccu_msg_config {
+ 	int gpii_no;
+ 	bool sync;
+ 	bool priority;
+-	bool nop_last;
++	bool nop_frame;
+ 	bool pre_delay;
+ 	bool post_delay;
+ 	int pkt_len;
+@@ -1085,7 +1085,7 @@ static int geni_i2c_gpi(struct geni_i2c_dev *gi2c, struct i2c_msg *msg,
+ 	peripheral_cfg->delay = gi2c->ccu.inter_delay;
+ 	peripheral_cfg->ccu_cfg.ccu_last = gi2c->ccu.msg[idx]->ccu_last;
+ 	peripheral_cfg->ccu_cfg.ch_last = gi2c->ccu.msg[idx]->ch_last;
+-	peripheral_cfg->ccu_cfg.nop_last = gi2c->ccu.msg[idx]->nop_last;
++	peripheral_cfg->ccu_cfg.nop_frame = gi2c->ccu.msg[idx]->nop_frame;
+ 	peripheral_cfg->post_delay = gi2c->ccu.msg[idx]->post_delay;
+ 	peripheral_cfg->pre_delay = gi2c->ccu.msg[idx]->pre_delay;
+ 	peripheral_cfg->ccu_cfg.retry = gi2c->ccu.msg[idx]->arb_lost_retry;
+@@ -1101,7 +1101,7 @@ static int geni_i2c_gpi(struct geni_i2c_dev *gi2c, struct i2c_msg *msg,
+ 	peripheral_cfg->multi_msg = true;
+ 	peripheral_cfg->ccu_cfg.ccu_last = 0;
+ 	peripheral_cfg->ccu_cfg.ch_last = 0;
+-	peripheral_cfg->ccu_cfg.nop_last = false;
++	peripheral_cfg->ccu_cfg.nop_frame = false;
+ 	peripheral_cfg->post_delay = false;
+ 	peripheral_cfg->pre_delay = false;
+ 	peripheral_cfg->ccu_cfg.retry = 0;
+@@ -1140,10 +1140,12 @@ static int geni_i2c_gpi(struct geni_i2c_dev *gi2c, struct i2c_msg *msg,
+ 
+ err_config:
+ 	dma_unmap_single(gi2c->se.dev->parent, addr, len, map_dirn);
+-	if (gi2c->is_ccu_qup)
++	if (gi2c->is_ccu_qup) {
+ 		kfree(dma_buf);
+-	else
++		dma_buf = NULL;
++	} else {
+ 		i2c_put_dma_safe_msg_buf(dma_buf, msg, false);
++	}
+ 
+ 	return ret;
+ }
+@@ -1179,6 +1181,7 @@ static int geni_i2c_extract_frame_cfg(struct geni_i2c_dev *gi2c, struct i2c_msg
+ 		dev_err(gi2c->se.dev, "%s:  Memory allocation failed for msg[%d]\n",
+ 			__func__, msg_idx);
+ 		kfree(msg_buf);
++		msg_buf = NULL;
+ 		return -ENOMEM;
+ 	}
+ 	data = *msg_buf;
+@@ -1186,7 +1189,7 @@ static int geni_i2c_extract_frame_cfg(struct geni_i2c_dev *gi2c, struct i2c_msg
+ 	gi2c->ccu.msg[msg_idx]->gpii_no = CCU_GET_GPII(data);
+ 	gi2c->ccu.msg[msg_idx]->sync =  CCU_GET_SYNC(data);
+ 	gi2c->ccu.msg[msg_idx]->priority = CCU_GET_PRIO(data);
+-	gi2c->ccu.msg[msg_idx]->nop_last = CCU_GET_NOP_FRAME(data);
++	gi2c->ccu.msg[msg_idx]->nop_frame = CCU_GET_NOP_FRAME(data);
+ 	gi2c->ccu.msg[msg_idx]->pre_delay = CCU_GET_INSERT_DELAY_BEFORE(data);
+ 	gi2c->ccu.msg[msg_idx]->post_delay = CCU_GET_INSERT_DELAY_AFTER(data);
+ 	gi2c->ccu.msg[msg_idx]->ch_last = CCU_GET_CH_LAST(data);
+@@ -1312,16 +1315,20 @@ static int geni_i2c_gpi_xfer(struct geni_i2c_dev *gi2c, struct i2c_msg msgs[], i
+ 		}
+ 
+ 		geni_i2c_gpi_unmap(gi2c, &msgs[i], tx_buf, tx_addr, rx_buf, rx_addr);
+-		if (gi2c->is_ccu_qup)
++		if (gi2c->is_ccu_qup) {
+ 			kfree(gi2c->ccu.msg[i]);
++			gi2c->ccu.msg[i] = NULL;
++		}
+ 	}
+ 	return num;
+ 
+ err:
+ 	dev_err(gi2c->se.dev, "GPI transfer failed: %d\n", ret);
+ 	if (gi2c->is_ccu_qup) {
+-		for (k = i; k >= 0; k--)
++		for (k = i; k >= 0; k--) {
+ 			kfree(gi2c->ccu.msg[k]);
++			gi2c->ccu.msg[k] = NULL;
++		}
+ 		for (k = 0; k < CCU_MAX_GPII; k++) {
+ 			dmaengine_terminate_sync(gi2c->rx_c[k]);
+ 			dmaengine_terminate_sync(gi2c->tx_c[k]);
+@@ -1474,6 +1481,7 @@ static int setup_gpi_dma(struct geni_i2c_dev *gi2c)
+ 			ret = dev_err_probe(gi2c->se.dev, PTR_ERR(gi2c->rx_c[i]),
+ 					    "Failed to get rx%d DMA ch\n", i);
+ 			dma_release_channel(gi2c->tx_c[i]);
++			gi2c->tx_c[i] = NULL;
+ 			goto err;
+ 		}
+ 	} while (++i < idx);
+@@ -1484,7 +1492,9 @@ static int setup_gpi_dma(struct geni_i2c_dev *gi2c)
+ err:
+ 	for (idx = i; idx > 0; idx--) {
+ 		dma_release_channel(gi2c->tx_c[idx - 1]);
++		gi2c->tx_c[idx -1 ] = NULL;
+ 		dma_release_channel(gi2c->rx_c[idx - 1]);
++		gi2c->rx_c[idx -1 ] = NULL;
+ 	}
+ 	return ret;
+ }
+diff --git a/drivers/soc/qcom/Kconfig b/drivers/soc/qcom/Kconfig
+index 71cacca99103..ecdd50ae53f9 100644
+--- a/drivers/soc/qcom/Kconfig
++++ b/drivers/soc/qcom/Kconfig
+@@ -51,6 +51,17 @@ config QCOM_GENI_SE
+ 	  driver is also used to manage the common aspects of multiple Serial
+ 	  Engines present in the QUP.
+ 
++config QCOM_CCU_QUP
++	tristate "QCOM CCU QUP Driver"
++	depends on ARCH_QCOM || COMPILE_TEST
++	help
++          This driver is a Linux kernel platform device driver that registers a
++          character device interface for passing hardware configurations to the
++          Geni driver. It supports standard file operations.
++
++          This driver facilitates communication and configuration management
++          between the camera client and the Geni driver.
++
+ config QCOM_GSBI
+ 	tristate "QCOM General Serial Bus Interface"
+ 	depends on ARCH_QCOM || COMPILE_TEST
+diff --git a/drivers/soc/qcom/Makefile b/drivers/soc/qcom/Makefile
+index 5df027b5a3c8..2fbc06d59b72 100644
+--- a/drivers/soc/qcom/Makefile
++++ b/drivers/soc/qcom/Makefile
+@@ -4,6 +4,7 @@ CFLAGS_qcom_aoss.o := -I$(src)
+ obj-$(CONFIG_QCOM_WDT_CORE) += wdt_core.o
+ obj-$(CONFIG_QCOM_AOSS_QMP) +=	qcom_aoss.o
+ obj-$(CONFIG_QCOM_GENI_SE) +=	qcom-geni-se.o
++obj-$(CONFIG_QCOM_CCU_QUP) +=  qcom_ccu_qup.o
+ obj-$(CONFIG_QCOM_COMMAND_DB) += cmd-db.o
+ obj-$(CONFIG_QCOM_GSBI)	+=	qcom_gsbi.o
+ obj-$(CONFIG_QCOM_MDT_LOADER)	+= mdt_loader.o
+diff --git a/drivers/soc/qcom/qcom_ccu_qup.c b/drivers/soc/qcom/qcom_ccu_qup.c
+new file mode 100644
+index 000000000000..472e86f162b1
+--- /dev/null
++++ b/drivers/soc/qcom/qcom_ccu_qup.c
+@@ -0,0 +1,775 @@
++ // SPDX-License-Identifier: GPL-2.0
++/*
++ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
++ */
++
++#include <linux/clk.h>
++#include <linux/cdev.h>
++#include <linux/device.h>
++#include <linux/err.h>
++#include <linux/firmware/qcom/qcom_scm.h>
++#include <linux/file.h>
++#include <linux/interrupt.h>
++#include <linux/init.h>
++#include <linux/irq.h>
++#include <linux/kdev_t.h>
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/of.h>
++#include <linux/of_platform.h>
++#include <linux/platform_device.h>
++#include <linux/soc/qcom/qcom_ccu_qup.h>
++#include <linux/spinlock.h>
++#include <linux/types.h>
++#include <linux/uaccess.h>
++
++#define GPII_0_IRQ		0
++#define GPII_14_IRQ		19
++#define MAX_GPI_DEV		2
++#define CCU_SYNC_TIMERS		20
++#define CCU_MAX_GPII_PER_SE	3
++
++static const struct file_operations ccu_fops = {
++	.owner = THIS_MODULE,
++	.write = ccu_config_write,
++	.open = ccu_open,
++	.release = ccu_release,
++};
++
++static int ccu_release(struct inode *inode, struct file *filp)
++{
++	struct ccu_qup *ccu;
++
++	if (!filp && !filp->private_data)
++		return -EINVAL;
++
++	ccu = filp->private_data;
++
++	return 0;
++}
++
++static int ccu_open(struct inode *inode, struct file *filp)
++{
++	struct ccu_qup *ccu;
++	struct cdev *cdev;
++
++	cdev = inode->i_cdev;
++	ccu = container_of(cdev, struct ccu_qup, cdev);
++	if (!ccu) {
++		dev_err(ccu->dev, "Err to get the CCU\n");
++		return -ENODEV;
++	}
++
++	filp->private_data = ccu;
++
++	return 0;
++}
++
++int ccu_power_on_off(struct i2c_adapter *adap, bool suspend)
++{
++	int ret;
++
++	if (!adap)
++		return -EINVAL;
++
++	ret = geni_i2c_power_on_off(adap, suspend);
++	if (ret) {
++		pr_err("failed to turn on/off the clocks:%d\n", suspend);
++		return -EAGAIN;
++	}
++
++	return 0;
++}
++
++void ccu_check_recover_bus(struct i2c_adapter *adap)
++{
++	if (!adap)
++		return;
++
++	geni_i2c_check_recover_ios_line(adap);
++}
++
++/*
++ * ccu_configure_inter_trans_delay - to configure inter transfer delay in between
++ *                                   i2c transaction.
++ * @adap: handle for master adapter
++ * @time: delay in microseconds
++ *
++ * Return none
++ */
++void ccu_configure_inter_trans_delay(struct i2c_adapter *adap, unsigned long time)
++{
++	if (!adap)
++		return;
++
++	geni_i2c_configure_pre_delay(adap, time);
++}
++
++static void ccu_update_ch_id_mapping(struct ccu_qup *ccu, int qup_idx, int id,
++				     int val, bool sync_ch)
++{
++	void __iomem *base = qup_idx ? ccu->qup1_common_reg :
++				ccu->qup0_common_reg;
++	u32 tmp = 0;
++
++	if (sync_ch) {
++		if (id >= 0 && id < 4) {
++			tmp = readl_relaxed(base + CCU_QUPV3_SYNC1_ID_SE_MAP0);
++			val |= tmp;
++			writel_relaxed(val, base + CCU_QUPV3_SYNC1_ID_SE_MAP0);
++		} else if (id >= 4 && id < 8) {
++			tmp = readl_relaxed(base + CCU_QUPV3_SYNC1_ID_SE_MAP1);
++			val |= tmp;
++			writel_relaxed(val, base + CCU_QUPV3_SYNC1_ID_SE_MAP1);
++		} else if (id >= 8 && id < 12) {
++			tmp = readl_relaxed(base + CCU_QUPV3_SYNC1_ID_SE_MAP2);
++			val |= tmp;
++			writel_relaxed(val, base + CCU_QUPV3_SYNC1_ID_SE_MAP2);
++		} else if (id >= 12 && id < 16) {
++			tmp = readl_relaxed(base + CCU_QUPV3_SYNC1_ID_SE_MAP3);
++			val |= tmp;
++			writel_relaxed(val, base + CCU_QUPV3_SYNC1_ID_SE_MAP3);
++		} else if (id >= 16 && id < 20) {
++			tmp = readl_relaxed(base + CCU_QUPV3_SYNC1_ID_SE_MAP4);
++			val |= tmp;
++			writel_relaxed(val, base + CCU_QUPV3_SYNC1_ID_SE_MAP4);
++		}
++	} else {
++		if (id >= 0 && id < 4) {
++			tmp = readl_relaxed(base + CCU_QUPV3_SYNC0_ID_SE_MAP0);
++			val |= tmp;
++			writel_relaxed(val, base + CCU_QUPV3_SYNC0_ID_SE_MAP0);
++		} else if (id >= 4 && id < 8) {
++			tmp = readl_relaxed(base + CCU_QUPV3_SYNC0_ID_SE_MAP1);
++			val |= tmp;
++			writel_relaxed(val, base + CCU_QUPV3_SYNC0_ID_SE_MAP1);
++		} else if (id >= 8 && id < 12) {
++			tmp = readl_relaxed(base + CCU_QUPV3_SYNC0_ID_SE_MAP2);
++			val |= tmp;
++			writel_relaxed(val, base + CCU_QUPV3_SYNC0_ID_SE_MAP2);
++		} else if (id >= 12 && id < 16) {
++			tmp = readl_relaxed(base + CCU_QUPV3_SYNC0_ID_SE_MAP3);
++			val |= tmp;
++			writel_relaxed(val, base + CCU_QUPV3_SYNC0_ID_SE_MAP3);
++		} else if (id >= 16 && id < 20) {
++			tmp = readl_relaxed(base + CCU_QUPV3_SYNC0_ID_SE_MAP4);
++			val |= tmp;
++			writel_relaxed(val, base + CCU_QUPV3_SYNC0_ID_SE_MAP4);
++		}
++	}
++
++	/* Enable sync trigger feature */
++	writel_relaxed(0x1, ccu->gpi_dev[qup_idx] +
++		ccu->common_reg_off + CCU_QUPV3_SYNC_TRIGGER_EN);
++}
++
++/*
++ * ccu_sync_id_to_sync_ch_mapping - to map the sync id to sync channel
++ * @ccu: handle for struct ccu qup config
++ * @sync: array of struct sync info structure
++ *
++ * Returns 0 on success and error on failure
++ */
++int ccu_sync_id_to_sync_ch_mapping(struct ccu_qup *ccu, struct sync_info sync[])
++{
++	int i, qup_idx, offset;
++	u32 val = 0;
++
++	if (!ccu)
++		return -ENODEV;
++
++	for (i = 0; i < CCU_SYNC_TIMERS; i++) {
++		val = 0;
++		offset = 0;
++
++		qup_idx = sync[i].qup_no ? 1: 0;
++		if ((sync[i].sync_id % 4) == 0)
++			offset = 0;
++
++		if ((sync[i].sync_id % 4) ==  1)
++			offset = 8;
++
++		if ((sync[i].sync_id % 4) == 2)
++			offset = 16;
++
++		if ((sync[i].sync_id % 4) == 3)
++			offset = 24;
++
++		if (sync[i].sync_ch == 0) {
++			val = (1 << (sync[i].se_no + offset));
++			ccu_update_ch_id_mapping(ccu, qup_idx, i, val, false);
++		} else if (sync[i].sync_ch == 1) {
++			val = (1 << (sync[i].se_no + offset));
++			ccu_update_ch_id_mapping(ccu, qup_idx, i, val, true);
++		}
++	}
++
++	return 0;
++}
++
++/*
++ * ccu_configure_mode - to change the CCU SE mode from CDM to sync
++ *                      or vice versa.
++ * @adap:  handle for master adapter
++ * @cfg: handle for struct ccu qup config
++ *
++ * Returns 0 on success and error on failure
++ */
++int ccu_configure_mode(struct i2c_adapter *adap, struct ccu_qup_config *cfg)
++{
++	int ret;
++
++	if (!adap || !cfg)
++		return -EINVAL;
++
++	ret = geni_i2c_configure_ccu_mode(adap, cfg->gpii_no,
++					  cfg->ch_type, cfg->ccu_mode);
++	if (ret) {
++		pr_err("%s: Configuration of CCU Mode is failed for gpii-%d of i2c-%d\n",
++		       __func__, cfg->gpii_no, adap->nr);
++		return ret;
++	}
++	pr_info("%s: Configuration of CCU Mode is done for gpii-%d\n of i2c-%d\n",
++		__func__, cfg->gpii_no, adap->nr);
++	return 0;
++}
++
++/*
++ * ccu_qup_load_firmware - to load qup and GSI firmware
++ *
++ * Return 0 on success and error on failure
++ */
++int ccu_qup_load_firmware(void)
++{
++	int ret = 0;
++
++	/* Make SCM call, to load the TZ FW */
++	ret = qcom_scm_restore_sec_cfg(SCM_AUTH_GSI_QUP_PROC, SCM_LOAD_QUP_FW_ARG);
++	if (ret) {
++		pr_err("%s: unable to load the FW\n", __func__);
++		return ret;
++	}
++
++	pr_info("CCU QUP FW Load done successfully\n");
++	return ret;
++}
++
++/* ccu_gpii_reset - to reset the GPII of that SE.
++ *
++ * @adap: handle for master adapter
++ * @gpii_no: GPII number need to be reset
++ * @partial: if flag is flase then all gpii need to be reset
++ * @premature_cancel: set to true if client wants to drop queued frames
++ *                    from GPII
++ * Returns 0 on success and error on failure.
++ */
++int ccu_gpii_reset(struct i2c_adapter *adap, int gpii_no, bool partial,
++		   bool premature_cancel)
++{
++	int ret, i;
++
++	if (!adap)
++		return -EINVAL;
++
++	if (partial) {
++		ret = geni_i2c_gpii_reset(adap, gpii_no, premature_cancel);
++		if (ret)
++			return ret;
++	} else {
++		for (i = 0; i < CCU_MAX_GPII_PER_SE; i++) {
++			ret = geni_i2c_gpii_reset(adap, i, premature_cancel);
++			if (ret)
++				return ret;
++		}
++	}
++
++	return 0;
++}
++
++static inline int ccu_get_se_adapter(int fd, struct ccu_qup *ccu)
++{
++	struct file *file;
++	struct i2c_client *client;
++
++	file = fget(fd);
++	if (!file && !file->private_data)
++		return -ENODEV;
++
++	ccu->client =  kzalloc(sizeof(*ccu->client), GFP_KERNEL);
++	if (!ccu->client) {
++		return -ENOMEM;
++	} else {
++		ccu->client = file->private_data;
++		ccu->adap = ccu->client->adapter;
++		fput(file);
++	}
++
++	if (!ccu->adap) {
++		pr_err("%s: Adap is NULL\n", __func__);
++		return -ENODEV;
++	}
++
++	return 0;
++}
++
++/*
++ * ccu_config_write - User space use write api to initiate some specific
++ *                    operation like GPII partial reset, complete reset,
++ *                    add intermediate delay, flush etc to CCU QUP I2C
++ *                    driver.
++ * @filp: file pointer of CCU QUP device
++ * @buf: data buffer pointer passed from user space which is of type
++ *       “struct ccu_qup_config”.
++ * @len: represents transfer length of the transaction
++ * @pos: file pointer position
++ *
++ * Returns length of data transferred on success and failure code
++ * in case of any failures.
++ */
++static ssize_t ccu_config_write(struct file *filp, const char __user *buf,
++				size_t len, loff_t *f_pos)
++{
++	struct ccu_qup *ccu;
++	struct ccu_qup_config cfg;
++	int ret;
++
++	if (!filp || !buf || !len || !filp->private_data)
++		return -EINVAL;
++
++	ccu = filp->private_data;
++	if (len != sizeof(struct ccu_qup_config)) {
++		dev_err(ccu->dev, "Invalid data size\n");
++		return -EINVAL;
++	}
++
++	ccu->cfg = kmalloc (sizeof(struct ccu_qup_config), GFP_KERNEL);
++	if (!ccu->cfg) {
++		dev_err(ccu->dev, "failed to allocate memory\n");
++		return -ENOMEM;
++	}
++
++	ret = copy_from_user(&cfg, buf, sizeof(struct ccu_qup_config));
++	if (ret) {
++		kfree(ccu->cfg);
++		ccu->cfg = NULL;
++		return ret;
++	}
++
++	memcpy(ccu->cfg, &cfg, sizeof(struct ccu_qup_config));
++
++	ret = ccu_get_se_adapter(cfg.fd, ccu);
++	if (ret) {
++		dev_err(ccu->dev, "failed to get SE Adapter\n");
++		kfree(ccu->cfg);
++		ccu->cfg = NULL;
++		return -EINVAL;
++	}
++
++	switch (ccu->cfg->cmd) {
++	case I2C_GPII_RESET:
++		ret = ccu_gpii_reset(ccu->adap, ccu->cfg->gpii_no, ccu->cfg->rst_flag,
++				     ccu->cfg->premature_cancel);
++		break;
++	case SYNC_ID_CH_MAP:
++		ret = ccu_sync_id_to_sync_ch_mapping(ccu, ccu->cfg->sync);
++		break;
++	case LOAD_QUP_FW:
++		ret = ccu_qup_load_firmware();
++		break;
++	case UPDATE_CH_TYPE:
++		ret = ccu_configure_mode(ccu->adap, ccu->cfg);
++		break;
++	case INTER_DELAY:
++		ccu_configure_inter_trans_delay(ccu->adap, ccu->cfg->delay);
++		break;
++	case BUS_CLEAR:
++		ccu_check_recover_bus(ccu->adap);
++		break;
++	case POWER_ON:
++		ccu_power_on_off(ccu->adap, false);
++		break;
++	case POWER_OFF:
++		ccu_power_on_off(ccu->adap, true);
++		break;
++	default:
++		dev_err(ccu->dev, "Invalid cmd:%d\n", ccu->cfg->cmd);
++		break;
++	}
++	kfree(ccu->cfg);
++	ccu->cfg = NULL;
++
++	if (ret)
++		return ret;
++
++	return len;
++}
++
++static irqreturn_t gpi0_irq_thread(int irq, void *dev_id)
++{
++	struct ccu_qup *ccu = (struct ccu_qup *)dev_id;
++	u32 irq_stat, i;
++	unsigned long flag;
++
++	spin_lock_irqsave(&ccu->lock0, flag);
++	irq_stat = readl_relaxed(ccu->qup_irq_base[0] + CCU_QUP_IRQ_STATUS);
++	/* GPII index starts from 5th position */
++	for (i = GPII_0_IRQ; i < GPII_14_IRQ; i++) {
++		if (irq_stat & (1U << i)) {
++			ccu_gpi_handle_isr(ccu->gpi_dev[0], i);
++		}
++	}
++
++	/* Clear the interrupt */
++	writel_relaxed(i, (ccu->qup_irq_base[0] + CCU_QUP_IRQ_CLEAR));
++	spin_unlock_irqrestore(&ccu->lock0, flag);
++
++	return IRQ_HANDLED;
++}
++
++static irqreturn_t ccu0_irq_handler(int irq, void *dev_id)
++{
++	return IRQ_WAKE_THREAD;
++}
++
++static irqreturn_t gpi1_irq_thread(int irq, void *dev_id)
++{
++	struct ccu_qup *ccu = (struct ccu_qup *)dev_id;
++	u32 irq_stat, i;
++	unsigned long flag;
++
++	spin_lock_irqsave(&ccu->lock1, flag);
++	irq_stat = readl_relaxed(ccu->qup_irq_base[1] + CCU_QUP_IRQ_STATUS);
++	/* GPII index starts from 5th position */
++	for (i = GPII_0_IRQ; i < GPII_14_IRQ; i++) {
++		if (irq_stat & (1U << i)) {
++			ccu_gpi_handle_isr(ccu->gpi_dev[1], i);
++		}
++	}
++
++	/* Clear the interrupt */
++	writel_relaxed(irq_stat, (ccu->qup_irq_base[1] + CCU_QUP_IRQ_CLEAR));
++	spin_unlock_irqrestore(&ccu->lock1, flag);
++
++	return IRQ_HANDLED;
++}
++
++static irqreturn_t ccu1_irq_handler(int irq, void *dev_id)
++{
++	return IRQ_WAKE_THREAD;
++}
++
++static int check_probe_status(struct device *dev, void *data)
++{
++	struct child_probe_status *child = data;
++	struct platform_device *pdev = to_platform_device(dev);
++
++	if (!child)
++		return -ENODEV;
++
++	if (pdev->dev.driver) {
++		child->probe_state = true;
++		return 1;
++	}
++
++	child->count++;
++
++	if (child->count >= child->max_cnt)
++		return 1;
++
++	return 0;
++}
++
++/* get_set_child_dev_node - Get the child dev node
++ *
++ * @work: handle for struct work_struct
++ *
++ * Return none
++ */
++static void get_set_child_dev_node(struct work_struct *work)
++{
++	struct ccu_qup *ccu = container_of(work,
++			struct ccu_qup, get_child_dev_node.work);
++
++	struct child_probe_status *child_status;
++	struct device_node *node = ccu->dev->of_node, *gpi_node;
++	struct resource *res;
++	const char *gpi[2] = {"dma-controller0", "dma-controller1"};
++	int i = 0;
++
++	child_status = kzalloc(sizeof(*child_status), GFP_KERNEL);
++	if (!child_status)
++		return;
++
++	child_status->max_cnt = 2;
++	child_status->probe_state = false;
++	child_status->count = 0;
++
++	if (!child_status->probe_state) {
++		dev_err(ccu->dev, "CCU child device are not yet probed\n");
++		queue_delayed_work(ccu->gpi_wq, &ccu->get_child_dev_node,
++				   msecs_to_jiffies(3000));
++		kfree(child_status);
++		return;
++	}
++
++	for (i = 0; i < MAX_GPI_DEV; i++) {
++		gpi_node = of_get_child_by_name(node, gpi[i]);
++		if (!gpi_node) {
++			dev_err(ccu->dev, "failed to find gpi_dma[%d] node\n", i);
++			kfree(child_status);
++			return;
++		}
++		/* Find the platform_device associated with a node */
++		ccu->gpi_pdev[i] = of_find_device_by_node(gpi_node);
++		if (!ccu->gpi_pdev[i]) {
++			dev_err(ccu->dev, "failed to find platform device for gpi_dma[%d]\n", i);
++			of_node_put(gpi_node);
++			kfree(child_status);
++			return;
++		}
++	}
++	kfree(child_status);
++}
++
++/*
++ * ccu_get_configure_irq: Get the IRQ for CCU QUP0 and CCU QUP1 and
++ *                        configure it.
++ *
++ * @pdev: handle for platform dev structure
++ * @ccu: handle for ccu qup structure
++ *
++ * Returns 0 on success and error on failure
++ */
++static int ccu_get_configure_irq(struct platform_device *pdev, struct ccu_qup *ccu)
++{
++	int ret;
++	int enable = CCU_GPII_IRQ;
++
++	ccu->ccu_qup0_irq = platform_get_irq_byname(pdev, "ccu_qup0_irq");
++	if (ccu->ccu_qup0_irq < 0)
++		return ccu->ccu_qup0_irq;
++
++	ccu->ccu_qup1_irq = platform_get_irq_byname(pdev, "ccu_qup1_irq");
++	if (ccu->ccu_qup1_irq < 0)
++		return ccu->ccu_qup1_irq;
++
++	irq_set_status_flags(ccu->ccu_qup0_irq, IRQ_NOAUTOEN);
++	ret = devm_request_threaded_irq(ccu->dev, ccu->ccu_qup0_irq, ccu0_irq_handler,
++					gpi0_irq_thread, 0, "CCU_QUP0", ccu);
++	if (ret) {
++		dev_err(ccu->dev, "Request IRQ failed\n");
++		return -EINVAL;
++	}
++
++	irq_set_status_flags(ccu->ccu_qup1_irq, IRQ_NOAUTOEN);
++	ret = devm_request_threaded_irq(ccu->dev, ccu->ccu_qup1_irq, ccu1_irq_handler,
++					gpi1_irq_thread, 0, "CCU_QUP1", ccu);
++	if (ret) {
++		dev_err(ccu->dev, "Request IRQ failed\n");
++		return -EINVAL;
++	}
++
++	/* Enable GPII interrupt source for CCU QUP0 & CCU QUP1*/
++	writel_relaxed(enable, (ccu->qup_irq_base[0] + CCU_QUP_IRQ_MASK));
++	writel_relaxed(enable, (ccu->qup_irq_base[1] + CCU_QUP_IRQ_MASK));
++
++	return 0;
++}
++
++/*
++ * ccu_qup_create_chrdev_node - Create char dev node for CCU
++ *
++ * @ccu: handle for ccu qup structure
++ *
++ * Returns 0 on success and error number on failure.
++ */
++static int ccu_qup_create_chrdev_node(struct ccu_qup *ccu)
++{
++	int ret;
++
++	ret = alloc_chrdev_region(&ccu->ccu_dev, 0, 1, "ccu_dev");
++	if (ret < 0) {
++		dev_err(ccu->dev, "failed to allocate chrdev region:%d\n", ret);
++		return ret;
++	}
++
++	cdev_init(&ccu->cdev, &ccu_fops);
++	ret = cdev_add(&ccu->cdev, ccu->ccu_dev, 1);
++	if (ret < 0) {
++		dev_err(ccu->dev, "failed to add cdev%d\n", ret);
++		goto err_chrdev_region;
++	}
++
++	ccu->ccu_class = class_create("ccu_class");
++	if (IS_ERR(ccu->ccu_class)) {
++		ret = PTR_ERR(ccu->ccu_class);
++		dev_err(ccu->dev, "failed to create struct class\n");
++		goto err_cdev_del;
++	}
++
++	ccu->class_dev = device_create(ccu->ccu_class, NULL, ccu->ccu_dev, NULL, "ccu_device");
++	if (IS_ERR(ccu->class_dev)) {
++		ret = PTR_ERR(ccu->class_dev);
++		dev_err(ccu->dev, "failed to create device\n");
++		goto err_class_create;
++	}
++	return 0;
++err_class_create:
++	class_destroy(ccu->ccu_class);
++err_cdev_del:
++	cdev_del(&ccu->cdev);
++err_chrdev_region:
++	unregister_chrdev_region(ccu->ccu_dev, 1);
++
++	return ret;
++}
++
++static int ccu_qup_probe(struct platform_device *pdev)
++{
++	struct ccu_qup *ccu;
++	struct resource *res;
++	int ret;
++
++	ccu = devm_kzalloc(&pdev->dev, sizeof(*ccu), GFP_KERNEL);
++	if (!ccu)
++		return -ENOMEM;
++
++	ccu->dev = &pdev->dev;
++	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "ccu_qupv3_0_common");
++	if (!res) {
++		dev_err(&pdev->dev, "missing 'reg' for CCU0 common base\n");
++		return -EINVAL;
++	}
++
++	ccu->qup0_common_reg = devm_ioremap(&pdev->dev, res->start, resource_size(res));
++	if (!ccu->qup0_common_reg) {
++		dev_err(&pdev->dev, "ioremap failed for qup0_common_reg\n");
++		return -ENODEV;
++	}
++
++	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "ccu_qupv3_1_common");
++	if (!res) {
++		dev_err(&pdev->dev, "missing 'reg' for CCU1 common base\n");
++		return -EINVAL;
++	}
++
++	ccu->qup1_common_reg = devm_ioremap(&pdev->dev, res->start, resource_size(res));
++	if (!ccu->qup1_common_reg) {
++		dev_err(&pdev->dev, "ioremap failed for qup1_common_reg\n");
++		return -ENODEV;
++	}
++
++	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "ccu_qupv3_0_IRQ");
++	if (!res) {
++		dev_err(&pdev->dev, "missing 'reg' for CCU0 IRQ\n");
++		return -EINVAL;
++	}
++
++	ccu->qup_irq_base[0] = devm_ioremap(&pdev->dev, res->start, resource_size(res));
++	if (!ccu->qup_irq_base[0]) {
++		dev_err(&pdev->dev, "ioremap failed for qup_irq_base[0]\n");
++		return -ENODEV;
++	}
++
++	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "ccu_qupv3_1_IRQ");
++	if (!res) {
++		dev_err(&pdev->dev, "missing 'reg' for CCU1 IRQ\n");
++		return -EINVAL;
++	}
++
++	ccu->qup_irq_base[1] = devm_ioremap(&pdev->dev, res->start, resource_size(res));
++	if (!ccu->qup_irq_base[1]) {
++		dev_err(&pdev->dev, "ioremap failed for qup_irq_base[1]\n");
++		return -ENODEV;
++	}
++
++	ret = ccu_qup_create_chrdev_node(ccu);
++	if (ret)
++		return ret;
++
++	platform_set_drvdata(pdev, ccu);
++
++	spin_lock_init(&ccu->lock0);
++	spin_lock_init(&ccu->lock1);
++	ccu->gpi_wq = create_singlethread_workqueue("CCU_WQ");
++	INIT_DELAYED_WORK(&ccu->get_child_dev_node, get_set_child_dev_node);
++
++	ret = ccu_get_configure_irq(pdev, ccu);
++	if (ret) {
++		dev_err(&pdev->dev, "IRQ configuration failed for CCU\n");
++		return ret;
++	}
++
++	/* Enable the CCU QUP0 & CCU QUP1 IRQ */
++	enable_irq(ccu->ccu_qup0_irq);
++	enable_irq(ccu->ccu_qup1_irq);
++
++	/* In a cold boot scenario, the client enables the CCU QUP clocks.
++	 * Since the client operates in userspace for CCU QUP, the QUP
++	 * firmware is loaded as part of the CCU driver’s probe process.
++	 */
++	ret = ccu_qup_load_firmware();
++	if (ret) {
++		dev_err(&pdev->dev, "Failed to load QUP FW\n");
++		return ret;
++	}
++
++	/* Queue the delayed work to be executed after 5 seconds */
++	queue_delayed_work(ccu->gpi_wq, &ccu->get_child_dev_node,
++			   msecs_to_jiffies(5000));
++
++	dev_dbg(&pdev->dev, "CCU QUP Probe completed\n");
++
++	return devm_of_platform_populate(&pdev->dev);
++}
++
++static int ccu_qup_remove(struct platform_device *pdev)
++{
++	struct ccu_qup *ccu = platform_get_drvdata(pdev);
++
++	if (!ccu)
++		return -ENODEV;
++
++	/* Disable the CCU QUP0 & CCU QUP1 IRQ */
++	disable_irq(ccu->ccu_qup0_irq);
++	disable_irq(ccu->ccu_qup1_irq);
++	destroy_workqueue(ccu->gpi_wq);
++	device_destroy(ccu->ccu_class, ccu->ccu_dev);
++	class_destroy(ccu->ccu_class);
++	cdev_del(&ccu->cdev);
++	unregister_chrdev_region(ccu->ccu_dev, 1);
++
++	dev_dbg(ccu->dev, "CCU QUP Remove done\n");
++	return 0;
++}
++
++static const struct of_device_id ccu_qup_dt_match[] = {
++	{ .compatible = "qcom,ccu-qup" },
++	{}
++};
++MODULE_DEVICE_TABLE(of, ccu_qup_dt_match);
++
++static struct platform_driver ccu_qup_driver = {
++	.probe = ccu_qup_probe,
++	.remove = ccu_qup_remove,
++	.driver = {
++		.name = "ccu_qup",
++		.of_match_table = ccu_qup_dt_match,
++	},
++};
++
++static int __init ccu_qup_init(void)
++{
++	platform_driver_register(&ccu_qup_driver);
++	return 0;
++}
++
++static void __exit ccu_qup_exit(void)
++{
++	platform_driver_unregister(&ccu_qup_driver);
++}
++
++core_initcall(ccu_qup_init);
++module_exit(ccu_qup_exit);
++MODULE_LICENSE("GPL");
++MODULE_ALIAS("Platform:CCU-QUP");
+diff --git a/include/linux/soc/qcom/qcom_ccu_qup.h b/include/linux/soc/qcom/qcom_ccu_qup.h
+new file mode 100644
+index 000000000000..6d493c1139cc
+--- /dev/null
++++ b/include/linux/soc/qcom/qcom_ccu_qup.h
+@@ -0,0 +1,140 @@
++/* SPDX-License-Identifier: GPL-2.0-only
++ *
++ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
++ */
++
++#ifndef _QCOM_CCU_QUP_H_
++#define _QCOM_CCU_QUP_H_
++
++#include <linux/dma/qcom-gpi-dma.h>
++#include <linux/i2c.h>
++#include <uapi/linux/ccu_qup/ccu_qup.h>
++
++#define SCM_LOAD_QUP_FW_ARG	0x3E3E3E3E
++#define SCM_AUTH_GSI_QUP_PROC	0x13
++
++/* CCU QUP Interrupt Register */
++#define CCU_QUP_IRQ_STATUS	0x0
++#define CCU_QUP_IRQ_MASK	0x4
++#define CCU_QUP_IRQ_CLEAR	0x8
++#define CCU_QUP_IRQ_SET		0xc
++#define CCU_QUP_IRQ_CMD		0x10
++
++#define CCU_GPII_IRQ		GENMASK(19, 0)
++
++#define CCU_QUP_CORE_CLK_CGC_CTRL	0x14
++#define CCU_QUP_CORE_CFG	0x18
++
++/* CCU QUP Debug Register */
++#define CCU_QUP_SCRATCH		0x80
++#define CCU_QUP_SPARE		0x8c
++#define CCU_QUP_FUSA_STATUS_REGISTER_I_CLK_RESET	0x90
++
++/* CCU QUP SYNC Timer Register */
++#define CCU_QUPV3_SYNC_TRIGGER_EN	0x13c
++#define CCU_QUPV3_SYNC0_ID_SE_MAP0	0x140
++#define CCU_QUPV3_SYNC0_ID_SE_MAP1	0x144
++#define CCU_QUPV3_SYNC0_ID_SE_MAP2	0x148
++#define CCU_QUPV3_SYNC0_ID_SE_MAP3	0x14C
++#define CCU_QUPV3_SYNC0_ID_SE_MAP4	0x150
++#define CCU_QUPV3_SYNC1_ID_SE_MAP0	0x160
++#define CCU_QUPV3_SYNC1_ID_SE_MAP1	0x164
++#define CCU_QUPV3_SYNC1_ID_SE_MAP2	0x168
++#define CCU_QUPV3_SYNC1_ID_SE_MAP3	0x16C
++#define CCU_QUPV3_SYNC1_ID_SE_MAP4	0x170
++#define CCU_QUPV3_SYNC_DATA_DEBUG	0x180
++
++/* struct child_probe_status - Child probe status
++ * @probe_state: represents the child probe completed or not.
++ * @count: Count of probed device nodes
++ * @max_cnt: maximum GPI dev node
++ */
++struct child_probe_status {
++	bool probe_state;
++	int count;
++	int max_cnt;
++};
++
++/*
++ * struct ccu_qup - Structre is for ccu_qup info
++ * @dev: points to device node
++ * @client: pointer to struct i2c_client.
++ * @adap: pointer to struct i2c_adapter.
++ * @qup0_common_reg: Base address for common reg for CCU QUP0.
++ * @qup1_common_reg: Base address for common reg for CCU QUP1.
++ * @qup_irq_base[2]: Array of pointer which hold base address of
++ *                   IRQ register for CCU QUP0 & QUP1.
++ * @ccu_qup0_irq: Irq number of CCU QUP0.
++ * @ccu_qup1_irq: Irq number of CCU QUP1.
++ * @gpi_dev[2]: Array of pointer which hold base address of
++ *              GPI register space.
++ * @gpi0_idx: represents the index for gpi dma 0.
++ * @gpi1_idx: represents the index for gpi dma 1.
++ * @common_reg_off: hold the address of common reg of CCU QUP.
++ * @cdev: pointer to struct cdev.
++ * @class_dev: pointer to char dev class.
++ * @ccu_class: pointer to ccu class.
++ * @ccu_dev: Holds the major & minor for CCU char dev
++ * @cfg: points to the struct ccu_qup_config.
++ * @gpi_wq: workqueue to get child dev node
++ * @get_child_dev_node: work function to get child dev node.
++ * @lock0: spinlock to protect interrupr handler for CCU QUP0
++ * @Lock1: spinlock to protect interrupr handler for CCU QUP1
++ */
++struct ccu_qup {
++	struct device *dev;
++	struct i2c_client *client;
++	struct i2c_adapter *adap;
++	void __iomem *qup0_common_reg;
++	void __iomem *qup1_common_reg;
++	void __iomem *qup_irq_base[2];
++	int ccu_qup0_irq;
++	int ccu_qup1_irq;
++	struct platform_device *gpi_pdev[2];
++	void __iomem *gpi_dev[2];
++	int gpi0_idx;
++	int gpi1_idx;
++	u32 common_reg_off;
++	struct cdev cdev;
++	struct device *class_dev;
++	struct class *ccu_class;
++	dev_t ccu_dev;
++	struct ccu_qup_config *cfg;
++	struct workqueue_struct *gpi_wq;
++	struct delayed_work get_child_dev_node;
++	spinlock_t lock0;
++	spinlock_t lock1;
++	u32 ccu0_irq_stat;
++	u32 ccu1_irq_stat;
++};
++
++static int ccu_open(struct inode *inode, struct file *filp);
++
++static ssize_t ccu_config_write(struct file *filp, const char __user *buf,
++				size_t len, loff_t *f_pos);
++
++static int ccu_release(struct inode *inode, struct file *filp);
++
++int ccu_sync_id_to_sync_ch_mapping(struct ccu_qup *ccu, struct sync_info sync[]);
++
++int ccu_gpii_reset(struct i2c_adapter *adap, int gpii_no, bool partial,
++		   bool premature_cancel);
++
++int ccu_configure_mode(struct i2c_adapter *adap, struct ccu_qup_config *cfg);
++
++int ccu_qup_load_firmware(void);
++
++void ccu_configure_inter_trans_delay(struct i2c_adapter *adap, unsigned long time);
++
++int geni_i2c_configure_ccu_mode(struct i2c_adapter *adap, int gpii_no, int ch_type,
++				bool mode);
++
++int geni_i2c_gpii_reset(struct i2c_adapter *adap, int gpii_no, bool premature_cancel);
++
++void geni_i2c_configure_pre_delay(struct i2c_adapter *adap, unsigned long time);
++
++int geni_i2c_check_recover_ios_line(struct i2c_adapter *adap);
++
++int geni_i2c_power_on_off(struct i2c_adapter *adap, bool suspend);
++
++#endif /* _QCOM_CCU_QUP_H_ */
+diff --git a/include/uapi/linux/ccu_qup/ccu_qup.h b/include/uapi/linux/ccu_qup/ccu_qup.h
+new file mode 100644
+index 000000000000..f9f91c654719
+--- /dev/null
++++ b/include/uapi/linux/ccu_qup/ccu_qup.h
+@@ -0,0 +1,102 @@
++/* SPDX-License-Identifier: GPL-2.0-only WITH Linux-syscall-note */
++/*
++ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
++ */
++#ifndef __UAPI_LINUX_CCU_QUP_H
++#define __UAPI_LINUX_CCU_QUP_H
++#include <uapi/linux/types.h>
++
++/*
++ * enum cmd_type - CCU QUP request type
++ * @I2C_GPII_RESET: This is used to reset the GPII.
++ * @SYNC_ID_CH_MAP: This is used to map the sync ID and sync CH.
++ * @LOAD_QUP_FW: This is used to load FW for CCU QUP.
++ * @UPDATE_CH_TYPE: This is used to change the ch type & mode of GPII.
++ *                  Channel Type(00-> Regular channel, 01 -> SYNC0 channel,
++ *                  10-> SYNC1 Channel)
++ *                  CCU mode(0-> Sync trigger mode, 1-> CDM mode).
++ * @INTER_DELAY: This is used to add inter transfer delay in microseconds.
++ * @BUS_CLEAR: This cmd is used to check the status of IOS lines and do
++ *             recovery of lines if in bad state.
++ * @POWER_ON: This cmd is used to turn on all the QUP clock.
++ * @POWER_OFF: This cmd is used to turn off all teh QUP clock
++ * @RESERVED_1: Reserved for future use.
++ * @RESERVED_2: Reserved for future use.
++ */
++enum cmd_type {
++	I2C_GPII_RESET = 0,
++	SYNC_ID_CH_MAP = 1,
++	LOAD_QUP_FW = 2,
++	UPDATE_CH_TYPE = 3,
++	INTER_DELAY = 4,
++	BUS_CLEAR = 5,
++	POWER_ON = 6,
++	POWER_OFF = 7,
++	RESERVED_1 = 8,
++	RESERVED_2 = 9,
++	INVALID_CMD = -EINVAL,
++};
++
++/*
++ * struct ccu_qup_client_data - This struct represents the client data which
++ *                              will pass to client in asyncronous mode of transfer.
++ * @gpii_no: GPII Number for which error is received.
++ * @adap_nr: This number represents the /dev/i2c-%d number.
++ * @frame_cookie: Frame cookie to know which frame has error.
++ * @err_no: This represents standard error code in case of transfer failure.
++ * @reserved[10]: Reserved for future purpose.
++ */
++struct ccu_qup_client_data {
++	__u8 gpii_no;
++	__u32 adap_nr;
++	__u32 frame_cookie;
++	int err_no;
++	__u32 reserved[10];
++};
++
++/*
++ * struct sync_info - This structure is used to pass the data which can be
++ *                    used to map the sync id and sync channel.
++ * @qup_no: Represents QUP number between QUP0 or QUP1.
++ * @se_no: Represents Serial engine number between SE0 to SE5.
++ * @sync_ch: Represents Sync channel no.
++ * @sync_id: Represents Sync ID no.
++ * @reserved[10]: Reserved for future purpose.
++ */
++struct sync_info {
++	__u8 qup_no;
++	__u8 se_no;
++	__u8 sync_ch;
++	__u8 sync_id;
++	__u32 reserved[10];
++};
++
++/*
++ * struct ccu_qup_config - This structure is used to send information to the
++ *                         CCU QUP driver.
++ * @sync[20]: Array which hold 20 elements of type struct sync_info.
++ * @cmd: Represents command type of a transfer request.
++ * @fd: File descriptor of I2C dev node for associated SE.
++ * @gpii_no: GPII number in case of partial reset of single GPII.
++ * @rst_flag: FALSE – partial reset and TRUE – complete reset.
++ * @premature_cancel: set to true if clinet wants premature cancellation.
++ * @ccu_mode: Represents CCU mode for GPII (0-> Sync trigger mode, 1-> CDM mode).
++ * @ch_type: Represents ch type for GPII (00-> Regular channel, 01 -> SYNC0 channel,
++ *           10 -> SYNC1 channel).
++ * @delay: Delay in microseconds.
++ * @reserved[20]: Reserved for future purpose.
++ */
++struct ccu_qup_config {
++	struct sync_info sync[20];
++	enum cmd_type cmd;
++	int fd;
++	__u8 gpii_no;
++	_Bool rst_flag;
++	_Bool premature_cancel;
++	__u8 ccu_mode;
++	__u8 ch_type;
++	__u64 delay;
++	__u32 reserved[20];
++};
++
++#endif /*__UAPI_LINUX_CCU_QUP_H */
+-- 
+2.34.1
+

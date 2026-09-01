@@ -6,8 +6,8 @@ LICENSE = "BSD-3-Clause-Clear"
 LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/BSD-3-Clause-Clear;md5=7a434440b651f4a472ca93716d01033a"
 DEPENDS += "safelinux-cfg-modules virtual/kernel-headers glib-2.0"
 
-SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/safelinux-services/scmi-test/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/safelinux-services/scmi-test;usehead=1"
-SRCREV = "${AUTOREV}"
+SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/safelinux-services.git;branch=safe-services.lnx.1.0.r24-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/safelinux-services"
+SRCREV = "a12de5f8eac6a56bc2c36b16dcf3e33df19aaa4d"
 
 S = "${WORKDIR}/vendor/qcom/opensource/safelinux-services/scmi-test"
 

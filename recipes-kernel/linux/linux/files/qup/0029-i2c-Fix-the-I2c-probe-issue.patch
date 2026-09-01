@@ -1,0 +1,31 @@
+From 154c0a456b42cc6d407e994db7ebcbcf3f7d1866 Mon Sep 17 00:00:00 2001
+From: Aniket Randive <arandive@qti.qualcomm.com>
+Date: Tue, 13 May 2025 16:30:24 +0530
+Subject: [PATCH 05/13] i2c: Fix the I2c probe issue
+
+Due to max frames are changed to 10 the memory allocation
+is getting failed in the probe of i2c driver hence keep
+the MAX_NUM_FRAME count to 4.
+
+Change-Id: I56ba2afd014c2379834956b261bfc02a9a8efed0
+Signed-off-by: Aniket Randive <arandive@qti.qualcomm.com>
+---
+ drivers/i2c/busses/i2c-qcom-geni.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/i2c/busses/i2c-qcom-geni.c b/drivers/i2c/busses/i2c-qcom-geni.c
+index 7cf0c196cb75..ec553f916619 100644
+--- a/drivers/i2c/busses/i2c-qcom-geni.c
++++ b/drivers/i2c/busses/i2c-qcom-geni.c
+@@ -114,7 +114,7 @@ struct geni_i2c_desc {
+ #define CCU_MAX_GPII		3
+ #define REGULAR_GPII		0
+ #define MAX_NUM_MSGS		4096
+-#define MAX_NUM_FRAMES		10
++#define MAX_NUM_FRAMES		4
+ #define CCU_GET_GPII(val)	(val & CCU_GPII_MASK)
+ #define CCU_GET_ASYNC(val)	(val & BIT(5))
+ #define CCU_GET_PRIO(val)	(val & BIT(6))
+-- 
+2.34.1
+

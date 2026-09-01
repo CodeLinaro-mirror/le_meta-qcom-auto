@@ -6,9 +6,9 @@ LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/${LICENSE};md5
 
 DEPENDS += "virtual/kernel"
 
-SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/gunyah-drivers/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/gunyah-drivers;usehead=1"
+SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/gunyah-drivers.git;branch=auto-vmm-kernel.lnx.1.0.r15-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/gunyah-drivers"
 
-SRCREV = "${AUTOREV}"
+SRCREV = "3cf27045ccb034a75c332e3f070dd101745b0758"
 
 S = "${WORKDIR}/vendor/qcom/opensource/gunyah-drivers"
 

@@ -9,13 +9,13 @@ DEPENDS += "display-devicetree securemsmdlkm"
 DEPENDS:remove:gvm-gen5 = "display-devicetree"
 DEPENDS:append:gvm-gen5 = " msm-ext-display"
 
-SRC_URI = "${PATH_TO_REPO}/${TARGET_DIR}vendor/qcom/opensource/display-drivers/.git;protocol=${PROTO};destsuffix=${TARGET_DIR}vendor/qcom/opensource/display-drivers;;usehead=1"
+SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/display-drivers/.git;protocol=${PROTO};destsuffix=${TARGET_DIR}vendor/qcom/opensource/display-drivers;;usehead=1"
 
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/${TARGET_DIR}vendor/qcom/opensource/display-drivers"
+S = "${WORKDIR}/vendor/qcom/opensource/display-drivers"
 
-EXT_MODULE = "${TARGET_DIR}vendor/qcom/opensource/display-drivers"
+EXT_MODULE = "vendor/qcom/opensource/display-drivers"
 
 TECHPACK_MODULE_OUT = "${WORKDIR}/display-drivers"
 TECHPACK_MODULES = "${@bb.utils.contains('PREFERRED_VERSION_linux-msm', '6.12', bb.utils.contains('MACHINE_FEATURES', 'qti-hypervisor', \

@@ -1,0 +1,223 @@
+From 100b17299d48c7f6c4d11efe255985b1d4dbfd7a Mon Sep 17 00:00:00 2001
+From: Ninad Naik <ninanaik@qti.qualcomm.com>
+Date: Fri, 3 Apr 2026 16:53:30 +0530
+Subject: [PATCH] PENDING: iommu/arm-smmu-v3: Support inter-device SID sharing
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Some SoC designs expose a single physical DMA engine as two separate
+software-visible devices. The C2C HDMA use case is one such example:
+where two logically separate platform devices share a SID; a platform
+device and a PCIe function — both of which reach the SMMU with the same
+stream ID.
+
+arm_smmu_insert_master() currently rejects any inter-device SID collision
+with -EINVAL, preventing the second device from probing.  Relax this:
+when the colliding stream belongs to a different master, skip inserting a
+duplicate rbtree node (the existing node already covers the SID) and
+continue rather than failing. This mirrors SMMUv2 behavior, where per-SMR
+group tracking silently handles shared SMRs.
+
+arm_smmu_device_group() is extended with a SID-based group lookup: if any of
+a device's stream IDs is already owned by another master, return that master's
+IOMMU group.  This ensures both devices share one domain and one set of page
+tables, which is required for correct DMA behavior when they map to the same
+physical stream.
+
+Change-Id: I62514234c544b4826e9b71dfb62a75919702fa9e
+Signed-off-by: Ninad Naik <ninanaik@qti.qualcomm.com>
+---
+ .../arm/arm-smmu-v3/arm-smmu-v3-qcom-virtio.c | 20 ++---
+ drivers/iommu/arm/arm-smmu-v3/arm-smmu-v3.c   | 77 +++++++++++++++----
+ drivers/iommu/arm/arm-smmu-v3/arm-smmu-v3.h   |  1 +
+ 3 files changed, 68 insertions(+), 30 deletions(-)
+
+diff --git a/drivers/iommu/arm/arm-smmu-v3/arm-smmu-v3-qcom-virtio.c b/drivers/iommu/arm/arm-smmu-v3/arm-smmu-v3-qcom-virtio.c
+index e0ca6a4c50e8..d6bfa51af8b5 100644
+--- a/drivers/iommu/arm/arm-smmu-v3/arm-smmu-v3-qcom-virtio.c
++++ b/drivers/iommu/arm/arm-smmu-v3/arm-smmu-v3-qcom-virtio.c
+@@ -293,20 +293,17 @@ static int arm_vsmmu_impl_install_ste(struct arm_smmu_master *master,
+ 				struct arm_smmu_domain *new_domain,
+ 				struct arm_smmu_domain *old_domain)
+ {
+-	int i, j, ret;
++	int i, ret = 0;
+ 	struct arm_smmu_device *smmu = master->smmu;
+ 
+ 	for (i = 0; i < master->num_streams; ++i) {
+ 		u32 sid = master->streams[i].id;
+-		__le64 *step = arm_smmu_get_step_for_sid(smmu, sid);
++		__le64 *step;
+ 
+-		/* Bridged PCI devices may end up with duplicated IDs */
+-		for (j = 0; j < i; j++)
+-			if (master->streams[j].id == sid)
+-				break;
+-		if (j < i)
++		if (!master->streams[i].in_tree)
+ 			continue;
+ 
++		step = arm_smmu_get_step_for_sid(smmu, sid);
+ 		ret = arm_vsmmu_impl_attach_table(smmu, new_domain, old_domain, step, sid);
+ 		if (ret)
+ 			break;
+@@ -315,15 +312,12 @@ static int arm_vsmmu_impl_install_ste(struct arm_smmu_master *master,
+ 	if (ret) {
+ 		for (i--; i >= 0; i--) {
+ 			u32 sid = master->streams[i].id;
+-			__le64 *step = arm_smmu_get_step_for_sid(smmu, sid);
++			__le64 *step;
+ 
+-			/* Bridged PCI devices may end up with duplicated IDs */
+-			for (j = 0; j < i; j++)
+-				if (master->streams[j].id == sid)
+-					break;
+-			if (j < i)
++			if (!master->streams[i].in_tree)
+ 				continue;
+ 
++			step = arm_smmu_get_step_for_sid(smmu, sid);
+ 			arm_vsmmu_impl_attach_table(smmu, NULL, new_domain, step, sid);
+ 		}
+ 	}
+diff --git a/drivers/iommu/arm/arm-smmu-v3/arm-smmu-v3.c b/drivers/iommu/arm/arm-smmu-v3/arm-smmu-v3.c
+index 3b4b1d6706e8..335bd0b0d490 100644
+--- a/drivers/iommu/arm/arm-smmu-v3/arm-smmu-v3.c
++++ b/drivers/iommu/arm/arm-smmu-v3/arm-smmu-v3.c
+@@ -2326,20 +2326,23 @@ __le64 *arm_smmu_get_step_for_sid(struct arm_smmu_device *smmu, u32 sid)
+ 
+ static void arm_smmu_install_ste_for_dev(struct arm_smmu_master *master)
+ {
+-	int i, j;
++	int i;
+ 	struct arm_smmu_device *smmu = master->smmu;
+ 
+ 	for (i = 0; i < master->num_streams; ++i) {
+ 		u32 sid = master->streams[i].id;
+-		__le64 *step = arm_smmu_get_step_for_sid(smmu, sid);
++		__le64 *step;
+ 
+-		/* Bridged PCI devices may end up with duplicated IDs */
+-		for (j = 0; j < i; j++)
+-			if (master->streams[j].id == sid)
+-				break;
+-		if (j < i)
++		/*
++		 * Skip streams not in the rbtree: either an intra-device
++		 * duplicate SID (PCI bridge aliasing) or an inter-device
++		 * shared SID whose STE is already live, written by the
++		 * master that owns the rbtree node.
++		 */
++		if (!master->streams[i].in_tree)
+ 			continue;
+ 
++		step = arm_smmu_get_step_for_sid(smmu, sid);
+ 		arm_smmu_write_strtab_ent(master, sid, step);
+ 	}
+ }
+@@ -2689,17 +2692,33 @@ static int arm_smmu_insert_master(struct arm_smmu_device *smmu,
+ 			if (existing_master == master)
+ 				continue;
+ 
+-			dev_warn(master->dev,
+-				 "stream %u already in tree from dev %s\n", sid,
+-				 dev_name(existing_master->dev));
+-			ret = -EINVAL;
+-			break;
++			/*
++			 * Two DT nodes may legitimately share the same SID when
++			 * a platform device and a PCIe device represent different
++			 * software views of the same physical hardware stream
++			 * (e.g. a VFIO DMA engine whose transactions reach the
++			 * SMMU with the same RID/SID as the PCIe function it is
++			 * part of — the C2C HDMA use case).
++			 *
++			 * This mirrors SMMUv2 behaviour: rather than failing
++			 * probe, allow the second master to register without
++			 * inserting a duplicate rbtree node.  The existing node
++			 * already covers this SID, and arm_smmu_device_group()
++			 * will place both devices in the same IOMMU group so they
++			 * share one domain and one set of page tables.
++			 */
++			dev_dbg(master->dev,
++				"stream %u shared with %s — placing in same group\n",
++				sid, dev_name(existing_master->dev));
++			continue;
+ 		}
++		new_stream->in_tree = true;
+ 	}
+ 
+ 	if (ret) {
+ 		for (i--; i >= 0; i--)
+-			rb_erase(&master->streams[i].node, &smmu->streams);
++			if (master->streams[i].in_tree)
++				rb_erase(&master->streams[i].node, &smmu->streams);
+ 		kfree(master->streams);
+ 	}
+ 	mutex_unlock(&smmu->streams_mutex);
+@@ -2718,7 +2737,8 @@ static void arm_smmu_remove_master(struct arm_smmu_master *master)
+ 
+ 	mutex_lock(&smmu->streams_mutex);
+ 	for (i = 0; i < fwspec->num_ids; i++)
+-		rb_erase(&master->streams[i].node, &smmu->streams);
++		if (master->streams[i].in_tree)
++			rb_erase(&master->streams[i].node, &smmu->streams);
+ 	mutex_unlock(&smmu->streams_mutex);
+ 
+ 	kfree(master->streams);
+@@ -2801,13 +2821,36 @@ static void arm_smmu_release_device(struct device *dev)
+ 
+ static struct iommu_group *arm_smmu_device_group(struct device *dev)
+ {
++	struct arm_smmu_master *master = dev_iommu_priv_get(dev);
++	struct arm_smmu_device *smmu = master->smmu;
+ 	struct iommu_group *group;
+ 
+ 	/*
+-	 * We don't support devices sharing stream IDs other than PCI RID
+-	 * aliases, since the necessary ID-to-device lookup becomes rather
+-	 * impractical given a potential sparse 32-bit stream ID space.
++	 * SID-based group lookup: if another master has already probed with
++	 * the same stream ID (e.g. a platform device and a PCIe device that
++	 * are different software views of the same physical DMA engine, as in
++	 * the C2C HDMA use case), place both devices in the same IOMMU group
++	 * so they share one domain and one set of page tables.
++	 *
++	 * This mirrors SMMUv2 per-SMR group tracking.
+ 	 */
++	{
++		struct iommu_fwspec *fwspec = dev_iommu_fwspec_get(dev);
++		struct arm_smmu_master *existing_master;
++		int i;
++
++		mutex_lock(&smmu->streams_mutex);
++		for (i = 0; i < fwspec->num_ids; i++) {
++			existing_master = arm_smmu_find_master(smmu, fwspec->ids[i]);
++			if (existing_master && existing_master->dev != dev) {
++				group = iommu_group_get(existing_master->dev);
++				mutex_unlock(&smmu->streams_mutex);
++				return group;
++			}
++		}
++		mutex_unlock(&smmu->streams_mutex);
++	}
++
+ 	if (dev_is_pci(dev))
+ 		group = pci_device_group(dev);
+ 	else
+diff --git a/drivers/iommu/arm/arm-smmu-v3/arm-smmu-v3.h b/drivers/iommu/arm/arm-smmu-v3/arm-smmu-v3.h
+index 500536d25324..de164d315940 100644
+--- a/drivers/iommu/arm/arm-smmu-v3/arm-smmu-v3.h
++++ b/drivers/iommu/arm/arm-smmu-v3/arm-smmu-v3.h
+@@ -715,6 +715,7 @@ struct arm_smmu_stream {
+ 	u32				id;
+ 	struct arm_smmu_master		*master;
+ 	struct rb_node			node;
++	bool				in_tree; /* node is in smmu->streams rbtree */
+ };
+ 
+ /* SMMU private data for each master */
+-- 
+2.34.1
+

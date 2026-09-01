@@ -1,0 +1,31 @@
+From 21b8b138e91697919011c77aeb5b6d3842ac1c3a Mon Sep 17 00:00:00 2001
+From: Faisal Hassan <faisal.hassan@oss.qualcomm.com>
+Date: Thu, 13 Nov 2025 13:56:45 +0530
+Subject: [PATCH 2/3] PENDING: phy: snps-eusb2: Set PHY type for Synopsys eUSB2
+ PHY
+
+Assign PHY_TYPE_USB_EUSB2 to the PHY during probe so that consumers can
+identify this PHY type.
+
+Change-Id: I4be58492927dd2cc611e4107cdf8fd7202f8c91d
+Signed-off-by: Faisal Hassan <faisal.hassan@oss.qualcomm.com>
+---
+ drivers/phy/qualcomm/phy-qcom-snps-eusb2.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/drivers/phy/qualcomm/phy-qcom-snps-eusb2.c b/drivers/phy/qualcomm/phy-qcom-snps-eusb2.c
+index 1484691a41d5..3143c5a22858 100644
+--- a/drivers/phy/qualcomm/phy-qcom-snps-eusb2.c
++++ b/drivers/phy/qualcomm/phy-qcom-snps-eusb2.c
+@@ -411,6 +411,8 @@ static int qcom_snps_eusb2_hsphy_probe(struct platform_device *pdev)
+ 		return PTR_ERR(generic_phy);
+ 	}
+ 
++	generic_phy->attrs.type = PHY_TYPE_USB_EUSB2;
++
+ 	dev_set_drvdata(dev, phy);
+ 	phy_set_drvdata(generic_phy, phy);
+ 
+-- 
+2.34.1
+

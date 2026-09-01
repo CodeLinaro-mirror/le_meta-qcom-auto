@@ -1,0 +1,600 @@
+From 9eae44681a957a69290b56da412f9e03b4a7f192 Mon Sep 17 00:00:00 2001
+From: Aniket Randive <arandive@qti.qualcomm.com>
+Date: Tue, 9 Sep 2025 11:45:39 +0530
+Subject: [PATCH 4/6] ccu: Optimize interrupt handling and improve GSI resource
+ management
+
+Refactor the interrupt handling logic by consolidating the separate
+QUP interrupt handlers into a single common handler. This reduces
+code duplication and simplifies maintenance.
+
+Since CCU QUP supports only GSI mode, remove the legacy I2C interrupt
+handling logic which is no longer applicable.
+
+Introduce a counter mechanism to detect the availability of the GSI
+node during boot. This prevents the workqueue from entering an
+indefinite retry loop in scenarios where the GSI node is not present.
+
+Additionally, enhance the GSI resource allocation logic. Camera
+clients can transmit up to 4 frames on a single GPII. The current
+default of 64 TREs is insufficient to support multiple asynchronous
+transfers on the same GPII. Add support to query the actual TRE
+count from the GSI handle and use this value when allocating TX,
+RX, and event rings to ensure robust and scalable data transfers.
+
+Change-Id: If3c7e855f44caa8bd1c767639b28dac9eabd3958
+Signed-off-by: Aniket Randive <arandive@qti.qualcomm.com>
+---
+ drivers/dma/qcom/gpi.c                |  32 +++--
+ drivers/i2c/busses/i2c-qcom-geni.c    |  28 +---
+ drivers/soc/qcom/qcom_ccu_qup.c       | 188 +++++++++++---------------
+ include/linux/soc/qcom/qcom_ccu_qup.h |  20 ++-
+ 4 files changed, 113 insertions(+), 155 deletions(-)
+
+diff --git a/drivers/dma/qcom/gpi.c b/drivers/dma/qcom/gpi.c
+index db2fb57cecfc..5ed8ee4f7c4e 100644
+--- a/drivers/dma/qcom/gpi.c
++++ b/drivers/dma/qcom/gpi.c
+@@ -673,6 +673,7 @@ struct gchan {
+ 	void *config;
+ 	u32 mode;
+ 	u32 ch_type;
++	u32 num_of_tres;
+ };
+ 
+ struct gpii {
+@@ -2674,6 +2675,7 @@ static int gpi_ch_init(struct gchan *gchan)
+ 	const int ev_factor = gpii->gpi_dev->ev_factor;
+ 	u32 elements;
+ 	int i = 0, ret = 0;
++	bool is_ccu_qup = gpii->gpi_dev->cfg.is_ccu_qup;
+ 
+ 	gchan->pm_state = CONFIG_STATE;
+ 
+@@ -2692,7 +2694,7 @@ static int gpi_ch_init(struct gchan *gchan)
+ 	}
+ 
+ 	/* allocate memory for event ring */
+-	elements = CHAN_TRES << ev_factor;
++	elements = (is_ccu_qup ? gchan->num_of_tres : CHAN_TRES) << ev_factor;
+ 	ret = gpi_alloc_ring(&gpii->ev_ring, elements,
+ 			     sizeof(union gpi_event), gpii);
+ 	if (ret)
+@@ -2832,12 +2834,19 @@ static int gpi_alloc_chan_resources(struct dma_chan *chan)
+ {
+ 	struct gchan *gchan = to_gchan(chan);
+ 	struct gpii *gpii = gchan->gpii;
+-	int ret;
++	bool is_ccu_qup = gpii->gpi_dev->cfg.is_ccu_qup;
++	int ret, tres;
+ 
+ 	mutex_lock(&gpii->ctrl_lock);
+ 
++	tres = is_ccu_qup ? gchan->num_of_tres : CHAN_TRES;
++	if (!tres) {
++		GPI_ERR_LOG(LOG_LVL_ERROR, gpii->gpi_dev->dev, "NO TRE's passed\n");
++		return -EINVAL;
++	}
++
+ 	/* allocate memory for transfer ring */
+-	ret = gpi_alloc_ring(&gchan->ch_ring, CHAN_TRES,
++	ret = gpi_alloc_ring(&gchan->ch_ring, tres,
+ 			     sizeof(struct gpi_tre), gpii);
+ 	if (ret)
+ 		goto xfer_alloc_err;
+@@ -2906,8 +2915,8 @@ static struct dma_chan *gpi_of_dma_xlate(struct of_phandle_args *args,
+ 					 struct of_dma *of_dma)
+ {
+ 	struct gpi_dev *gpi_dev = (struct gpi_dev *)of_dma->of_dma_data;
+-	u32 seid, chid;
+-	int gpii, static_gpii_no;
++	u32 seid, chid, num_of_tres;
++	int gpii, static_gpii_no = 0;
+ 	struct gchan *gchan;
+ 
+ 	if (args->args_count < 3) {
+@@ -2926,9 +2935,11 @@ static struct dma_chan *gpi_of_dma_xlate(struct of_phandle_args *args,
+ 
+ 	seid = args->args[1];
+ 
+-	static_gpii_no = (args->args[3] & STATIC_GPII_BMASK);
+-	GPI_DBG_LOG(LOG_LVL_VERBOSE, gpi_dev->dev, "static gpii no:%d\n", args->args[3]);
+-
++	if (gpi_dev->cfg.is_ccu_qup) {
++		static_gpii_no = (args->args[3] & STATIC_GPII_BMASK);
++		GPI_DBG_LOG(LOG_LVL_ERROR, gpi_dev->dev, "static gpii no:%d\n", args->args[3]);
++	}
++ 
+ 	if (static_gpii_no) {
+ 		gpii = gpi_find_static_gpii(gpi_dev, (static_gpii_no - 1));
+ 		GPI_DBG_LOG(LOG_LVL_VERBOSE, gpi_dev->dev, "Static GPII allocation req:%d Got:%d\n",
+@@ -2956,6 +2967,11 @@ static struct dma_chan *gpi_of_dma_xlate(struct of_phandle_args *args,
+ 	gchan->seid = seid;
+ 	gchan->protocol = args->args[2];
+ 
++	if (gpi_dev->cfg.is_ccu_qup)
++		gchan->num_of_tres = args->args[4];
++
++	GPI_DBG_LOG(LOG_LVL_ERROR, gpi_dev->dev, " TRES:%d args[4]:%d\n",
++		    gchan->num_of_tres, args->args[4]);
+ 	return dma_get_slave_channel(&gchan->vc.chan);
+ }
+ 
+diff --git a/drivers/i2c/busses/i2c-qcom-geni.c b/drivers/i2c/busses/i2c-qcom-geni.c
+index 6539b8e3155a..710a34edefe3 100644
+--- a/drivers/i2c/busses/i2c-qcom-geni.c
++++ b/drivers/i2c/busses/i2c-qcom-geni.c
+@@ -834,7 +834,7 @@ static void geni_i2c_err(struct geni_i2c_dev *gi2c, int err)
+ 	}
+ }
+ 
+-static void process_i2c_irq(int irq, void *dev)
++static irqreturn_t geni_i2c_irq(int irq, void *dev)
+ {
+ 	struct geni_i2c_dev *gi2c = dev;
+ 	void __iomem *base = gi2c->se.base;
+@@ -931,32 +931,9 @@ static void process_i2c_irq(int irq, void *dev)
+ 		complete(&gi2c->done);
+ 
+ 	spin_unlock(&gi2c->lock);
+-}
+-
+-static irqreturn_t geni_i2c_irq(int irq, void *dev)
+-{
+-	process_i2c_irq(irq, dev);
+ 	return IRQ_HANDLED;
+ }
+ 
+-void geni_i2c_process_irq(struct i2c_adapter *adap)
+-{
+-	struct geni_i2c_dev *gi2c;
+-
+-	if (!adap) {
+-		pr_err("%s: Adap is NULL\n", __func__);
+-		return;
+-	} else {
+-		gi2c = adap->dev.driver_data;
+-		if (!gi2c) {
+-			pr_err("%s: I2C driver data is NULL\n", __func__);
+-			return;
+-		}
+-	}
+-	process_i2c_irq(gi2c->irq, gi2c);
+-}
+-
+-
+ static void geni_i2c_abort_xfer(struct geni_i2c_dev *gi2c)
+ {
+ 	unsigned long time_left = ABORT_TIMEOUT;
+@@ -2174,8 +2151,7 @@ static int geni_i2c_probe(struct platform_device *pdev)
+ 				geni_i2c_check_recover_ios_line,
+ 				geni_i2c_configure_ccu_mode,
+ 				geni_i2c_gpii_reset,
+-				geni_i2c_configure_pre_delay,
+-				geni_i2c_process_irq);
++				geni_i2c_configure_pre_delay);
+ 	}
+ 	init_completion(&gi2c->done);
+ 	spin_lock_init(&gi2c->lock);
+diff --git a/drivers/soc/qcom/qcom_ccu_qup.c b/drivers/soc/qcom/qcom_ccu_qup.c
+index 1e8693c14b83..bc2c34590652 100644
+--- a/drivers/soc/qcom/qcom_ccu_qup.c
++++ b/drivers/soc/qcom/qcom_ccu_qup.c
+@@ -3,6 +3,7 @@
+  * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+  */
+ 
++#include <linux/bitops.h>
+ #include <linux/clk.h>
+ #include <linux/cdev.h>
+ #include <linux/device.h>
+@@ -37,14 +38,15 @@
+ #define CCU_ERR_LOG(level, dev, fmt, ...) CCU_LOG(dev_err, level, dev, fmt, ##__VA_ARGS__)
+ #define CCU_DBG_LOG(level, dev, fmt, ...) CCU_LOG(dev_dbg, level, dev, fmt, ##__VA_ARGS__)
+ 
+-#define GPII_0_IRQ		0
++#define GPII_0_IRQ		5
+ #define GPII_14_IRQ		19
+ #define MAX_GPI_DEV		2
+ #define CCU_SYNC_TIMERS		20
+ #define CCU_MAX_GPII		14
+ #define CCU_MAX_GPII_PER_SE	3
+-#define CCU_MAX_QUP 2
+-#define CCU_MAX_SE 5
++#define CCU_MAX_QUP		2
++#define CCU_MAX_SE		5
++#define GPII_IRQ_COUNT		(GPII_14_IRQ - GPII_0_IRQ + 1)
+ 
+ struct ccu_qup *ccud;
+ 
+@@ -75,20 +77,17 @@ static config_ccu_mode_t ccu_cfg_mode;
+ static gpii_reset_t ccu_reset;
+ static config_delay_t ccu_delay;
+ static ccu_gpi_handle_isr_t gpi_handle_irq;
+-static geni_i2c_irq_t i2c_handle_irq;
+ void register_i2c_function(power_on_off_t geni_i2c_power_on_off,
+ 		recover_ios_line_t geni_i2c_check_recover_ios_line,
+ 		config_ccu_mode_t geni_i2c_configure_ccu_mode,
+ 		gpii_reset_t geni_i2c_gpii_reset,
+-		config_delay_t geni_i2c_configure_pre_delay,
+-		geni_i2c_irq_t geni_i2c_process_irq)
++		config_delay_t geni_i2c_configure_pre_delay)
+ {
+ 	ccu_on_off = geni_i2c_power_on_off;
+ 	ccu_recover = geni_i2c_check_recover_ios_line;
+ 	ccu_cfg_mode = geni_i2c_configure_ccu_mode;
+ 	ccu_reset = geni_i2c_gpii_reset;
+ 	ccu_delay = geni_i2c_configure_pre_delay;
+-	i2c_handle_irq = geni_i2c_process_irq;
+ }
+ EXPORT_SYMBOL(register_i2c_function);
+ 
+@@ -123,7 +122,8 @@ static int ccu_copy_result_to_user_buf(struct ccu_qup *ccu, struct ccu_xfer_resu
+ 	u8 frame_no;
+ 
+ 	if (!result || !buf) {
+-		dev_err(ccu->dev, "Invalid request result:%p buf:%p\n", result, buf);
++		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev,
++			    "Invalid request result:%p buf:%p\n", result, buf);
+ 		return -EINVAL;
+ 	}
+ 
+@@ -190,41 +190,53 @@ static ssize_t ccu_response_read(struct file *filp, char __user *buf,
+ 				 size_t count, loff_t *f_pos)
+ {
+ 	struct ccu_qup *ccu;
+-	struct ccu_response_data *entry;
++	struct ccu_response_data *entry, *tmp;
+ 	int ret;
+ 
+ 	if (!filp || !filp->private_data)
+ 		return -EINVAL;
+ 
+ 	ccu = filp->private_data;
++	mutex_lock(&ccu->read_lock);
+ 
+ 	if (count < sizeof(struct ccu_qup_client_data)) {
+-		dev_err(ccu->dev, "Invalid user buffer size: expected %zu, got %zu\n",
+-			sizeof(struct ccu_qup_client_data), count);
++		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev,
++			    "Invalid user buffer size: expected %zu, got %zu\n",
++			    sizeof(struct ccu_qup_client_data), count);
++		mutex_unlock(&ccu->read_lock);
+ 		return -EINVAL;
+ 	}
+ 
+ 	if (list_empty(&ccu->response_list)) {
+-		dev_err(ccu->dev, "No rx response data avilable\n");
++		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, "No rx response data available\n");
++		mutex_unlock(&ccu->read_lock);
+ 		return -EAGAIN;
+ 	}
+ 
+-	entry = list_first_entry(&ccu->response_list, struct ccu_response_data, list);
+-	if (entry) {
+-		ret = ccu_copy_result_to_user_buf(ccu, (struct ccu_xfer_result *)entry->res_buf,
+-						  buf);
+-		if (ret < 0)
+-			return ret;
++	list_for_each_entry_safe(entry, tmp, &ccu->response_list, list) {
++		if (entry) {
++			ret = ccu_copy_result_to_user_buf(ccu,
++							  (struct ccu_xfer_result *)entry->res_buf,
++							  buf);
++			if (ret < 0) {
++				mutex_unlock(&ccu->read_lock);
++				return ret;
++			}
+ 
+-		list_del(&entry->list);
+-		kfree(entry->res_buf);
+-		kfree(entry);
+-		atomic_dec(&ccu->rx_avail);
+-		CCU_DBG_LOG(LOG_LVL_VERBOSE, ccu->dev, "%s: Read operation done for %d bytes\n",
+-			    __func__, ret);
+-		return ret;
++			list_del(&entry->list);
++			kfree(entry->res_buf);
++			kfree(entry);
++			atomic_dec(&ccu->rx_avail);
++
++			CCU_DBG_LOG(LOG_LVL_VERBOSE, ccu->dev,
++				    "%s: Read operation done for %d bytes\n", __func__, ret);
++			mutex_unlock(&ccu->read_lock);
++			return ret;
++		}
++		break;
+ 	}
+ 
++	mutex_unlock(&ccu->read_lock);
+ 	return -EAGAIN;
+ }
+ 
+@@ -264,29 +276,30 @@ void ccu_update_xfer_result(struct ccu_xfer_result *result)
+ {
+ 	struct ccu_qup *ccu = ccud;
+ 	struct ccu_response_data *entry;
++	unsigned long flags;
+ 
+-	mutex_lock(&ccu->lock);
++	spin_lock_irqsave(&ccu->lock, flags);
+ 	entry = kmalloc(sizeof(*entry), GFP_KERNEL);
+ 	if (!entry) {
+-		dev_err(ccu->dev, "Memory allocation failed for entry\n");
+-		mutex_unlock(&ccu->lock);
++		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, "Memory allocation failed for entry\n");
++		spin_unlock_irqrestore(&ccu->lock, flags);
+ 		return;
+ 	}
+ 
+ 	entry->res_buf = kmalloc(sizeof(*result), GFP_KERNEL);
+ 	if (!entry->res_buf) {
+-		dev_err(ccu->dev, "Memory allocation failed for buf\n");
++		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, "Memory allocation failed for buf\n");
+ 		kfree(entry);
+-		mutex_unlock(&ccu->lock);
++		spin_unlock_irqrestore(&ccu->lock, flags);
+ 		return;
+ 	}
+ 
+ 	memcpy(entry->res_buf, result, sizeof(*result));
+ 	INIT_LIST_HEAD(&entry->list);
+ 	/* Add received completion notification result in the list */
+-	list_add(&entry->list, &ccu->response_list);
++	list_add_tail(&entry->list, &ccu->response_list);
+ 	atomic_inc(&ccu->rx_avail);
+-	mutex_unlock(&ccu->lock);
++	spin_unlock_irqrestore(&ccu->lock, flags);
+ 	wake_up_interruptible(&ccu->readq);
+ }
+ EXPORT_SYMBOL(ccu_update_xfer_result);
+@@ -683,86 +696,40 @@ static ssize_t ccu_config_write(struct file *filp, const char __user *buf,
+ 	return len;
+ }
+ 
+-static irqreturn_t gpi0_irq_thread(int irq, void *dev_id)
++static irqreturn_t ccu_irq_handler(int irq, void *dev_id)
+ {
+ 	struct ccu_qup *ccu = (struct ccu_qup *)dev_id;
+-	u32 irq_stat = ccu->ccu0_irq_stat;
+-	u32 i;
+ 	unsigned long flag;
++	unsigned long gpii_mask;
++	int bit;
++	u32 irq_stat;
++	int idx;
+ 
+-	spin_lock_irqsave(&ccu->lock0, flag);
++	// Determine which CCU QUP block triggered the interrupt
++	idx = (irq == ccu->ccu_qup0_irq) ? 0 : 1;
+ 
+-	irq_stat = readl_relaxed(ccu->qup_irq_base[0] + CCU_QUP_IRQ_STATUS);
++	spin_lock_irqsave(&ccu->irq_lock[idx], flag);
++	CCU_DBG_LOG(LOG_LVL_VERBOSE, ccu->dev, "QUP%d IRQ for IRQ:%d\n", idx, irq);
++	irq_stat = readl_relaxed(ccu->qup_irq_base[idx] + CCU_QUP_IRQ_STATUS);
+ 
+ 	/* Clear the interrupt */
+-	writel(irq_stat, (ccu->qup_irq_base[0] + CCU_QUP_IRQ_CLEAR));
+-	writel(0x1, (ccu->qup_irq_base[0] + CCU_QUP_IRQ_CMD));
++	writel(irq_stat, (ccu->qup_irq_base[idx] + CCU_QUP_IRQ_CLEAR));
++	writel(0x1, (ccu->qup_irq_base[idx] + CCU_QUP_IRQ_CMD));
+ 
+-	/* Handle the IRQ line, GPII index starts from 5th position */
+-	for (i = GPII_0_IRQ; i <= GPII_14_IRQ; i++) {
+-		if (i >= 0 && i < 5) {
+-			if (irq_stat & (1U << i)) {
+-				i2c_handle_irq(ccu->adap);
+-			}
+-		} else {
+-			if (irq_stat & (1U << i)) {
+-				dev_dbg(ccu->dev, "IRQ for [CCU QUP0]-GPII[%d] IRQ_STATUS:%d\n",
+-						(i- 5), irq_stat);
+-				gpi_handle_irq(ccu->gpi_pdev[0], (i - 5));
+-			}
+-		}
+-	}
+-
+-	spin_unlock_irqrestore(&ccu->lock0, flag);
+-
+-	return IRQ_HANDLED;
+-}
+-
+-static irqreturn_t ccu0_irq_handler(int irq, void *dev_id)
+-{
+-	return IRQ_WAKE_THREAD;
+-}
+-
+-static irqreturn_t gpi1_irq_thread(int irq, void *dev_id)
+-{
+-	struct ccu_qup *ccu = (struct ccu_qup *)dev_id;
+-	u32 irq_stat = ccu->ccu1_irq_stat;
+-	u32 i;
+-	unsigned long flag;
+-
+-	spin_lock_irqsave(&ccu->lock1, flag);
+-
+-	irq_stat = readl_relaxed(ccu->qup_irq_base[1] + CCU_QUP_IRQ_STATUS);
+-
+-	/* Clear the interrupt */
+-	writel(irq_stat, (ccu->qup_irq_base[1] + CCU_QUP_IRQ_CLEAR));
+-	writel(0x1, (ccu->qup_irq_base[1] + CCU_QUP_IRQ_CMD));
++	/* Extract GPII bits (bits 5 to 19) */
++	gpii_mask = (irq_stat >> GPII_0_IRQ) & GENMASK(GPII_IRQ_COUNT - 1, 0);
+ 
+ 	/* Handle the IRQ line, GPII index starts from 5th position */
+-	for (i = GPII_0_IRQ; i <= GPII_14_IRQ; i++) {
+-		if (i >= 0 && i < 5) {
+-			if (irq_stat & (1U << i)) {
+-				i2c_handle_irq(ccu->adap);
+-			}
+-		} else {
+-			if (irq_stat & (1U << i)) {
+-				dev_dbg(ccu->dev, "IRQ for [CCU QUP1]-GPII[%d] IRQ_STATUS:%d\n",
+-						(i- 5), irq_stat);
+-				gpi_handle_irq(ccu->gpi_pdev[1], (i - 5));
+-			}
+-		}
++	for_each_set_bit(bit, &gpii_mask, GPII_IRQ_COUNT) {
++		CCU_DBG_LOG(LOG_LVL_VERBOSE, ccu->dev,
++			    "IRQ for CCU QUP%d - GPII%d IRQ_STATUS:%d\n", idx, bit, irq_stat);
++		gpi_handle_irq(ccu->gpi_pdev[idx], bit);
+ 	}
+ 
+-	spin_unlock_irqrestore(&ccu->lock1, flag);
+-
++	spin_unlock_irqrestore(&ccu->irq_lock[idx], flag);
+ 	return IRQ_HANDLED;
+ }
+ 
+-static irqreturn_t ccu1_irq_handler(int irq, void *dev_id)
+-{
+-	return IRQ_WAKE_THREAD;
+-}
+-
+ static int check_probe_status(struct device *dev, void *data)
+ {
+ 	struct child_probe_status *child = data;
+@@ -799,6 +766,7 @@ static void get_set_child_dev_node(struct work_struct *work)
+ 	struct device_node *node = ccu->dev->of_node, *gpi_node;
+ 	struct resource *res;
+ 	const char *gpi[2] = {"dma-controller0", "dma-controller1"};
++	static int retry_cnt;
+ 	int i = 0;
+ 
+ 	child_status = kzalloc(sizeof(*child_status), GFP_KERNEL);
+@@ -811,8 +779,10 @@ static void get_set_child_dev_node(struct work_struct *work)
+ 
+ 	device_for_each_child(ccu->dev, child_status, check_probe_status);
+ 	if (!child_status->probe_state) {
+-		queue_delayed_work(ccu->gpi_wq, &ccu->get_child_dev_node,
+-				   msecs_to_jiffies(100));
++		if (retry_cnt++ < 10)
++			queue_delayed_work(ccu->gpi_wq, &ccu->get_child_dev_node,
++					   msecs_to_jiffies(100));
++		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, " Retry cnt:%d\n", retry_cnt);
+ 		kfree(child_status);
+ 		return;
+ 	}
+@@ -859,18 +829,16 @@ static int ccu_get_configure_irq(struct platform_device *pdev, struct ccu_qup *c
+ 		return ccu->ccu_qup1_irq;
+ 
+ 	irq_set_status_flags(ccu->ccu_qup0_irq, IRQ_NOAUTOEN);
+-	ret = devm_request_threaded_irq(ccu->dev, ccu->ccu_qup0_irq, ccu0_irq_handler,
+-					gpi0_irq_thread, 0, "CCU_QUP0", ccu);
++	ret = request_irq(ccu->ccu_qup0_irq, ccu_irq_handler, 0, "CCU_QUP0", ccu);
+ 	if (ret) {
+-		dev_err(ccu->dev, "Request IRQ failed\n");
++		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, "Request IRQ failed\n");
+ 		return -EINVAL;
+ 	}
+ 
+ 	irq_set_status_flags(ccu->ccu_qup1_irq, IRQ_NOAUTOEN);
+-	ret = devm_request_threaded_irq(ccu->dev, ccu->ccu_qup1_irq, ccu1_irq_handler,
+-					gpi1_irq_thread, 0, "CCU_QUP1", ccu);
++	ret = request_irq(ccu->ccu_qup1_irq, ccu_irq_handler, 0, "CCU_QUP1", ccu);
+ 	if (ret) {
+-		dev_err(ccu->dev, "Request IRQ failed\n");
++		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, "Request IRQ failed\n");
+ 		return -EINVAL;
+ 	}
+ 
+@@ -993,12 +961,12 @@ static int ccu_qup_probe(struct platform_device *pdev)
+ 		return ret;
+ 
+ 	platform_set_drvdata(pdev, ccu);
+-
+-	spin_lock_init(&ccu->lock0);
+-	spin_lock_init(&ccu->lock1);
++	spin_lock_init(&ccu->irq_lock[0]);
++	spin_lock_init(&ccu->irq_lock[1]);
++	spin_lock_init(&ccu->lock);
+ 	init_waitqueue_head(&ccu->readq);
+ 	INIT_LIST_HEAD(&ccu->response_list);
+-	mutex_init(&ccu->lock);
++	mutex_init(&ccu->read_lock);
+ 	ccu->gpi_wq = create_singlethread_workqueue("CCU_WQ");
+ 	INIT_DELAYED_WORK(&ccu->get_child_dev_node, get_set_child_dev_node);
+ 
+@@ -1038,6 +1006,8 @@ static int ccu_qup_remove(struct platform_device *pdev)
+ 	device_remove_file(&pdev->dev, &dev_attr_log_level);
+ 	disable_irq(ccu->ccu_qup0_irq);
+ 	disable_irq(ccu->ccu_qup1_irq);
++	free_irq(ccu->ccu_qup0_irq, ccu);
++	free_irq(ccu->ccu_qup1_irq, ccu);
+ 	destroy_workqueue(ccu->gpi_wq);
+ 	device_destroy(ccu->ccu_class, ccu->ccu_dev);
+ 	class_destroy(ccu->ccu_class);
+diff --git a/include/linux/soc/qcom/qcom_ccu_qup.h b/include/linux/soc/qcom/qcom_ccu_qup.h
+index 0b8c7ce0513a..2c112bf23097 100644
+--- a/include/linux/soc/qcom/qcom_ccu_qup.h
++++ b/include/linux/soc/qcom/qcom_ccu_qup.h
+@@ -102,7 +102,7 @@ struct ccu_xfer_result {
+  * @ccu_qup1_irq: Irq number of CCU QUP1.
+  * @gpi_dev[2]: Array of pointer which hold base address of
+  *              GPI register space.
+- * @lock: mutex lock to protect the callback function.
++ * @read_lock: mutex lock to protect the read function.
+  * @gpi0_idx: represents the index for gpi dma 0.
+  * @gpi1_idx: represents the index for gpi dma 1.
+  * @common_reg_off: hold the address of common reg of CCU QUP.
+@@ -113,12 +113,13 @@ struct ccu_xfer_result {
+  * @cfg: points to the struct ccu_qup_config.
+  * @gpi_wq: workqueue to get child dev node
+  * @get_child_dev_node: work function to get child dev node.
+- * @lock0: spinlock to protect interrupr handler for CCU QUP0.
+- * @Lock1: spinlock to protect interrupr handler for CCU QUP1.
++ * @irq_lock: spinlock to protect interrupr handler for CCU QUP.
++ * @lock: spin lock to protect the callback function.
+  * @readq: queue of file desc waiting for read notification.
+  * @rx_avail: represent the rx data available for read.
+  * @response_list: list which represent the response.
+  * @data: pointer to the struct ccu_response_data.
++ * fw_loaded: flag to check fw loaded or not.
+  */
+ struct ccu_qup {
+ 	struct device *dev;
+@@ -131,7 +132,7 @@ struct ccu_qup {
+ 	int ccu_qup1_irq;
+ 	struct platform_device *gpi_pdev[2];
+ 	void __iomem *gpi_dev[2];
+-	struct mutex lock;
++	struct mutex read_lock;
+ 	int gpi0_idx;
+ 	int gpi1_idx;
+ 	u32 common_reg_off;
+@@ -142,14 +143,12 @@ struct ccu_qup {
+ 	struct ccu_qup_config *cfg;
+ 	struct workqueue_struct *gpi_wq;
+ 	struct delayed_work get_child_dev_node;
+-	spinlock_t lock0;
+-	spinlock_t lock1;
++	spinlock_t irq_lock[2];
++	spinlock_t lock;
+ 	wait_queue_head_t readq;
+ 	atomic_t rx_avail;
+ 	struct list_head response_list;
+ 	struct ccu_response_data data;
+-	u32 ccu0_irq_stat;
+-	u32 ccu1_irq_stat;
+ 	bool fw_loaded;
+ };
+ 
+@@ -194,14 +193,11 @@ typedef int (*gpii_reset_t) (struct i2c_adapter *adap, int gpii_no, bool prematu
+ 
+ typedef void (*config_delay_t) (struct i2c_adapter *adap, unsigned long delay);
+ 
+-typedef void (*geni_i2c_irq_t) (struct i2c_adapter *adap);
+-
+ void register_i2c_function(power_on_off_t geni_i2c_power_on_off,
+ 		recover_ios_line_t geni_i2c_check_recover_ios_line,
+ 		config_ccu_mode_t geni_i2c_configure_ccu_mode,
+ 		gpii_reset_t geni_i2c_gpii_reset,
+-		config_delay_t geni_i2c_configure_pre_delay,
+-		geni_i2c_irq_t geni_i2c_process_irq);
++		config_delay_t geni_i2c_configure_pre_delay);
+ 
+ typedef void (*ccu_gpi_handle_isr_t) (struct platform_device *dev, int idx);
+ 
+-- 
+2.34.1
+

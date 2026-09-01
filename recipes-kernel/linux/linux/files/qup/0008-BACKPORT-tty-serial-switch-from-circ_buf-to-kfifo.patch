@@ -1,0 +1,427 @@
+From 163353e71df83a03cf4ea95e23103d958fd4a54c Mon Sep 17 00:00:00 2001
+From: Praveen Talari <praveen.talari@oss.qualcomm.com>
+Date: Sat, 13 Sep 2025 16:35:24 +0530
+Subject: [PATCH 08/19] BACKPORT: tty: serial: switch from circ_buf to kfifo
+
+Switch from struct circ_buf to proper kfifo. kfifo provides much better
+API, esp. when wrap-around of the buffer needs to be taken into account.
+Look at pl011_dma_tx_refill() or cpm_uart_tx_pump() changes for example.
+
+Kfifo API can also fill in scatter-gather DMA structures, so it easier
+for that use case too. Look at lpuart_dma_tx() for example. Note that
+not all drivers can be converted to that (like atmel_serial), they
+handle DMA specially.
+
+Note that usb-serial uses kfifo for TX for ages.
+
+omap needed a bit more care as it needs to put a char into FIFO to start
+the DMA transfer when OMAP_DMA_TX_KICK is set. In that case, we have to
+do kfifo_dma_out_prepare twice: once to find out the tx_size (to find
+out if it is worths to do DMA at all -- size >= 4), the second time for
+the actual transfer.
+
+All traces of circ_buf are removed from serial_core.h (and its struct
+uart_state).
+
+Change-Id: I33623d36eee85b3e8e774c0e89ac3da7f29ebf77
+Signed-off-by: Jiri Slaby (SUSE) <jirislaby@kernel.org>
+Link: https://lore.kernel.org/r/20240405060826.2521-13-jirislaby@kernel.org
+Signed-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>
+Signed-off-by: Praveen Talari <praveen.talari@oss.qualcomm.com>
+---
+ drivers/tty/serial/qcom_geni_serial.c | 43 ++++++++++----------
+ drivers/tty/serial/serial_core.c      | 57 ++++++++++-----------------
+ drivers/tty/serial/serial_port.c      |  2 +-
+ include/linux/serial_core.h           | 48 +++++++++++++++++-----
+ 4 files changed, 82 insertions(+), 68 deletions(-)
+
+diff --git a/drivers/tty/serial/qcom_geni_serial.c b/drivers/tty/serial/qcom_geni_serial.c
+index 5f7f97e57e83..fcd9e55393ce 100644
+--- a/drivers/tty/serial/qcom_geni_serial.c
++++ b/drivers/tty/serial/qcom_geni_serial.c
+@@ -535,7 +535,7 @@ static void qcom_geni_serial_console_write(struct console *co, const char *s,
+ 		 */
+ 		qcom_geni_serial_poll_tx_done(uport);
+ 
+-		if (!uart_circ_empty(&uport->state->xmit)) {
++		if (!kfifo_is_empty(&uport->state->port.xmit_fifo)) {
+ 			irq_en = readl(uport->membase + SE_GENI_M_IRQ_EN);
+ 			writel(irq_en | M_TX_FIFO_WATERMARK_EN,
+ 					uport->membase + SE_GENI_M_IRQ_EN);
+@@ -652,9 +652,9 @@ static void qcom_geni_serial_stop_tx_dma(struct uart_port *uport)
+ static void qcom_geni_serial_start_tx_dma(struct uart_port *uport)
+ {
+ 	struct qcom_geni_serial_port *port = to_dev_port(uport);
+-	struct circ_buf *xmit = &uport->state->xmit;
+-	size_t pending = uart_circ_chars_pending(xmit);
++	struct tty_port *tport = &uport->state->port;
+ 	unsigned int xmit_size;
++	u8 *tail;
+ 	bool pin_state;
+ 	int ret;
+ 
+@@ -662,10 +662,11 @@ static void qcom_geni_serial_start_tx_dma(struct uart_port *uport)
+ 	if (port->tx_dma_addr)
+ 		return;
+ 
+-	if (uart_circ_empty(xmit))
++	if (kfifo_is_empty(&tport->xmit_fifo))
+ 		return;
+ 
+-	xmit_size = CIRC_CNT_TO_END(xmit->head, xmit->tail, UART_XMIT_SIZE);
++	xmit_size = kfifo_out_linear_ptr(&tport->xmit_fifo, &tail,
++			UART_XMIT_SIZE);
+ 
+ 	if (uport->rs485.flags & SER_RS485_ENABLED) {
+ 		/* For RS485 mode, the RTS can be set/cleared before transmission */
+@@ -674,18 +675,18 @@ static void qcom_geni_serial_start_tx_dma(struct uart_port *uport)
+ 	}
+ 	qcom_geni_serial_setup_tx(uport, xmit_size);
+ 
+-	ret = geni_se_tx_dma_prep(&port->se, &xmit->buf[xmit->tail],
+-				  xmit_size, &port->tx_dma_addr);
++	ret = geni_se_tx_dma_prep(&port->se, tail, xmit_size,
++				  &port->tx_dma_addr);
+ 	if (ret) {
+ 		dev_err(uport->dev, "unable to start TX SE DMA: %d\n", ret);
+ 		qcom_geni_serial_stop_tx_dma(uport);
+ 		return;
+ 	}
+ 
+-	if (pending) {
++	if (xmit_size) {
+ 		serial_trace_log(uport->dev, "%s: TX transfer length: %d\n",
+-				 __func__, pending);
+-		trace_serial_transmit_data_tx(uport->dev, (char *)&xmit->buf[xmit->tail], pending);
++				 __func__, xmit_size);
++		trace_serial_transmit_data_tx(uport->dev, tail, xmit_size);
+ 	}
+ 	port->tx_remaining = xmit_size;
+ }
+@@ -910,18 +911,16 @@ static void qcom_geni_serial_send_chunk_fifo(struct uart_port *uport,
+ 					     unsigned int chunk)
+ {
+ 	struct qcom_geni_serial_port *port = to_dev_port(uport);
+-	struct circ_buf *xmit = &uport->state->xmit;
+-	unsigned int tx_bytes, c, remaining = chunk;
++	struct tty_port *tport = &uport->state->port;
++	unsigned int tx_bytes, remaining = chunk;
+ 	u8 buf[BYTES_PER_FIFO_WORD];
+ 
+ 	while (remaining) {
+ 		memset(buf, 0, sizeof(buf));
+ 		tx_bytes = min(remaining, BYTES_PER_FIFO_WORD);
+ 
+-		for (c = 0; c < tx_bytes ; c++) {
+-			buf[c] = xmit->buf[xmit->tail];
+-			uart_xmit_advance(uport, 1);
+-		}
++		tx_bytes = kfifo_out(&tport->xmit_fifo, buf, tx_bytes);
++		uart_xmit_advance(uport, tx_bytes);
+ 
+ 		iowrite32_rep(uport->membase + SE_GENI_TX_FIFOn, buf, 1);
+ 
+@@ -934,7 +933,7 @@ static void qcom_geni_serial_handle_tx_fifo(struct uart_port *uport,
+ 					    bool done, bool active)
+ {
+ 	struct qcom_geni_serial_port *port = to_dev_port(uport);
+-	struct circ_buf *xmit = &uport->state->xmit;
++	struct tty_port *tport = &uport->state->port;
+ 	size_t avail;
+ 	size_t pending;
+ 	u32 status;
+@@ -947,7 +946,7 @@ static void qcom_geni_serial_handle_tx_fifo(struct uart_port *uport,
+ 	if (active)
+ 		pending = port->tx_remaining;
+ 	else
+-		pending = uart_circ_chars_pending(xmit);
++		pending = kfifo_len(&tport->xmit_fifo);
+ 
+ 	/* All data has been transmitted and acknowledged as received */
+ 	if (!pending && !status && done) {
+@@ -990,24 +989,24 @@ static void qcom_geni_serial_handle_tx_fifo(struct uart_port *uport,
+ 					uport->membase + SE_GENI_M_IRQ_EN);
+ 	}
+ 
+-	if (uart_circ_chars_pending(xmit) < WAKEUP_CHARS)
++	if (kfifo_len(&tport->xmit_fifo) < WAKEUP_CHARS)
+ 		uart_write_wakeup(uport);
+ }
+ 
+ static void qcom_geni_serial_handle_tx_dma(struct uart_port *uport)
+ {
+ 	struct qcom_geni_serial_port *port = to_dev_port(uport);
+-	struct circ_buf *xmit = &uport->state->xmit;
++	struct tty_port *tport = &uport->state->port;
+ 
+ 	uart_xmit_advance(uport, port->tx_remaining);
+ 	geni_se_tx_dma_unprep(&port->se, port->tx_dma_addr, port->tx_remaining);
+ 	port->tx_dma_addr = 0;
+ 	port->tx_remaining = 0;
+ 
+-	if (!uart_circ_empty(xmit))
++	if (!kfifo_is_empty(&tport->xmit_fifo))
+ 		qcom_geni_serial_start_tx_dma(uport);
+ 
+-	if (uart_circ_chars_pending(xmit) < WAKEUP_CHARS)
++	if (kfifo_len(&tport->xmit_fifo) < WAKEUP_CHARS)
+ 		uart_write_wakeup(uport);
+ }
+ 
+diff --git a/drivers/tty/serial/serial_core.c b/drivers/tty/serial/serial_core.c
+index 1712d36aa62f..5c20d1c6cc4f 100644
+--- a/drivers/tty/serial/serial_core.c
++++ b/drivers/tty/serial/serial_core.c
+@@ -272,9 +272,10 @@ static int uart_port_startup(struct tty_struct *tty, struct uart_state *state,
+ 		return -ENOMEM;
+ 
+ 	uart_port_lock(state, flags);
+-	if (!state->xmit.buf) {
+-		state->xmit.buf = (unsigned char *) page;
+-		uart_circ_clear(&state->xmit);
++	if (!state->port.xmit_buf) {
++		state->port.xmit_buf = (unsigned char *)page;
++		kfifo_init(&state->port.xmit_fifo, state->port.xmit_buf,
++				PAGE_SIZE);
+ 		uart_port_unlock(uport, flags);
+ 	} else {
+ 		uart_port_unlock(uport, flags);
+@@ -402,8 +403,9 @@ static void uart_shutdown(struct tty_struct *tty, struct uart_state *state)
+ 	 * can endup in printk() recursion.
+ 	 */
+ 	uart_port_lock(state, flags);
+-	xmit_buf = state->xmit.buf;
+-	state->xmit.buf = NULL;
++	xmit_buf = port->xmit_buf;
++	port->xmit_buf = NULL;
++	INIT_KFIFO(port->xmit_fifo);
+ 	uart_port_unlock(uport, flags);
+ 
+ 	free_page((unsigned long)xmit_buf);
+@@ -570,22 +572,17 @@ static int uart_put_char(struct tty_struct *tty, u8 c)
+ {
+ 	struct uart_state *state = tty->driver_data;
+ 	struct uart_port *port;
+-	struct circ_buf *circ;
+ 	unsigned long flags;
+ 	int ret = 0;
+ 
+-	circ = &state->xmit;
+ 	port = uart_port_lock(state, flags);
+-	if (!circ->buf) {
++	if (WARN_ON_ONCE(!state->port.xmit_buf)) {
+ 		uart_port_unlock(port, flags);
+ 		return 0;
+ 	}
+ 
+-	if (port && uart_circ_chars_free(circ) != 0) {
+-		circ->buf[circ->head] = c;
+-		circ->head = (circ->head + 1) & (UART_XMIT_SIZE - 1);
+-		ret = 1;
+-	}
++	if (port)
++		ret = kfifo_put(&state->port.xmit_fifo, c);
+ 	uart_port_unlock(port, flags);
+ 	return ret;
+ }
+@@ -599,9 +596,8 @@ static ssize_t uart_write(struct tty_struct *tty, const u8 *buf, size_t count)
+ {
+ 	struct uart_state *state = tty->driver_data;
+ 	struct uart_port *port;
+-	struct circ_buf *circ;
+ 	unsigned long flags;
+-	int c, ret = 0;
++	int ret = 0;
+ 
+ 	/*
+ 	 * This means you called this function _after_ the port was
+@@ -611,24 +607,13 @@ static ssize_t uart_write(struct tty_struct *tty, const u8 *buf, size_t count)
+ 		return -EL3HLT;
+ 
+ 	port = uart_port_lock(state, flags);
+-	circ = &state->xmit;
+-	if (!circ->buf) {
++	if (WARN_ON_ONCE(!state->port.xmit_buf)) {
+ 		uart_port_unlock(port, flags);
+ 		return 0;
+ 	}
+ 
+-	while (port) {
+-		c = CIRC_SPACE_TO_END(circ->head, circ->tail, UART_XMIT_SIZE);
+-		if (count < c)
+-			c = count;
+-		if (c <= 0)
+-			break;
+-		memcpy(circ->buf + circ->head, buf, c);
+-		circ->head = (circ->head + c) & (UART_XMIT_SIZE - 1);
+-		buf += c;
+-		count -= c;
+-		ret += c;
+-	}
++	if (port)
++		ret = kfifo_in(&state->port.xmit_fifo, buf, count);
+ 
+ 	__uart_start(state);
+ 	uart_port_unlock(port, flags);
+@@ -643,7 +628,7 @@ static unsigned int uart_write_room(struct tty_struct *tty)
+ 	unsigned int ret;
+ 
+ 	port = uart_port_lock(state, flags);
+-	ret = uart_circ_chars_free(&state->xmit);
++	ret = kfifo_avail(&state->port.xmit_fifo);
+ 	uart_port_unlock(port, flags);
+ 	return ret;
+ }
+@@ -656,7 +641,7 @@ static unsigned int uart_chars_in_buffer(struct tty_struct *tty)
+ 	unsigned int ret;
+ 
+ 	port = uart_port_lock(state, flags);
+-	ret = uart_circ_chars_pending(&state->xmit);
++	ret = kfifo_len(&state->port.xmit_fifo);
+ 	uart_port_unlock(port, flags);
+ 	return ret;
+ }
+@@ -679,7 +664,7 @@ static void uart_flush_buffer(struct tty_struct *tty)
+ 	port = uart_port_lock(state, flags);
+ 	if (!port)
+ 		return;
+-	uart_circ_clear(&state->xmit);
++	kfifo_reset(&state->port.xmit_fifo);
+ 	if (port->ops->flush_buffer)
+ 		port->ops->flush_buffer(port);
+ 	uart_port_unlock(port, flags);
+@@ -1087,7 +1072,7 @@ static int uart_get_lsr_info(struct tty_struct *tty,
+ 	 * interrupt happens).
+ 	 */
+ 	if (uport->x_char ||
+-	    ((uart_circ_chars_pending(&state->xmit) > 0) &&
++	    (!kfifo_is_empty(&state->port.xmit_fifo) &&
+ 	     !uart_tx_stopped(uport)))
+ 		result &= ~TIOCSER_TEMT;
+ 
+@@ -1806,9 +1791,9 @@ static void uart_tty_port_shutdown(struct tty_port *port)
+ 	 * Free the transmit buffer.
+ 	 */
+ 	uart_port_lock_irq(uport);
+-	uart_circ_clear(&state->xmit);
+-	buf = state->xmit.buf;
+-	state->xmit.buf = NULL;
++	buf = port->xmit_buf;
++	port->xmit_buf = NULL;
++	INIT_KFIFO(port->xmit_fifo);
+ 	uart_port_unlock_irq(uport);
+ 
+ 	free_page((unsigned long)buf);
+diff --git a/drivers/tty/serial/serial_port.c b/drivers/tty/serial/serial_port.c
+index 469ad26cde48..1426a3bf6143 100644
+--- a/drivers/tty/serial/serial_port.c
++++ b/drivers/tty/serial/serial_port.c
+@@ -23,7 +23,7 @@
+ static int __serial_port_busy(struct uart_port *port)
+ {
+ 	return !uart_tx_stopped(port) &&
+-		uart_circ_chars_pending(&port->state->xmit);
++		!kfifo_is_empty(&port->state->port.xmit_fifo);
+ }
+ 
+ static int serial_port_runtime_resume(struct device *dev)
+diff --git a/include/linux/serial_core.h b/include/linux/serial_core.h
+index 052df85dfd59..6f5a3ae255ca 100644
+--- a/include/linux/serial_core.h
++++ b/include/linux/serial_core.h
+@@ -98,7 +98,6 @@ struct gpio_desc;
+  *
+  *	Locking: @port->lock taken.
+  *	Interrupts: locally disabled.
+- *	This call must not sleep
+  *
+  * @start_tx: ``void ()(struct uart_port *port)``
+  *
+@@ -721,10 +720,33 @@ struct uart_state {
+  */
+ static inline void uart_xmit_advance(struct uart_port *up, unsigned int chars)
+ {
+-	struct circ_buf *xmit = &up->state->xmit;
++	struct tty_port *tport = &up->state->port;
++
++	kfifo_skip_count(&tport->xmit_fifo, chars);
++	up->icount.tx += chars;
++}
++
++static inline unsigned int uart_fifo_out(struct uart_port *up,
++		unsigned char *buf, unsigned int chars)
++{
++	struct tty_port *tport = &up->state->port;
++
++	chars = kfifo_out(&tport->xmit_fifo, buf, chars);
++	up->icount.tx += chars;
++
++	return chars;
++}
++
++static inline unsigned int uart_fifo_get(struct uart_port *up,
++		unsigned char *ch)
++{
++	struct tty_port *tport = &up->state->port;
++	unsigned int chars;
+ 
+-	xmit->tail = (xmit->tail + chars) & (UART_XMIT_SIZE - 1);
++	chars = kfifo_get(&tport->xmit_fifo, ch);
+ 	up->icount.tx += chars;
++
++	return chars;
+ }
+ 
+ struct module;
+@@ -762,7 +784,7 @@ enum UART_TX_FLAGS {
+ 		       for_test, for_post)				      \
+ ({									      \
+ 	struct uart_port *__port = (uport);				      \
+-	struct circ_buf *xmit = &__port->state->xmit;			      \
++	struct tty_port *__tport = &__port->state->port;		      \
+ 	unsigned int pending;						      \
+ 									      \
+ 	for (; (for_test) && (tx_ready); (for_post), __port->icount.tx++) {   \
+@@ -770,26 +792,34 @@ enum UART_TX_FLAGS {
+ 			(ch) = __port->x_char;				      \
+ 			(put_char);					      \
+ 			__port->x_char = 0;				      \
++			if (__port->flags & UPF_MAGIC_MULTIPLIER)		\
++				__port->icount.tx++;			      \
+ 			continue;					      \
+ 		}							      \
+ 									      \
+-		if (uart_circ_empty(xmit) || uart_tx_stopped(__port))	      \
++		if (uart_tx_stopped(__port))				      \
++			break;						      \
++									      \
++		if (!kfifo_get(&__tport->xmit_fifo, &(ch)))		      \
+ 			break;						      \
+ 									      \
+-		(ch) = xmit->buf[xmit->tail];				      \
+ 		(put_char);						      \
+-		xmit->tail = (xmit->tail + 1) % UART_XMIT_SIZE;		      \
+ 	}								      \
+ 									      \
+ 	(tx_done);							      \
+ 									      \
+-	pending = uart_circ_chars_pending(xmit);			      \
++	pending = kfifo_len(&__tport->xmit_fifo);			      \
+ 	if (pending < WAKEUP_CHARS) {					      \
+ 		uart_write_wakeup(__port);				      \
+ 									      \
++		if (pending == 0 && __port->flags & UPF_MAGIC_MULTIPLIER) {  \
++			__port->flags &= ~UPF_MAGIC_MULTIPLIER;	      \
++			uart_write_wakeup(__port);			      \
++		}							      \
++									      \
+ 		if (!((flags) & UART_TX_NOSTOP) && pending == 0)	      \
+ 			__port->ops->stop_tx(__port);			      \
+-	}								      \
++	}							      \
+ 									      \
+ 	pending;							      \
+ })
+-- 
+2.34.1
+

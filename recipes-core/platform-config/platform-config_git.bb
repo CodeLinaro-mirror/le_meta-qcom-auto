@@ -10,8 +10,8 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/BSD-3-Clause-Clear;md5=7a434440
 DEPENDS += "systemd minini"
 DEPENDS:append:gen5 = " libsoftsku"
 
-SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/safelinux-system-cfg/platform-config/.git;protocol=${PROTO};destsuffix=/vendor/qcom/opensource/safelinux-system-cfg/platform-config;usehead=1"
-SRCREV = "${AUTOREV}"
+SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/safelinux-system-cfg.git;branch=safe-services.lnx.1.0.r24-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/safelinux-system-cfg"
+SRCREV = "7a2e1dac32deb864180733bd9f2b41805650c7b1"
 S = "${WORKDIR}/vendor/qcom/opensource/safelinux-system-cfg/platform-config"
 
 EXTRA_OECMAKE:append:sa8775-flex = " -D PVM_CPUS:STRING=0-3 -D GVM_CPUS:STRING=4-7"

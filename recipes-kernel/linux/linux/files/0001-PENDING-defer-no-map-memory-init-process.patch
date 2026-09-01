@@ -1,0 +1,158 @@
+From bfa7763058539361df63045d13540cecbc69d1e2 Mon Sep 17 00:00:00 2001
+From: ziqic <ziqic@qti.qualcomm.com>
+Date: Wed, 3 Dec 2025 14:56:19 +0800
+Subject: [PATCH] PENDING: defer no-map memory init process
+
+Defer no-map memory init process and run it parallelly
+later to optimize bootkpi.
+
+Fix the crash issue appears when enable
+CONFIG_DEFERRED_STRUCT_PAGE_INIT.
+
+Change-Id: I7b059bd7943f8be02d629600d55c21cbfcde566b
+Signed-off-by: ziqic <ziqic@qti.qualcomm.com>
+---
+ arch/arm64/Kconfig |  1 +
+ mm/Kconfig         |  3 +++
+ mm/memblock.c      |  5 +++++
+ mm/mm_init.c       | 51 ++++++++++++++++++++++++++++++++++++++++++++++
+ 4 files changed, 60 insertions(+)
+
+diff --git a/arch/arm64/Kconfig b/arch/arm64/Kconfig
+index f6924eaa5146..b85fcea70fc4 100644
+--- a/arch/arm64/Kconfig
++++ b/arch/arm64/Kconfig
+@@ -257,6 +257,7 @@ config ARM64
+ 	select TRACE_IRQFLAGS_SUPPORT
+ 	select TRACE_IRQFLAGS_NMI_SUPPORT
+ 	select HAVE_SOFTIRQ_ON_OWN_STACK
++	select DEFER_NO_MAP_MEM_PAGE_INIT
+ 	help
+ 	  ARM 64-bit (AArch64) Linux support.
+ 
+diff --git a/mm/Kconfig b/mm/Kconfig
+index 046c32686fc4..c2296bd6f6ff 100644
+--- a/mm/Kconfig
++++ b/mm/Kconfig
+@@ -1007,6 +1007,9 @@ config DEFERRED_STRUCT_PAGE_INIT
+ 	  lifetime of the system until these kthreads finish the
+ 	  initialisation.
+ 
++config DEFER_NO_MAP_MEM_PAGE_INIT
++	bool
++
+ config PAGE_IDLE_FLAG
+ 	bool
+ 	select PAGE_EXTENSION if !64BIT
+diff --git a/mm/memblock.c b/mm/memblock.c
+index cf47d70c3f7a..cd5c3ec9e1f0 100644
+--- a/mm/memblock.c
++++ b/mm/memblock.c
+@@ -2130,14 +2130,18 @@ static void __init memmap_init_reserved_pages(void)
+ 	struct memblock_region *region;
+ 	phys_addr_t start, end;
+ 	int nid;
++
++#ifndef CONFIG_DEFER_NO_MAP_MEM_PAGE_INIT
+ 	unsigned long max_reserved;
+ 
+ 	/*
+ 	 * set nid on all reserved pages and also treat struct
+ 	 * pages for the NOMAP regions as PageReserved
+ 	 */
++
+ repeat:
+ 	max_reserved = memblock.reserved.max;
++
+ 	for_each_mem_region(region) {
+ 		nid = memblock_get_region_node(region);
+ 		start = region->base;
+@@ -2155,6 +2159,7 @@ static void __init memmap_init_reserved_pages(void)
+ 	 */
+ 	if (max_reserved != memblock.reserved.max)
+ 		goto repeat;
++#endif
+ 
+ 	/* initialize struct pages for the reserved regions */
+ 	for_each_reserved_mem_region(region) {
+diff --git a/mm/mm_init.c b/mm/mm_init.c
+index 77fd04c83d04..7576b106a870 100644
+--- a/mm/mm_init.c
++++ b/mm/mm_init.c
+@@ -708,8 +708,10 @@ static void __meminit init_reserved_page(unsigned long pfn, int nid)
+ 	pg_data_t *pgdat;
+ 	int zid;
+ 
++#ifndef CONFIG_DEFER_NO_MAP_MEM_PAGE_INIT
+ 	if (early_page_initialised(pfn, nid))
+ 		return;
++#endif
+ 
+ 	pgdat = NODE_DATA(nid);
+ 
+@@ -2378,6 +2380,46 @@ void set_zone_contiguous(struct zone *zone)
+ 	zone->contiguous = true;
+ }
+ 
++#ifdef CONFIG_DEFER_NO_MAP_MEM_PAGE_INIT
++static int memmap_init_reserved_pages_thread(void *args)
++{
++	struct memblock_region *region;
++	phys_addr_t start, end;
++	int nid;
++	unsigned long max_reserved;
++
++	/*
++	 * set nid on all reserved pages and also treat struct
++	 * pages for the NOMAP regions as PageReserved
++	 */
++
++repeat:
++	max_reserved = memblock.reserved.max;
++
++	for_each_mem_region(region) {
++		nid = memblock_get_region_node(region);
++		start = region->base;
++		end = start + region->size;
++
++		if (memblock_is_nomap(region))
++			reserve_bootmem_region(start, end, nid);
++
++		memblock_set_node(start, region->size, &memblock.reserved, nid);
++	}
++	/*
++	 * 'max' is changed means memblock.reserved has been doubled its
++	 * array, which may result a new reserved region before current
++	 * 'start'. Now we should repeat the procedure to set its node id.
++	 */
++	if (max_reserved != memblock.reserved.max)
++		goto repeat;
++
++	pr_err("memmap_init_reserved_pages kthread finish.\n");
++
++	return 0;
++}
++#endif
++
+ void __init page_alloc_init_late(void)
+ {
+ 	struct zone *zone;
+@@ -2404,6 +2446,15 @@ void __init page_alloc_init_late(void)
+ 	files_maxfiles_init();
+ #endif
+ 
++#ifdef CONFIG_DEFER_NO_MAP_MEM_PAGE_INIT
++	struct task_struct *t;
++	t = kthread_run(memmap_init_reserved_pages_thread, NULL, "reserved-memory");
++	if (IS_ERR(t)) {
++		pr_err("Failed to create memmap_init_reserved_pages thread.\n");
++	}
++
++#endif
++
+ 	buffer_init();
+ 
+ 	/* Discard memblock private memory */
+-- 
+2.34.1
+

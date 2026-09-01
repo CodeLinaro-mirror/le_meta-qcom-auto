@@ -16,8 +16,8 @@ LIC_FILES_CHKSUM = "file://README;md5=edb3527809487b74b4d4a7e02b05acf0"
 
 DEPENDS += "libnl"
 
-SRC_URI = "${PATH_TO_REPO}/wlan/utils/sigma-dut/.git;protocol=${PROTO};destsuffix=wlan/utils/sigma-dut;usehead=1"
-SRCREV = "${AUTOREV}"
+SRC_URI = "${CLO_LA_GIT}/platform/vendor/qcom-opensource/wlan/utils/sigma-dut.git;branch=auto-wlan-service.lnx.1.4.r8-rel;protocol=${OSS_PROTO};destsuffix=wlan/utils/sigma-dut"
+SRCREV = "37bca1fed06b04d8a81fcd5cf273a125e8d580c4"
 
 S = "${WORKDIR}/wlan/utils/sigma-dut"
 

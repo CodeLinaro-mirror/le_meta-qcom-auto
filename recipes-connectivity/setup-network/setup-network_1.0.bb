@@ -30,3 +30,4 @@ do_install() {
 
 SYSTEMD_SERVICE:${PN} = "setup-network.service"
 
+RDEPENDS:${PN} += "bash"

@@ -1,0 +1,674 @@
+From 9d9778e28ee7b21bfc8a810798919c5f93ccba57 Mon Sep 17 00:00:00 2001
+From: Aniket Randive <arandive@qti.qualcomm.com>
+Date: Mon, 8 Sep 2025 14:35:08 +0530
+Subject: [PATCH 01/12] PENDING: dmaengine: gpi: Add new register offset to
+ support CCU QUP
+
+A new FUSA fault register, along with ECC and SYNC timer
+related registers, have been added for the CCU QUP. The
+start address offset of sub-blocks within QUPv3 has been
+modified to reduce address space. However, the register
+offset within the sub-blocks remains unchanged.
+
+Change-Id: Id4436b98548cd089f5e517304bc5f9ea84cf5383
+Signed-off-by: Aniket Randive <arandive@qti.qualcomm.com>
+---
+ drivers/dma/qcom/gpi.c           | 357 +++++++++++++++++++++++--------
+ include/linux/soc/qcom/geni-se.h |  36 ++++
+ 2 files changed, 303 insertions(+), 90 deletions(-)
+
+diff --git a/drivers/dma/qcom/gpi.c b/drivers/dma/qcom/gpi.c
+index 59a2b4a72f68..32d554ee7f56 100644
+--- a/drivers/dma/qcom/gpi.c
++++ b/drivers/dma/qcom/gpi.c
+@@ -91,7 +91,9 @@
+ #define TRE_I2C_UNLOCK		BIT(8)
+ 
+ /* Register offsets from gpi-top */
+-#define GPII_n_CH_k_CNTXT_0_OFFS(n, k)	(0x20000 + (0x4000 * (n)) + (0x80 * (k)))
++#define GPII_n_CH_k_CNTXT_0_OFFS(n, k, ccu)\
++	((ccu) ? (0x20000 + (0x1000 * (n)) + (0x80 * (k)))\
++	: (0x20000 + (0x4000 * (n)) + (0x80 * (k))))
+ #define GPII_n_CH_k_CNTXT_0_EL_SIZE	GENMASK(31, 24)
+ #define GPII_n_CH_k_CNTXT_0_CHSTATE	GENMASK(23, 20)
+ #define GPII_n_CH_k_CNTXT_0_ERIDX	GENMASK(18, 14)
+@@ -109,8 +111,12 @@
+ 
+ #define GPI_CHTYPE_PROTO_GPI	(0x2)
+ 
+-#define GPII_n_CH_k_DOORBELL_0_OFFS(n, k)	(0x22000 + (0x4000 * (n)) + (0x8 * (k)))
+-#define GPII_n_CH_CMD_OFFS(n)			(0x23008 + (0x4000 * (n)))
++#define GPII_n_CH_k_DOORBELL_0_OFFS(n, k, db_off)\
++	((db_off) ? ((0x22000 - db_off) + (0x1000 * (n)) + (0x8 * (k))) \
++	: (0x22000 + (0x4000 * (n)) + (0x8 * (k))))
++#define GPII_n_CH_CMD_OFFS(n, ccu)\
++	((ccu) ? (0x23008 + (0x1000 * (n)))\
++	: (0x23008 + (0x4000 * (n))))
+ #define GPII_n_CH_CMD_OPCODE			GENMASK(31, 24)
+ #define GPII_n_CH_CMD_CHID			GENMASK(7, 0)
+ #define GPII_n_CH_CMD(opcode, chid)				 \
+@@ -127,7 +133,9 @@
+ #define GPII_n_CH_CMD_UART_RFR_NOT_READY (34)
+ 
+ /* EV Context Array */
+-#define GPII_n_EV_CH_k_CNTXT_0_OFFS(n, k) (0x21000 + (0x4000 * (n)) + (0x80 * (k)))
++#define GPII_n_EV_CH_k_CNTXT_0_OFFS(n, k, offset)\
++	((offset) ? ((0x21000 - offset) + (0x1000 * (n)) + (0x80 * (k)))\
++	: (0x21000 + (0x4000 * (n)) + (0x80 * (k))))
+ #define GPII_n_EV_k_CNTXT_0_EL_SIZE	GENMASK(31, 24)
+ #define GPII_n_EV_k_CNTXT_0_CHSTATE	GENMASK(23, 20)
+ #define GPII_n_EV_k_CNTXT_0_INTYPE	BIT(16)
+@@ -158,8 +166,12 @@ enum CNTXT_OFFS {
+ 	CNTXT_13_RING_RP_UPDATE_MSB = 0x34,
+ };
+ 
+-#define GPII_n_EV_CH_k_DOORBELL_0_OFFS(n, k)	(0x22100 + (0x4000 * (n)) + (0x8 * (k)))
+-#define GPII_n_EV_CH_CMD_OFFS(n)		(0x23010 + (0x4000 * (n)))
++#define GPII_n_EV_CH_k_DOORBELL_0_OFFS(n, k, offset)\
++	((offset) ? ((0x22100 - offset) + (0x1000 * (n)) + (0x8 * (k)))\
++	: (0x22100 + (0x4000 * (n)) + (0x8 * (k))))
++#define GPII_n_EV_CH_CMD_OFFS(n, offset)\
++	((offset) ? ((0x23010 - offset) + (0x1000 * (n)))\
++	: (0x23010 + (0x4000 * (n))))
+ #define GPII_n_EV_CMD_OPCODE			GENMASK(31, 24)
+ #define GPII_n_EV_CMD_CHID			GENMASK(7, 0)
+ #define GPII_n_EV_CMD(opcode, chid)				 \
+@@ -170,10 +182,14 @@ enum CNTXT_OFFS {
+ #define GPII_n_EV_CH_CMD_RESET			(0x09)
+ #define GPII_n_EV_CH_CMD_DE_ALLOC		(0x0A)
+ 
+-#define GPII_n_CNTXT_TYPE_IRQ_OFFS(n)		(0x23080 + (0x4000 * (n)))
++#define GPII_n_CNTXT_TYPE_IRQ_OFFS(n, irq_off)\
++	((irq_off) ? ((0x23080 - irq_off) + (0x1000 * (n)))\
++	: (0x23080 + (0x4000 * (n))))
+ 
+ /* mask type register */
+-#define GPII_n_CNTXT_TYPE_IRQ_MSK_OFFS(n)	(0x23088 + (0x4000 * (n)))
++#define GPII_n_CNTXT_TYPE_IRQ_MSK_OFFS(n, irq_off)\
++	((irq_off) ? ((0x23088 - irq_off) + (0x1000 * (n)))\
++	: (0x23088 + (0x4000 * (n))))
+ #define GPII_n_CNTXT_TYPE_IRQ_MSK_BMSK		GENMASK(6, 0)
+ #define GPII_n_CNTXT_TYPE_IRQ_MSK_GENERAL	BIT(6)
+ #define GPII_n_CNTXT_TYPE_IRQ_MSK_IEOB		BIT(3)
+@@ -181,65 +197,123 @@ enum CNTXT_OFFS {
+ #define GPII_n_CNTXT_TYPE_IRQ_MSK_EV_CTRL	BIT(1)
+ #define GPII_n_CNTXT_TYPE_IRQ_MSK_CH_CTRL	BIT(0)
+ 
+-#define GPII_n_CNTXT_SRC_GPII_CH_IRQ_OFFS(n)	(0x23090 + (0x4000 * (n)))
+-#define GPII_n_CNTXT_SRC_EV_CH_IRQ_OFFS(n)	(0x23094 + (0x4000 * (n)))
++#define GPII_n_CNTXT_SRC_GPII_CH_IRQ_OFFS(n, irq_off)\
++	((irq_off) ? ((0x23090 - irq_off) + (0x1000 * (n)))\
++	: (0x23090 + (0x4000 * (n))))
++#define GPII_n_CNTXT_SRC_EV_CH_IRQ_OFFS(n, irq_off)\
++	((irq_off) ? ((0x23094 - irq_off) + (0x1000 * (n)))\
++	: (0x23094 + (0x4000 * (n))))
+ 
+ /* Mask channel control interrupt register */
+-#define GPII_n_CNTXT_SRC_CH_IRQ_MSK_OFFS(n)	(0x23098 + (0x4000 * (n)))
++#define GPII_n_CNTXT_SRC_CH_IRQ_MSK_OFFS(n, irq_off)\
++	((irq_off) ? ((0x23098 - irq_off) + (0x1000 * (n)))\
++	: (0x23098 + (0x4000 * (n))))
+ #define GPII_n_CNTXT_SRC_CH_IRQ_MSK_BMSK	GENMASK(1, 0)
+ 
+ /* Mask event control interrupt register */
+-#define GPII_n_CNTXT_SRC_EV_CH_IRQ_MSK_OFFS(n)	(0x2309C + (0x4000 * (n)))
++#define GPII_n_CNTXT_SRC_EV_CH_IRQ_MSK_OFFS(n, irq_off)\
++	((irq_off) ? ((0x2309C - irq_off) + (0x1000 * (n)))\
++	: (0x2309C + (0x4000 * (n))))
+ #define GPII_n_CNTXT_SRC_EV_CH_IRQ_MSK_BMSK	BIT(0)
+ 
+-#define GPII_n_CNTXT_SRC_CH_IRQ_CLR_OFFS(n)	(0x230A0 + (0x4000 * (n)))
+-#define GPII_n_CNTXT_SRC_EV_CH_IRQ_CLR_OFFS(n)	(0x230A4 + (0x4000 * (n)))
++#define GPII_n_CNTXT_SRC_CH_IRQ_CLR_OFFS(n, irq_off)\
++	((irq_off) ? ((0x230A0 - irq_off) + (0x1000 * (n)))\
++	: (0x230A0 + (0x4000 * (n))))
++#define GPII_n_CNTXT_SRC_EV_CH_IRQ_CLR_OFFS(n, irq_off)\
++	((irq_off) ? ((0x230A4 - irq_off) + (0x1000 * (n)))\
++	: (0x230A4 + (0x4000 * (n))))
+ 
+ /* Mask event interrupt register */
+-#define GPII_n_CNTXT_SRC_IEOB_IRQ_MSK_OFFS(n)	(0x230B8 + (0x4000 * (n)))
++#define GPII_n_CNTXT_SRC_IEOB_IRQ_MSK_OFFS(n, irq_off)\
++	((irq_off) ? ((0x230B8 - irq_off) + (0x1000 * (n)))\
++	: (0x230B8 + (0x4000 * (n))))
+ #define GPII_n_CNTXT_SRC_IEOB_IRQ_MSK_BMSK	BIT(0)
+ 
+-#define GPII_n_CNTXT_SRC_IEOB_IRQ_CLR_OFFS(n)	(0x230C0 + (0x4000 * (n)))
+-#define GPII_n_CNTXT_GLOB_IRQ_STTS_OFFS(n)	(0x23100 + (0x4000 * (n)))
++#define GPII_n_CNTXT_SRC_IEOB_IRQ_CLR_OFFS(n, irq_off)\
++	((irq_off) ? ((0x230C0 - irq_off) + (0x1000 * (n)))\
++	: (0x230C0 + (0x4000 * (n))))
++#define GPII_n_CNTXT_GLOB_IRQ_STTS_OFFS(n, irq_off)\
++	((irq_off) ? ((0x23100 - irq_off) + (0x1000 * (n)))\
++	: (0x23100 + (0x4000 * (n))))
+ #define GPI_GLOB_IRQ_ERROR_INT_MSK		BIT(0)
+ 
+ /* GPII specific Global - Enable bit register */
+-#define GPII_n_CNTXT_GLOB_IRQ_EN_OFFS(n)	(0x23108 + (0x4000 * (n)))
+-#define GPII_n_CNTXT_GLOB_IRQ_CLR_OFFS(n)	(0x23110 + (0x4000 * (n)))
+-#define GPII_n_CNTXT_GPII_IRQ_STTS_OFFS(n)	(0x23118 + (0x4000 * (n)))
++#define GPII_n_CNTXT_GLOB_IRQ_EN_OFFS(n, irq_off)\
++	((irq_off) ? ((0x23108 - irq_off) + (0x1000 * (n)))\
++	: (0x23108 + (0x4000 * (n))))
++#define GPII_n_CNTXT_GLOB_IRQ_CLR_OFFS(n, irq_off)\
++	((irq_off) ? ((0x23110 - irq_off) + (0x1000 * (n)))\
++	: (0x23110 + (0x4000 * (n))))
++#define GPII_n_CNTXT_GPII_IRQ_STTS_OFFS(n, irq_off)\
++	((irq_off) ? ((0x23118 - irq_off) + (0x1000 * (n)))\
++	: (0x23118 + (0x4000 * (n))))
+ 
+ /* GPII general interrupt - Enable bit register */
+-#define GPII_n_CNTXT_GPII_IRQ_EN_OFFS(n)	(0x23120 + (0x4000 * (n)))
++#define GPII_n_CNTXT_GPII_IRQ_EN_OFFS(n, irq_off)\
++	((irq_off) ? ((0x23120 - irq_off) + (0x1000 * (n)))\
++	: (0x23120 + (0x4000 * (n))))
+ #define GPII_n_CNTXT_GPII_IRQ_EN_BMSK		GENMASK(3, 0)
+ 
+-#define GPII_n_CNTXT_GPII_IRQ_CLR_OFFS(n)	(0x23128 + (0x4000 * (n)))
++#define GPII_n_CNTXT_GPII_IRQ_CLR_OFFS(n, irq_off)\
++	((irq_off) ? ((0x23128 - irq_off) + (0x1000 * (n)))\
++	: (0x23128 + (0x4000 * (n))))
+ 
+ /* GPII Interrupt Type register */
+-#define GPII_n_CNTXT_INTSET_OFFS(n)		(0x23180 + (0x4000 * (n)))
++#define GPII_n_CNTXT_INTSET_OFFS(n, irq_off)\
++	((irq_off) ? ((0x23180 - irq_off) + (0x1000 * (n)))\
++	: (0x23180 + (0x4000 * (n))))
+ #define GPII_n_CNTXT_INTSET_BMSK		BIT(0)
+ 
+-#define GPII_n_CNTXT_MSI_BASE_LSB_OFFS(n)	(0x23188 + (0x4000 * (n)))
+-#define GPII_n_CNTXT_MSI_BASE_MSB_OFFS(n)	(0x2318C + (0x4000 * (n)))
+-#define GPII_n_CNTXT_SCRATCH_0_OFFS(n)		(0x23400 + (0x4000 * (n)))
+-#define GPII_n_CNTXT_SCRATCH_1_OFFS(n)		(0x23404 + (0x4000 * (n)))
+-
+-#define GPII_n_ERROR_LOG_OFFS(n)		(0x23200 + (0x4000 * (n)))
++#define GPII_n_CNTXT_MSI_BASE_LSB_OFFS(n, irq_off)\
++	((irq_off) ? ((0x23188 - irq_off) + (0x1000 * (n)))\
++	: (0x23188 + (0x4000 * (n))))
++#define GPII_n_CNTXT_MSI_BASE_MSB_OFFS(n, irq_off)\
++	((irq_off) ? ((0x2318c - irq_off) + (0x1000 * (n)))\
++	: (0x2318C + (0x4000 * (n))))
++#define GPII_n_CNTXT_SCRATCH_0_OFFS(n, scratch_off)\
++	((scratch_off) ? ((0x23400 - scratch_off) + (0x1000 * (n)))\
++	: (0x23400 + (0x4000 * (n))))
++#define GPII_n_CNTXT_SCRATCH_1_OFFS(n, scratch_off)\
++	((scratch_off) ? ((0x23404 - scratch_off) + (0x1000 * (n)))\
++	: (0x23404 + (0x4000 * (n))))
++
++#define GPII_n_ERROR_LOG_OFFS(n, irq_off)\
++	((irq_off) ? ((0x23200 - irq_off) + (0x1000 * (n)))\
++	: (0x23200 + (0x4000 * (n))))
+ 
+ /* QOS Registers */
+-#define GPII_n_CH_k_QOS_OFFS(n, k)		(0x2005C + (0x4000 * (n)) + (0x80 * (k)))
++#define GPII_n_CH_k_QOS_OFFS(n, k, ccu)\
++	((ccu) ? (0x2005C + (0x1000 * (n)) + (0x80 * (k)))\
++	: (0x2005C + (0x4000 * (n)) + (0x80 * (k))))
+ 
+ /* Scratch registers */
+-#define GPII_n_CH_k_SCRATCH_0_OFFS(n, k)	(0x20060 + (0x4000 * (n)) + (0x80 * (k)))
+-#define GPII_n_CH_k_SCRATCH_0_SEID		GENMASK(2, 0)
+-#define GPII_n_CH_k_SCRATCH_0_PROTO		GENMASK(7, 4)
++#define GPII_n_CH_k_SCRATCH_0_OFFS(n, k, ccu)\
++	((ccu) ? (0x20060 + (0x1000 * (n)) + (0x80 * (k)))\
++	: (0x20060 + (0x4000 * (n)) + (0x80 * (k))))
++#define GPII_n_CH_k_SCRATCH_0_SEID		GENMASK(3, 0)
++#define GPII_n_CH_k_SCRATCH_0_PROTO		GENMASK(8, 4)
++#define GPII_n_CH_k_SCRATCH_0_MODE		BIT(12)
++#define GPII_n_CH_k_SCRATCH_0_TYPE		GENMASK(14, 13)
+ #define GPII_n_CH_k_SCRATCH_0_PAIR		GENMASK(20, 16)
+-#define GPII_n_CH_k_SCRATCH_0(pair, proto, seid)		\
++#define GPII_n_CH_k_SCRATCH_0(pair, proto, mode, type, seid)		\
+ 			     (FIELD_PREP(GPII_n_CH_k_SCRATCH_0_PAIR, pair)	| \
+ 			      FIELD_PREP(GPII_n_CH_k_SCRATCH_0_PROTO, proto)	| \
++			      FIELD_PREP(GPII_n_CH_k_SCRATCH_0_MODE, mode)	| \
++			      FIELD_PREP(GPII_n_CH_k_SCRATCH_0_TYPE, type)	| \
+ 			      FIELD_PREP(GPII_n_CH_k_SCRATCH_0_SEID, seid))
+-#define GPII_n_CH_k_SCRATCH_1_OFFS(n, k)	(0x20064 + (0x4000 * (n)) + (0x80 * (k)))
+-#define GPII_n_CH_k_SCRATCH_2_OFFS(n, k)	(0x20068 + (0x4000 * (n)) + (0x80 * (k)))
+-#define GPII_n_CH_k_SCRATCH_3_OFFS(n, k)	(0x2006C + (0x4000 * (n)) + (0x80 * (k)))
++#define GPII_n_CH_k_SCRATCH_1_OFFS(n, k, ccu)\
++	((ccu) ? (0x20064 + (0x1000 * (n)) + (0x80 * (k)))\
++	: (0x20064 + (0x4000 * (n)) + (0x80 * (k))))
++#define GPII_n_CH_k_SCRATCH_2_OFFS(n, k, ccu)\
++	((ccu) ? (0x20068 + (0x1000 * (n)) + (0x80 * (k)))\
++	: (0x20068 + (0x4000 * (n)) + (0x80 * (k))))
++#define GPII_n_CH_k_SCRATCH_3_OFFS(n, k, ccu)\
++	((ccu) ? (0x2006C + (0x1000 * (n)) + (0x80 * (k)))\
++	: (0x2006C + (0x4000 * (n)) + (0x80 * (k))))
++
++#define GPI_GPII_n_EV_GSI_CONFIG_MULTI_VM(n) (0x1E000 + (0x80 * n))
++#define GPI_MULTI_VM_FEATURE_EN (0x1F020)
++#define GPI_GPII_n_EV_CNTXT_TYPE_COMP_IRQ(n) (0x20D2C + (0x1000 * n))
+ 
+ struct __packed gpi_tre {
+ 	u32 dword[4];
+@@ -489,6 +563,15 @@ struct gpi_ring {
+ 	bool configured;
+ };
+ 
++struct gpi_config {
++	bool is_ccu_qup;
++	int ee_offset;
++	int offset;
++	int irq_off;
++	int db_off;
++	int scratch_off;
++};
++
+ struct gpi_dev {
+ 	struct dma_device dma_device;
+ 	struct device *dev;
+@@ -499,6 +582,7 @@ struct gpi_dev {
+ 	u32 gpii_mask; /* gpii instances available for apps */
+ 	u32 ev_factor; /* ev ring length factor */
+ 	struct gpii *gpiis;
++	struct gpi_config *cfg;
+ };
+ 
+ struct reg_info {
+@@ -521,6 +605,8 @@ struct gchan {
+ 	u32 dir;
+ 	struct gpi_ring ch_ring;
+ 	void *config;
++	u32 mode;
++	u32 ch_type;
+ };
+ 
+ struct gpii {
+@@ -644,19 +730,26 @@ gpi_update_reg(struct gpii *gpii, u32 offset, u32 mask, u32 val)
+ 
+ static void gpi_disable_interrupts(struct gpii *gpii)
+ {
+-	gpi_update_reg(gpii, GPII_n_CNTXT_TYPE_IRQ_MSK_OFFS(gpii->gpii_id),
++	gpi_update_reg(gpii, GPII_n_CNTXT_TYPE_IRQ_MSK_OFFS
++			(gpii->gpii_id, gpii->gpi_dev->cfg->irq_off),
+ 		       GPII_n_CNTXT_TYPE_IRQ_MSK_BMSK, 0);
+-	gpi_update_reg(gpii, GPII_n_CNTXT_SRC_IEOB_IRQ_MSK_OFFS(gpii->gpii_id),
++	gpi_update_reg(gpii, GPII_n_CNTXT_SRC_IEOB_IRQ_MSK_OFFS
++			(gpii->gpii_id, gpii->gpi_dev->cfg->irq_off),
+ 		       GPII_n_CNTXT_SRC_IEOB_IRQ_MSK_BMSK, 0);
+-	gpi_update_reg(gpii, GPII_n_CNTXT_SRC_CH_IRQ_MSK_OFFS(gpii->gpii_id),
++	gpi_update_reg(gpii, GPII_n_CNTXT_SRC_CH_IRQ_MSK_OFFS
++			(gpii->gpii_id, gpii->gpi_dev->cfg->irq_off),
+ 		       GPII_n_CNTXT_SRC_CH_IRQ_MSK_BMSK, 0);
+-	gpi_update_reg(gpii, GPII_n_CNTXT_SRC_EV_CH_IRQ_MSK_OFFS(gpii->gpii_id),
++	gpi_update_reg(gpii, GPII_n_CNTXT_SRC_EV_CH_IRQ_MSK_OFFS
++			(gpii->gpii_id, gpii->gpi_dev->cfg->irq_off),
+ 		       GPII_n_CNTXT_SRC_EV_CH_IRQ_MSK_BMSK, 0);
+-	gpi_update_reg(gpii, GPII_n_CNTXT_GLOB_IRQ_EN_OFFS(gpii->gpii_id),
++	gpi_update_reg(gpii, GPII_n_CNTXT_GLOB_IRQ_EN_OFFS
++			(gpii->gpii_id, gpii->gpi_dev->cfg->irq_off),
+ 		       GPII_n_CNTXT_GPII_IRQ_EN_BMSK, 0);
+-	gpi_update_reg(gpii, GPII_n_CNTXT_GPII_IRQ_EN_OFFS(gpii->gpii_id),
++	gpi_update_reg(gpii, GPII_n_CNTXT_GPII_IRQ_EN_OFFS
++			(gpii->gpii_id, gpii->gpi_dev->cfg->irq_off),
+ 		       GPII_n_CNTXT_GPII_IRQ_EN_BMSK, 0);
+-	gpi_update_reg(gpii, GPII_n_CNTXT_INTSET_OFFS(gpii->gpii_id),
++	gpi_update_reg(gpii, GPII_n_CNTXT_INTSET_OFFS
++			(gpii->gpii_id, gpii->gpi_dev->cfg->irq_off),
+ 		       GPII_n_CNTXT_INTSET_BMSK, 0);
+ 
+ 	gpii->cntxt_type_irq_msk = 0;
+@@ -694,32 +787,52 @@ static int gpi_config_interrupts(struct gpii *gpii, enum gpii_irq_settings setti
+ 			gpii->cntxt_type_irq_msk |= GPII_n_CNTXT_TYPE_IRQ_MSK_IEOB;
+ 		else
+ 			gpii->cntxt_type_irq_msk &= ~(GPII_n_CNTXT_TYPE_IRQ_MSK_IEOB);
+-		gpi_update_reg(gpii, GPII_n_CNTXT_TYPE_IRQ_MSK_OFFS(gpii->gpii_id),
++		gpi_update_reg(gpii, GPII_n_CNTXT_TYPE_IRQ_MSK_OFFS
++			       (gpii->gpii_id, gpii->gpi_dev->cfg->irq_off),
+ 			       GPII_n_CNTXT_TYPE_IRQ_MSK_BMSK, gpii->cntxt_type_irq_msk);
++		gpi_update_reg(gpii, GPII_n_CNTXT_TYPE_IRQ_MSK_OFFS
++			       (gpii->gpii_id, gpii->gpi_dev->cfg->irq_off),
++			       GPII_n_CNTXT_TYPE_IRQ_MSK_BMSK,
++			       gpii->cntxt_type_irq_msk);
+ 	} else {
+-		gpi_update_reg(gpii, GPII_n_CNTXT_TYPE_IRQ_MSK_OFFS(gpii->gpii_id),
++		gpi_update_reg(gpii, GPII_n_CNTXT_TYPE_IRQ_MSK_OFFS
++			       (gpii->gpii_id, gpii->gpi_dev->cfg->irq_off),
+ 			       GPII_n_CNTXT_TYPE_IRQ_MSK_BMSK, enable);
+-		gpi_update_reg(gpii, GPII_n_CNTXT_SRC_IEOB_IRQ_MSK_OFFS(gpii->gpii_id),
++		gpi_update_reg(gpii, GPII_n_CNTXT_TYPE_IRQ_MSK_OFFS
++			       (gpii->gpii_id, gpii->gpi_dev->cfg->irq_off),
++			       GPII_n_CNTXT_TYPE_IRQ_MSK_BMSK, enable);
++		gpi_update_reg(gpii, GPII_n_CNTXT_SRC_IEOB_IRQ_MSK_OFFS
++			       (gpii->gpii_id, gpii->gpi_dev->cfg->irq_off),
+ 			       GPII_n_CNTXT_SRC_IEOB_IRQ_MSK_BMSK,
+ 			       GPII_n_CNTXT_SRC_IEOB_IRQ_MSK_BMSK);
+-		gpi_update_reg(gpii, GPII_n_CNTXT_SRC_CH_IRQ_MSK_OFFS(gpii->gpii_id),
++		gpi_update_reg(gpii, GPII_n_CNTXT_SRC_CH_IRQ_MSK_OFFS
++			       (gpii->gpii_id, gpii->gpi_dev->cfg->irq_off),
+ 			       GPII_n_CNTXT_SRC_CH_IRQ_MSK_BMSK,
+ 			       GPII_n_CNTXT_SRC_CH_IRQ_MSK_BMSK);
+-		gpi_update_reg(gpii, GPII_n_CNTXT_SRC_EV_CH_IRQ_MSK_OFFS(gpii->gpii_id),
++		gpi_update_reg(gpii, GPII_n_CNTXT_SRC_EV_CH_IRQ_MSK_OFFS
++			       (gpii->gpii_id, gpii->gpi_dev->cfg->irq_off),
+ 			       GPII_n_CNTXT_SRC_EV_CH_IRQ_MSK_BMSK,
+ 			       GPII_n_CNTXT_SRC_EV_CH_IRQ_MSK_BMSK);
+-		gpi_update_reg(gpii, GPII_n_CNTXT_GLOB_IRQ_EN_OFFS(gpii->gpii_id),
++		gpi_update_reg(gpii, GPII_n_CNTXT_GLOB_IRQ_EN_OFFS
++			       (gpii->gpii_id, gpii->gpi_dev->cfg->irq_off),
+ 			       GPII_n_CNTXT_GPII_IRQ_EN_BMSK,
+ 			       GPII_n_CNTXT_GPII_IRQ_EN_BMSK);
+-		gpi_update_reg(gpii, GPII_n_CNTXT_GPII_IRQ_EN_OFFS(gpii->gpii_id),
++		gpi_update_reg(gpii, GPII_n_CNTXT_GPII_IRQ_EN_OFFS
++			       (gpii->gpii_id, gpii->gpi_dev->cfg->irq_off),
+ 			       GPII_n_CNTXT_GPII_IRQ_EN_BMSK, GPII_n_CNTXT_GPII_IRQ_EN_BMSK);
+-		gpi_update_reg(gpii, GPII_n_CNTXT_MSI_BASE_LSB_OFFS(gpii->gpii_id), U32_MAX, 0);
+-		gpi_update_reg(gpii, GPII_n_CNTXT_MSI_BASE_MSB_OFFS(gpii->gpii_id), U32_MAX, 0);
+-		gpi_update_reg(gpii, GPII_n_CNTXT_SCRATCH_0_OFFS(gpii->gpii_id), U32_MAX, 0);
+-		gpi_update_reg(gpii, GPII_n_CNTXT_SCRATCH_1_OFFS(gpii->gpii_id), U32_MAX, 0);
+-		gpi_update_reg(gpii, GPII_n_CNTXT_INTSET_OFFS(gpii->gpii_id),
++		gpi_update_reg(gpii, GPII_n_CNTXT_MSI_BASE_LSB_OFFS
++			       (gpii->gpii_id, gpii->gpi_dev->cfg->irq_off), U32_MAX, 0);
++		gpi_update_reg(gpii, GPII_n_CNTXT_MSI_BASE_MSB_OFFS
++			       (gpii->gpii_id, gpii->gpi_dev->cfg->irq_off), U32_MAX, 0);
++		gpi_update_reg(gpii, GPII_n_CNTXT_SCRATCH_0_OFFS
++			       (gpii->gpii_id, gpii->gpi_dev->cfg->scratch_off), U32_MAX, 0);
++		gpi_update_reg(gpii, GPII_n_CNTXT_SCRATCH_1_OFFS
++			       (gpii->gpii_id, gpii->gpi_dev->cfg->scratch_off), U32_MAX, 0);
++		gpi_update_reg(gpii, GPII_n_CNTXT_INTSET_OFFS
++			       (gpii->gpii_id, gpii->gpi_dev->cfg->irq_off),
+ 			       GPII_n_CNTXT_INTSET_BMSK, 1);
+-		gpi_update_reg(gpii, GPII_n_ERROR_LOG_OFFS(gpii->gpii_id), U32_MAX, 0);
++		gpi_update_reg(gpii, GPII_n_ERROR_LOG_OFFS
++			       (gpii->gpii_id, gpii->gpi_dev->cfg->irq_off), U32_MAX, 0);
+ 
+ 		gpii->cntxt_type_irq_msk = enable;
+ 	}
+@@ -809,13 +922,13 @@ static void gpi_process_ieob(struct gpii *gpii)
+ static void gpi_process_ch_ctrl_irq(struct gpii *gpii)
+ {
+ 	u32 gpii_id = gpii->gpii_id;
+-	u32 offset = GPII_n_CNTXT_SRC_GPII_CH_IRQ_OFFS(gpii_id);
++	u32 offset = GPII_n_CNTXT_SRC_GPII_CH_IRQ_OFFS(gpii_id, gpii->gpi_dev->cfg->irq_off);
+ 	u32 ch_irq = gpi_read_reg(gpii, gpii->regs + offset);
+ 	struct gchan *gchan;
+ 	u32 chid, state;
+ 
+ 	/* clear the status */
+-	offset = GPII_n_CNTXT_SRC_CH_IRQ_CLR_OFFS(gpii_id);
++	offset = GPII_n_CNTXT_SRC_CH_IRQ_CLR_OFFS(gpii_id, gpii->gpi_dev->cfg->irq_off);
+ 	gpi_write_reg(gpii, gpii->regs + offset, (u32)ch_irq);
+ 
+ 	for (chid = 0; chid < MAX_CHANNELS_PER_GPII; chid++) {
+@@ -850,7 +963,7 @@ static void gpi_process_ch_ctrl_irq(struct gpii *gpii)
+ static void gpi_process_gen_err_irq(struct gpii *gpii)
+ {
+ 	u32 gpii_id = gpii->gpii_id;
+-	u32 offset = GPII_n_CNTXT_GPII_IRQ_STTS_OFFS(gpii_id);
++	u32 offset = GPII_n_CNTXT_GPII_IRQ_STTS_OFFS(gpii_id, gpii->gpi_dev->cfg->irq_off);
+ 	u32 irq_stts = gpi_read_reg(gpii, gpii->regs + offset);
+ 
+ 	/* clear the status */
+@@ -858,7 +971,7 @@ static void gpi_process_gen_err_irq(struct gpii *gpii)
+ 		    irq_stts);
+ 
+ 	/* Clear the register */
+-	offset = GPII_n_CNTXT_GPII_IRQ_CLR_OFFS(gpii_id);
++	offset = GPII_n_CNTXT_GPII_IRQ_CLR_OFFS(gpii_id, gpii->gpi_dev->cfg->irq_off);
+ 	gpi_write_reg(gpii, gpii->regs + offset, irq_stts);
+ }
+ 
+@@ -866,10 +979,11 @@ static void gpi_process_gen_err_irq(struct gpii *gpii)
+ static void gpi_process_glob_err_irq(struct gpii *gpii)
+ {
+ 	u32 gpii_id = gpii->gpii_id;
+-	u32 offset = GPII_n_CNTXT_GLOB_IRQ_STTS_OFFS(gpii_id);
++	u32 offset = GPII_n_CNTXT_GLOB_IRQ_STTS_OFFS
++			(gpii_id, gpii->gpi_dev->cfg->irq_off);
+ 	u32 irq_stts = gpi_read_reg(gpii, gpii->regs + offset);
+ 
+-	offset = GPII_n_CNTXT_GLOB_IRQ_CLR_OFFS(gpii_id);
++	offset = GPII_n_CNTXT_GLOB_IRQ_CLR_OFFS(gpii_id, gpii->gpi_dev->cfg->irq_off);
+ 	gpi_write_reg(gpii, gpii->regs + offset, irq_stts);
+ 
+ 	/* only error interrupt should be set */
+@@ -879,7 +993,7 @@ static void gpi_process_glob_err_irq(struct gpii *gpii)
+ 		return;
+ 	}
+ 
+-	offset = GPII_n_ERROR_LOG_OFFS(gpii_id);
++	offset = GPII_n_ERROR_LOG_OFFS(gpii_id, gpii->gpi_dev->cfg->irq_off);
+ 	gpi_write_reg(gpii, gpii->regs + offset, 0);
+ }
+ 
+@@ -904,7 +1018,7 @@ static irqreturn_t gpi_handle_irq(int irq, void *data)
+ 		goto exit_irq;
+ 	}
+ 
+-	offset = GPII_n_CNTXT_TYPE_IRQ_OFFS(gpii->gpii_id);
++	offset = GPII_n_CNTXT_TYPE_IRQ_OFFS(gpii->gpii_id, gpii->gpi_dev->cfg->irq_off);
+ 	type = gpi_read_reg(gpii, gpii->regs + offset);
+ 
+ 	do {
+@@ -927,11 +1041,12 @@ static irqreturn_t gpi_handle_irq(int irq, void *data)
+ 
+ 			GPI_DBG_LOG(LOG_LVL_INFO, gpii->gpi_dev->dev,
+ 				    "processing EV CTRL interrupt\n");
+-			offset = GPII_n_CNTXT_SRC_EV_CH_IRQ_OFFS(gpii_id);
++			offset = GPII_n_CNTXT_SRC_EV_CH_IRQ_OFFS
++				(gpii_id, gpii->gpi_dev->cfg->irq_off);
+ 			ev_ch_irq = gpi_read_reg(gpii, gpii->regs + offset);
+ 
+ 			offset = GPII_n_CNTXT_SRC_EV_CH_IRQ_CLR_OFFS
+-				(gpii_id);
++				(gpii_id, gpii->gpi_dev->cfg->irq_off);
+ 			gpi_write_reg(gpii, gpii->regs + offset, ev_ch_irq);
+ 			ev_state = gpi_read_reg(gpii, gpii->ev_cntxt_base_reg +
+ 						CNTXT_0_CONFIG);
+@@ -968,7 +1083,7 @@ static irqreturn_t gpi_handle_irq(int irq, void *data)
+ 			goto exit_irq;
+ 		}
+ 
+-		offset = GPII_n_CNTXT_TYPE_IRQ_OFFS(gpii->gpii_id);
++		offset = GPII_n_CNTXT_TYPE_IRQ_OFFS(gpii->gpii_id, gpii->gpi_dev->cfg->irq_off);
+ 		type = gpi_read_reg(gpii, gpii->regs + offset);
+ 	} while (type);
+ 
+@@ -1368,12 +1483,22 @@ static int gpi_alloc_chan(struct gchan *chan, bool send_alloc_cmd)
+ 		      upper_32_bits(ring->phys_addr));
+ 	gpi_write_reg(gpii, chan->ch_cntxt_db_reg + CNTXT_5_RING_RP_MSB - CNTXT_4_RING_RP_LSB,
+ 		      upper_32_bits(ring->phys_addr));
+-	gpi_write_reg(gpii, gpii->regs + GPII_n_CH_k_SCRATCH_0_OFFS(id, chid),
+-		      GPII_n_CH_k_SCRATCH_0(pair_chid, chan->protocol, chan->seid));
+-	gpi_write_reg(gpii, gpii->regs + GPII_n_CH_k_SCRATCH_1_OFFS(id, chid), 0);
+-	gpi_write_reg(gpii, gpii->regs + GPII_n_CH_k_SCRATCH_2_OFFS(id, chid), 0);
+-	gpi_write_reg(gpii, gpii->regs + GPII_n_CH_k_SCRATCH_3_OFFS(id, chid), 0);
+-	gpi_write_reg(gpii, gpii->regs + GPII_n_CH_k_QOS_OFFS(id, chid), 1);
++	gpi_write_reg(gpii, gpii->regs + GPII_n_CH_k_SCRATCH_0_OFFS
++		      (id, chid, gpii->gpi_dev->cfg->is_ccu_qup),
++		      GPII_n_CH_k_SCRATCH_0(pair_chid, chan->protocol, chan->mode,
++					    chan->ch_type, chan->seid));
++	gpi_write_reg(gpii, gpii->regs + GPII_n_CH_k_SCRATCH_0_OFFS
++		      (id, chid, gpii->gpi_dev->cfg->is_ccu_qup),
++		       GPII_n_CH_k_SCRATCH_0(pair_chid, chan->protocol, chan->mode,
++					     chan->ch_type, chan->seid));
++	gpi_write_reg(gpii, gpii->regs + GPII_n_CH_k_SCRATCH_1_OFFS
++		      (id, chid, gpii->gpi_dev->cfg->is_ccu_qup), 0);
++	gpi_write_reg(gpii, gpii->regs + GPII_n_CH_k_SCRATCH_2_OFFS
++		      (id, chid, gpii->gpi_dev->cfg->is_ccu_qup), 0);
++	gpi_write_reg(gpii, gpii->regs + GPII_n_CH_k_SCRATCH_3_OFFS
++		      (id, chid, gpii->gpi_dev->cfg->is_ccu_qup), 0);
++	gpi_write_reg(gpii, gpii->regs + GPII_n_CH_k_QOS_OFFS
++		      (id, chid, gpii->gpi_dev->cfg->is_ccu_qup), 1);
+ 
+ 	/* flush all the writes */
+ 	wmb();
+@@ -2427,6 +2552,7 @@ static int gpi_probe(struct platform_device *pdev)
+ 	unsigned int i;
+ 	u32 ee_offset;
+ 	int ret;
++	const struct gpi_config *data;
+ 
+ 	gpi_dev = devm_kzalloc(&pdev->dev, sizeof(*gpi_dev), GFP_KERNEL);
+ 	if (!gpi_dev)
+@@ -2454,8 +2580,19 @@ static int gpi_probe(struct platform_device *pdev)
+ 		return ret;
+ 	}
+ 
+-	ee_offset = (uintptr_t)device_get_match_data(gpi_dev->dev);
+-	gpi_dev->ee_base = gpi_dev->ee_base - ee_offset;
++	data = device_get_match_data(gpi_dev->dev);
++	if (!data)
++		return -EINVAL;
++
++	gpi_dev->cfg = devm_kzalloc(gpi_dev->dev, sizeof(*gpi_dev->cfg),
++				    GFP_KERNEL);
++	if (!gpi_dev->cfg)
++		return -ENOMEM;
++
++	if (data->is_ccu_qup)
++		gpi_dev->cfg = data;
++
++	gpi_dev->ee_base = gpi_dev->ee_base - data->ee_offset;
+ 
+ 	gpi_dev->ev_factor = EV_FACTOR;
+ 
+@@ -2481,11 +2618,15 @@ static int gpi_probe(struct platform_device *pdev)
+ 			continue;
+ 
+ 		/* set up ev cntxt register map */
+-		gpii->ev_cntxt_base_reg = gpi_dev->ee_base + GPII_n_EV_CH_k_CNTXT_0_OFFS(i, 0);
+-		gpii->ev_cntxt_db_reg = gpi_dev->ee_base + GPII_n_EV_CH_k_DOORBELL_0_OFFS(i, 0);
++		gpii->ev_cntxt_base_reg = (gpi_dev->ee_base +
++				(u64)(GPII_n_EV_CH_k_CNTXT_0_OFFS(i, 0, gpi_dev->cfg->offset)));
++		gpii->ev_cntxt_db_reg = (gpi_dev->ee_base +
++				(u64)(GPII_n_EV_CH_k_DOORBELL_0_OFFS(i, 0, gpi_dev->cfg->db_off)));
+ 		gpii->ev_ring_rp_lsb_reg = gpii->ev_cntxt_base_reg + CNTXT_4_RING_RP_LSB;
+-		gpii->ev_cmd_reg = gpi_dev->ee_base + GPII_n_EV_CH_CMD_OFFS(i);
+-		gpii->ieob_clr_reg = gpi_dev->ee_base + GPII_n_CNTXT_SRC_IEOB_IRQ_CLR_OFFS(i);
++		gpii->ev_cmd_reg = (gpi_dev->ee_base +
++				(u64)(GPII_n_EV_CH_CMD_OFFS(i, gpi_dev->cfg->offset)));
++		gpii->ieob_clr_reg = (gpi_dev->ee_base +
++				(u64)(GPII_n_CNTXT_SRC_IEOB_IRQ_CLR_OFFS(i, gpi_dev->cfg->irq_off)));
+ 
+ 		/* set up irq */
+ 		ret = platform_get_irq(pdev, i);
+@@ -2499,10 +2640,11 @@ static int gpi_probe(struct platform_device *pdev)
+ 
+ 			/* set up ch cntxt register map */
+ 			gchan->ch_cntxt_base_reg = gpi_dev->ee_base +
+-				GPII_n_CH_k_CNTXT_0_OFFS(i, chan);
++				(u64)(GPII_n_CH_k_CNTXT_0_OFFS(i, chan, gpi_dev->cfg->is_ccu_qup));
+ 			gchan->ch_cntxt_db_reg = gpi_dev->ee_base +
+-				GPII_n_CH_k_DOORBELL_0_OFFS(i, chan);
+-			gchan->ch_cmd_reg = gpi_dev->ee_base + GPII_n_CH_CMD_OFFS(i);
++				(u64)(GPII_n_CH_k_DOORBELL_0_OFFS(i, chan, gpi_dev->cfg->db_off));
++			gchan->ch_cmd_reg = gpi_dev->ee_base +
++			(u64)(GPII_n_CH_CMD_OFFS(i, gpi_dev->cfg->is_ccu_qup));
+ 
+ 			/* vchan setup */
+ 			vchan_init(&gchan->vc, &gpi_dev->dma_device);
+@@ -2566,19 +2708,54 @@ static int gpi_probe(struct platform_device *pdev)
+ 	return ret;
+ }
+ 
++static const struct gpi_config gpi_data = {
++	.is_ccu_qup = false,
++	.ee_offset = 0x0,
++	.offset = 0x0,
++	.db_off = 0x0,
++	.scratch_off = 0x0,
++	.irq_off = 0x0,
++};
++
++static const struct gpi_config gpi_ee_data = {
++	.is_ccu_qup = false,
++	.ee_offset = 0x10000,
++	.offset = 0x0,
++	.db_off = 0x0,
++	.scratch_off = 0x0,
++	.irq_off = 0x0,
++};
++
++static const struct gpi_config ccu_gpi_data = {
++	.is_ccu_qup = true,
++	.ee_offset = 0x10000,
++	.offset = 0xC00,
++	.db_off = 0x1800,
++	.irq_off = 0x2400,
++	.scratch_off = 0x2500,
++};
++
+ static const struct of_device_id gpi_of_match[] = {
+-	{ .compatible = "qcom,sdm845-gpi-dma", .data = (void *)0x0 },
+-	{ .compatible = "qcom,sm6350-gpi-dma", .data = (void *)0x10000 },
++	{ .compatible = "qcom,sdm845-gpi-dma", .data = &gpi_data },
++	{ .compatible = "qcom,sm6350-gpi-dma", .data = &gpi_ee_data },
+ 	/*
+ 	 * Do not grow the list for compatible devices. Instead use
+ 	 * qcom,sdm845-gpi-dma (for ee_offset = 0x0) or qcom,sm6350-gpi-dma
+ 	 * (for ee_offset = 0x10000).
+ 	 */
+-	{ .compatible = "qcom,sc7280-gpi-dma", .data = (void *)0x10000 },
+-	{ .compatible = "qcom,sm8150-gpi-dma", .data = (void *)0x0 },
+-	{ .compatible = "qcom,sm8250-gpi-dma", .data = (void *)0x0 },
+-	{ .compatible = "qcom,sm8350-gpi-dma", .data = (void *)0x10000 },
+-	{ .compatible = "qcom,sm8450-gpi-dma", .data = (void *)0x10000 },
++	{ .compatible = "qcom,sc7280-gpi-dma", .data = &gpi_ee_data },
++	{ .compatible = "qcom,sm8150-gpi-dma", .data = &gpi_data },
++	{ .compatible = "qcom,sm8250-gpi-dma", .data = &gpi_data },
++	{ .compatible = "qcom,sm8350-gpi-dma", .data = &gpi_ee_data },
++	{ .compatible = "qcom,sm8450-gpi-dma", .data = &gpi_ee_data },
++	/*
++	 * For SA8797P target, CCU QUP is new hardware and for that the
++	 * start address offset of sub-blocks within QUPv3 has been modified
++	 * to reduce address space, hence new offset provided using data
++	 * field.
++	 */
++	{ .compatible = "qcom,sa8797-ccu-gpi-dma", .data = &ccu_gpi_data },
++	{ .compatible = "qcom,sa8797-gpi-dma", .data = &gpi_ee_data },
+ 	{ },
+ };
+ MODULE_DEVICE_TABLE(of, gpi_of_match);
+diff --git a/include/linux/soc/qcom/geni-se.h b/include/linux/soc/qcom/geni-se.h
+index d30b33e68469..a8b9deb2484d 100644
+--- a/include/linux/soc/qcom/geni-se.h
++++ b/include/linux/soc/qcom/geni-se.h
+@@ -344,6 +344,42 @@ struct geni_se {
+ #define DOMAIN_IDX_POWER	0
+ #define DOMAIN_IDX_PERF		1
+ 
++/* CCU: FUSA Register */
++#define SE_GENI_FUSA_STATUS_REGISTER_GENI_CFG_CLK_RESET		0xF0
++#define SE_GENI_FUSA_STATUS_REGISTER_GENI_IMAGE_REG_CLK_RESET	0x1F0
++#define SE_GENI_FUSA_STATUS_REGISTER_SEC_SLV_CLK_RESET		0x518
++#define SE_GENI_FUSA_STATUS_REGISTER_DATA_REG_CLK_RESET		0xBF0
++#define SE_GENI_FUSA_STATUS_REGISTER_DMA_CLK_RESET		0xE4C
++#define SE_GENI_FUSA_STATUS_REGISTER_QUP_COMMON_CLK_RESET	0xFFC
++
++/* CCU: ECC Register */
++#define SE_GENI_ECC_FAULT_INJ_RESULT_0		0x970
++#define SE_GENI_ECC_LOG_ERROR_i_ADDR_0		0x974
++#define SE_GENI_ECC_LOG_ERROR_i_INFO_0		0x994
++#define SE_GENI_ECC_VERSION_INFO		0x9B4
++#define SE_GENI_ECC_AUTO_MEM_INIT_STATUS_0	0x9B8
++#define SE_GENI_ECC_AUTO_MEM_INIT_0		0x9BC
++#define SE_GENI_ECC_CONTROL_0			0x9C0
++#define SE_GENI_ECC_FAULT_INJ_i_DATA_0		0x9C4
++#define SE_GENI_ECC_FAULT_INJ_SYNDROME_0	0x9E4
++#define SE_GENI_ECC_FAULT_INJ_ADDR_0		0x9E8
++#define SE_GENI_ECC_IRQ_SEC_0			0x9EC
++#define SE_GENI_ECC_CLEAR_COUNTER_0		0x9F0
++#define SE_GENI_ECC_CLEAR_FIFO_0		0x9F4
++#define SE_GENI_ECC_ERROR_COUNTER_0		0x9F8
++#define SE_GENI_ECC_FAULT_INJ_RESULT_1		0xB4C
++#define SE_GENI_ECC_LOG_ERROR_i_ADDR_1		0xB50
++#define SE_GENI_ECC_LOG_ERROR_i_INFO_1		0xB70
++#define SE_GENI_ECC_AUTO_MEM_INIT_STATUS_1	0xB94
++#define SE_GENI_ECC_AUTO_MEM_INIT_1		0xB98
++#define SE_GENI_ECC_CONTROL_1			0xB9C
++#define SE_GENI_ECC_FAULT_INJ_i_DATA_1		0xBA0
++#define SE_GENI_ECC_FAULT_INJ_ADDR_1		0XBC4
++#define SE_GENI_ECC_IRQ_SEC_1			0xBC8
++#define SE_GENI_ECC_CLEAR_COUNTER_1		0xBCC
++#define SE_GENI_ECC_CLEAR_FIFO_1		0xBD0
++#define SE_GENI_ECC_ERROR_COUNTER_1		0xBD4
++
+ #if IS_ENABLED(CONFIG_QCOM_GENI_SE)
+ 
+ u32 geni_se_get_qup_hw_version(struct geni_se *se);
+-- 
+2.34.1
+

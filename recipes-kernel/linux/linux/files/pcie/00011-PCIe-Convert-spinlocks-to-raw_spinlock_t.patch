@@ -1,0 +1,169 @@
+From 2a22841917a54ce2f7fa2ca5d6774ec585f778d9 Mon Sep 17 00:00:00 2001
+From: Rama Krishna Phani A <ramkri@qti.qualcomm.com>
+Date: Thu, 14 May 2026 12:13:06 +0530
+Subject: [PATCH] PCIe: Convert spinlocks to raw_spinlock_t
+
+Convert regular spinlocks to raw_spinlock_t in the Qualcomm PCIe ECAM
+driver to ensure proper operation on PREEMPT_RT (Real-Time) kernels.
+On PREEMPT_RT kernels, regular spinlocks are converted to rt_mutex which
+are preemptible and can sleep. Convert both spinlocks to raw_spinlock_t
+which remain true spinlocks(non-preemptible) even on PREEMPT_RT kernels.
+
+Add state validation checks to prevent duplicate initialization and
+deinitialization operations via sysfs interface. This prevents resource
+leaks, double-free errors, and system instability caused by repeated
+init/deinit calls.
+
+Change-Id: Ieda9c76842d45cf807ccdca1b65d83e9d714574c
+Signed-off-by: Rama Krishna Phani A <ramkri@qti.qualcomm.com>
+---
+ drivers/pci/controller/pcie-qcom-ecam.c | 44 ++++++++++++++++++-------
+ 1 file changed, 33 insertions(+), 11 deletions(-)
+
+diff --git a/drivers/pci/controller/pcie-qcom-ecam.c b/drivers/pci/controller/pcie-qcom-ecam.c
+index 82133812b586..0b2bada7dad0 100644
+--- a/drivers/pci/controller/pcie-qcom-ecam.c
++++ b/drivers/pci/controller/pcie-qcom-ecam.c
+@@ -221,7 +221,7 @@ struct qcom_msi_grp {
+  * @inner_domain:	parent domain; gen irq related
+  * @msi_domain:		child domain; pcie related
+  * @msi_db_addr:	MSI doorbell address
+- * @cfg_lock:		lock for configuring MSI controller registers
++ * @cfg_lock:		raw spinlock for configuring MSI controller registers (RT-safe)
+  * @pcie_msi_cfg:	memory-mapped MSI controller register space
+  */
+ struct qcom_msi {
+@@ -236,7 +236,7 @@ struct qcom_msi {
+ 	struct irq_domain *inner_domain;
+ 	struct irq_domain *msi_domain;
+ 	phys_addr_t msi_db_addr;
+-	spinlock_t cfg_lock;
++	raw_spinlock_t cfg_lock;
+ 	void __iomem *pcie_msi_cfg;
+ };
+ 
+@@ -263,7 +263,7 @@ struct qcom_msi_client {
+  * @dbi_base:	dbi address in memory map
+  * @mhi:	mhi address in memory map
+  * @global_irq	multiplexed irq for error interrupts
+- * @safety_lock	spinlock for exclusion btw safety errors
++ * @safety_lock	raw spinlock for exclusion btw safety errors (RT-safe)
+  * pcie_fault	Count of each error type
+  * pcie_fault_total	Total count of all errors occured on a RP
+  * @msi: pointer to the qcom_msi structure
+@@ -281,7 +281,7 @@ struct qcom_pcie {
+ 	void __iomem *dbi_base;
+ 	void __iomem *mhi;
+ 	unsigned int global_irq;
+-	spinlock_t safety_lock;
++	raw_spinlock_t safety_lock;
+ 	u32 pcie_fault[MAX_PCIE_SAFETY_FAULT];
+ 	u32 pcie_fault_total;
+ 	struct qcom_msi *msi;
+@@ -336,11 +336,11 @@ static void qcom_msi_mask_irq(struct irq_data *data)
+ 	msi = msi_irq->client->msi;
+ 	msi_grp = msi_irq->grp;
+ 
+-	spin_lock_irqsave(&msi->cfg_lock, flags);
++	raw_spin_lock_irqsave(&msi->cfg_lock, flags);
+ 	pci_msi_mask_irq(data);
+ 	msi_grp->mask |= BIT(msi_irq->grp_index);
+ 	writel(msi_grp->mask, msi_grp->int_mask_reg);
+-	spin_unlock_irqrestore(&msi->cfg_lock, flags);
++	raw_spin_unlock_irqrestore(&msi->cfg_lock, flags);
+ }
+ 
+ static void qcom_msi_unmask_irq(struct irq_data *data)
+@@ -359,11 +359,11 @@ static void qcom_msi_unmask_irq(struct irq_data *data)
+ 	msi = msi_irq->client->msi;
+ 	msi_grp = msi_irq->grp;
+ 
+-	spin_lock_irqsave(&msi->cfg_lock, flags);
++	raw_spin_lock_irqsave(&msi->cfg_lock, flags);
+ 	msi_grp->mask &= ~BIT(msi_irq->grp_index);
+ 	writel(msi_grp->mask, msi_grp->int_mask_reg);
+ 	pci_msi_unmask_irq(data);
+-	spin_unlock_irqrestore(&msi->cfg_lock, flags);
++	raw_spin_unlock_irqrestore(&msi->cfg_lock, flags);
+ }
+ 
+ static struct irq_chip qcom_msi_irq_chip = {
+@@ -637,7 +637,7 @@ static struct qcom_msi *qcom_msi_init(struct qcom_pcie *pcie)
+ 
+ 	msi->dev = dev;
+ 	mutex_init(&msi->mutex);
+-	spin_lock_init(&msi->cfg_lock);
++	raw_spin_lock_init(&msi->cfg_lock);
+ 	INIT_LIST_HEAD(&msi->clients);
+ 
+ 	msi->msi_db_addr = MSI_DB_ADDR;
+@@ -831,7 +831,7 @@ static irqreturn_t qcom_pcie_global_irq_thread(int irq, void *data)
+ 		return IRQ_HANDLED;
+ 	}
+ 
+-	spin_lock_irqsave(&pcie->safety_lock, irqsave_flags);
++	raw_spin_lock_irqsave(&pcie->safety_lock, irqsave_flags);
+ 
+ 	counter++;
+ 	int_status = readl(pcie->dbi_base + DBI_SAFETY_STATUS);
+@@ -900,7 +900,7 @@ static irqreturn_t qcom_pcie_global_irq_thread(int irq, void *data)
+ 		qcom_pcie_check_spurious_int(pcie);
+ 	}
+ 
+-	spin_unlock_irqrestore(&pcie->safety_lock, irqsave_flags);
++	raw_spin_unlock_irqrestore(&pcie->safety_lock, irqsave_flags);
+ 	return IRQ_HANDLED;
+ }
+ 
+@@ -1337,6 +1337,13 @@ static ssize_t qcom_pcie_init_trigger_store(struct device *dev,
+ 		return -EBUSY;
+ 	}
+ 
++	/* Check if controller is already initialized */
++	if (pcie->pci_host_initialized) {
++		dev_warn(dev, "PCIe controller already initialized, skipping duplicate init\n");
++		mutex_unlock(&pcie->reset_lock);
++		return -EALREADY;
++	}
++
+ 	dev_info(dev, "Triggering qcom_pcie_init via sysfs\n");
+ 
+ 	/* Call qcom_pcie_init function */
+@@ -1394,6 +1401,13 @@ static ssize_t qcom_pcie_deinit_trigger_store(struct device *dev,
+ 		return -EBUSY;
+ 	}
+ 
++	/* Check if controller is already deinitialized */
++	if (!pcie->pci_host_initialized) {
++		dev_warn(dev, "PCIe controller already deinitialized, skipping duplicate deinit\n");
++		mutex_unlock(&pcie->reset_lock);
++		return -EALREADY;
++	}
++
+ 	dev_info(dev, "Triggering qcom_pcie_deinit via sysfs\n");
+ 
+ 	/* Call qcom_pcie_deinit function */
+@@ -1574,6 +1588,12 @@ static int qcom_pcie_link_transition_count(struct seq_file *s, void *data)
+ {
+ 	struct qcom_pcie *pcie = (struct qcom_pcie *)dev_get_drvdata(s->private);
+ 
++	/* Check if MHI region is available */
++	if (IS_ERR_OR_NULL(pcie->mhi)) {
++		seq_printf(s, "MHI region not available\n");
++		return 0;
++	}
++
+ 	seq_printf(s, "L0s transition count: %u\n",
+ 		   readl_relaxed(pcie->mhi + PARF_DEBUG_CNT_PM_LINKST_IN_L0S));
+ 
+@@ -1621,6 +1641,8 @@ static int qcom_pcie_ecam_probe(struct platform_device *pdev)
+ 
+ 	/* Initialize reset lock */
+ 	mutex_init(&pcie->reset_lock);
++	/* Initialize safety lock for RT-safe hardware register access */
++	raw_spin_lock_init(&pcie->safety_lock);
+ 
+ 	if (of_property_read_reg(dev->of_node, 0, &addr, NULL) < 0) {
+ 		dev_err(dev, "Failed to get dbi address\n");
+--
+

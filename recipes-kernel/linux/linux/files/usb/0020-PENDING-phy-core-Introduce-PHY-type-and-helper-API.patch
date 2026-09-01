@@ -1,0 +1,67 @@
+From 3743ba074b7d128d88e5a0abd1874b02dc9641f9 Mon Sep 17 00:00:00 2001
+From: Faisal Hassan <faisal.hassan@oss.qualcomm.com>
+Date: Thu, 13 Nov 2025 13:52:45 +0530
+Subject: [PATCH 1/3] PENDING: phy: core: Introduce PHY type and helper API
+
+Introduce enum phy_type and add a new 'type' field to struct phy_attrs,
+along with phy_get_type() to retrieve it.
+
+This allows consumers (e.g. USB) to distinguish specific PHY types such
+as eUSB2 and apply type-specific handling.
+
+Change-Id: If19e5fcda33dbe4d74a9f3ba99e2a145f8524878
+Signed-off-by: Faisal Hassan <faisal.hassan@oss.qualcomm.com>
+---
+ include/linux/phy/phy.h | 15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+
+diff --git a/include/linux/phy/phy.h b/include/linux/phy/phy.h
+index f6d607ef0e80..201a35d5bc01 100644
+--- a/include/linux/phy/phy.h
++++ b/include/linux/phy/phy.h
+@@ -45,6 +45,11 @@ enum phy_mode {
+ 	PHY_MODE_DP
+ };
+ 
++enum phy_type {
++	PHY_TYPE_INVALID,
++	PHY_TYPE_USB_EUSB2,
++};
++
+ enum phy_media {
+ 	PHY_MEDIA_DEFAULT,
+ 	PHY_MEDIA_SR,
+@@ -136,6 +141,7 @@ struct phy_attrs {
+ 	u32			bus_width;
+ 	u32			max_link_rate;
+ 	enum phy_mode		mode;
++	enum phy_type		type;
+ };
+ 
+ /**
+@@ -241,6 +247,10 @@ static inline enum phy_mode phy_get_mode(struct phy *phy)
+ {
+ 	return phy->attrs.mode;
+ }
++static inline enum phy_type phy_get_type(struct phy *phy)
++{
++	return phy->attrs.type;
++}
+ int phy_reset(struct phy *phy);
+ int phy_calibrate(struct phy *phy);
+ static inline int phy_get_bus_width(struct phy *phy)
+@@ -382,6 +392,11 @@ static inline enum phy_mode phy_get_mode(struct phy *phy)
+ 	return PHY_MODE_INVALID;
+ }
+ 
++static inline enum phy_type phy_get_type(struct phy *phy)
++{
++	return PHY_TYPE_INVALID;
++}
++
+ static inline int phy_reset(struct phy *phy)
+ {
+ 	if (!phy)
+-- 
+2.34.1
+

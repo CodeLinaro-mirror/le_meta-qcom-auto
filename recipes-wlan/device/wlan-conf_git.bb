@@ -15,8 +15,8 @@ LICENSE = "BSD-3-Clause"
 LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/\
 ${LICENSE};md5=550794465ba0ec5312d6919e203a55f9"
 
-SRC_URI = "${PATH_TO_REPO}/device/qcom/wlan/.git;protocol=${PROTO};destsuffix=device/qcom/wlan;usehead=1"
-SRCREV = "${AUTOREV}"
+SRC_URI = "${CLO_LA_GIT}/platform/vendor/qcom/wlan.git;branch=auto-wlan-service.lnx.1.4.r8-rel;protocol=${OSS_PROTO};destsuffix=device/qcom/wlan"
+SRCREV = "2536a284a5ccc942c51507b53bcf1ec1ff6a0928"
 PR = "r0"
 
 S = "${WORKDIR}/device"

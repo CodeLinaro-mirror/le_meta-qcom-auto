@@ -1,6 +1,6 @@
 PROVIDES_NAME = "kernel-module-${_MODNAME}"
 
-DEPENDS += "wlan-platform-dlkm virtual/kernel"
+DEPENDS += "wlan-platform-dlkm virtual/kernel python3-native"
 inherit autotools-brokensep module qperf module-sign
 
 WLAN_PLATFORM_PATH = "${STAGING_INCDIR}/wlan-platform"
@@ -20,6 +20,12 @@ EXTRA_OEMAKE:append = " ${WLAN_PLATFORM_CFG} "
 _LINUX_BUILD_TOP = "${WORKDIR}/${TARGET_DIR}wlan"
 
 do_unpack[deptask] = "do_populate_sysroot"
+
+qcacld_prepare_kbuild() {
+    sed -i 's/python -c/python3 -c/g' ${S}/Kbuild
+}
+do_configure[prefuncs] += "qcacld_prepare_kbuild"
+
 do_compile:prepend() {
     #Add gnu99 for compiler compatible issues
     sed -i '$a\ccflags-y += -std=gnu99' ${S}/Kbuild

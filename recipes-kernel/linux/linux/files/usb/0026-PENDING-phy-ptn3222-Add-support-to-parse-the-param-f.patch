@@ -1,0 +1,154 @@
+From 5b24e4becebd2e18b3fa7459de33ca1686e6695b Mon Sep 17 00:00:00 2001
+From: Hiren Gohel <vhiren@qti.qualcomm.com>
+Date: Thu, 21 Aug 2025 14:42:29 +0530
+Subject: [PATCH] PENDING: phy: ptn3222: Add support to parse the param from DT
+
+The existing driver lacked support for platforms that require
+PTN3222 repeater tuning. This change introduces driver support
+to enable tuning the repeater via Device Tree.
+
+Change-Id: Icd16a2b2f8fbac2d00e74ca4c2123e32bbe9f569
+Signed-off-by: Hiren Gohel <vhiren@qti.qualcomm.com>
+---
+ drivers/phy/phy-nxp-ptn3222.c | 85 ++++++++++++++++++++++++++++++++++-
+ 1 file changed, 84 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/phy/phy-nxp-ptn3222.c b/drivers/phy/phy-nxp-ptn3222.c
+index c6179d8701e6..1a59d49e1b47 100644
+--- a/drivers/phy/phy-nxp-ptn3222.c
++++ b/drivers/phy/phy-nxp-ptn3222.c
+@@ -13,13 +13,21 @@
+ 
+ #define NUM_SUPPLIES 2
+ 
++#define REDRIVER_REG_MAX 0x16
++
+ struct ptn3222 {
+ 	struct i2c_client *client;
+ 	struct phy *phy;
+ 	struct gpio_desc *reset_gpio;
+ 	struct regulator_bulk_data *supplies;
++	struct regmap *regmap;
++	struct device *dev;
++	u32 *rptr_tunning_seq;
++	u8 rptr_seq_len;
+ };
+ 
++static void ptn3222_repeater_update_seq(struct ptn3222 *ptn3222,
++                                                u32 *seq, u8 cnt);
+ static int ptn3222_init(struct phy *phy)
+ {
+ 	struct ptn3222 *ptn3222 = phy_get_drvdata(phy);
+@@ -31,6 +39,9 @@ static int ptn3222_init(struct phy *phy)
+ 
+ 	gpiod_set_value_cansleep(ptn3222->reset_gpio, 0);
+ 
++        ptn3222_repeater_update_seq(ptn3222, ptn3222->rptr_tunning_seq,
++                     ptn3222->rptr_seq_len);
++
+ 	return 0;
+ }
+ 
+@@ -40,7 +51,9 @@ static int ptn3222_exit(struct phy *phy)
+ 
+ 	gpiod_set_value_cansleep(ptn3222->reset_gpio, 1);
+ 
+-	return regulator_bulk_disable(NUM_SUPPLIES, ptn3222->supplies);
++	if (ptn3222->supplies)
++		return regulator_bulk_disable(NUM_SUPPLIES, ptn3222->supplies);
++	return 0;
+ }
+ 
+ static const struct phy_ops ptn3222_ops = {
+@@ -59,6 +72,64 @@ static const struct regulator_bulk_data ptn3222_supplies[NUM_SUPPLIES] = {
+ 	}
+ };
+ 
++static int ptn3222_i2c_write_reg(struct ptn3222 *ptn3222, u8 reg, u8 val)
++{
++	int ret;
++
++        ret = regmap_write(ptn3222->regmap, reg, val);
++        if (ret < 0) {
++                dev_err(ptn3222->dev, "failed to write 0x%02x to reg: 0x%02x ret=%d\n",
++                        val, reg, ret);
++                return ret;
++        }
++
++        return 0;
++}
++
++static inline int ptn3222_repeater_reg_write(struct ptn3222 *ptn3222,
++                                        u16 reg_offset, u8 write_val)
++{
++        return ptn3222_i2c_write_reg(ptn3222, reg_offset, write_val);
++}
++
++static void ptn3222_repeater_update_seq(struct ptn3222 *ptn3222,
++                                                u32 *seq, u8 cnt)
++{
++        int i;
++        for (i = 0; i < cnt; i = i+2)
++                ptn3222_repeater_reg_write(ptn3222, seq[i], seq[i+1]);
++}
++
++static int ptn3222_tune_param(struct device *dev, const char *prop,
++                u32 **seq, u8 *seq_cnt)
++{
++        int num_elem, ret;
++
++        num_elem = of_property_count_elems_of_size(dev->of_node, prop, sizeof(**seq));
++        if (num_elem > 0) {
++                if (num_elem % 2)
++                        return dev_err_probe(dev, -EINVAL, "%s invalid len\n", prop);
++
++                *seq_cnt = num_elem;
++                *seq = devm_kcalloc(dev, num_elem, sizeof(**seq), GFP_KERNEL);
++                if (!*seq)
++                        return -ENOMEM;
++
++                ret = of_property_read_u32_array(dev->of_node, prop, *seq, num_elem);
++                if (ret)
++                        return dev_err_probe(dev, ret, "%s read failed\n", prop);
++        }
++
++        return 0;
++}
++
++static const struct regmap_config ptn3222_regmap = {
++	.name = "nxp,ptn3222",
++	.max_register = REDRIVER_REG_MAX,
++	.reg_bits = 8,
++	.val_bits = 8,
++};
++
+ static int ptn3222_probe(struct i2c_client *client)
+ {
+ 	struct device *dev = &client->dev;
+@@ -78,11 +149,23 @@ static int ptn3222_probe(struct i2c_client *client)
+ 		return dev_err_probe(dev, PTR_ERR(ptn3222->reset_gpio),
+ 				     "unable to acquire reset gpio\n");
+ 
++	ptn3222->regmap = devm_regmap_init_i2c(client, &ptn3222_regmap);
++	if (IS_ERR(ptn3222->regmap))
++		return dev_err_probe (dev, PTR_ERR(ptn3222->regmap),
++			"Failed to allocate register map\n");
++
+ 	ret = devm_regulator_bulk_get_const(dev, NUM_SUPPLIES, ptn3222_supplies,
+ 					    &ptn3222->supplies);
+ 	if (ret)
+ 		return ret;
+ 
++	ptn3222->dev = dev;
++
++	ret = ptn3222_tune_param(dev, "nxp,override-param",
++			&ptn3222->rptr_tunning_seq, &ptn3222->rptr_seq_len);
++	if (ret < 0)
++		return dev_err_probe(dev, ret, "Failed to parse override params\n");
++
+ 	ptn3222->phy = devm_phy_create(dev, dev->of_node, &ptn3222_ops);
+ 	if (IS_ERR(ptn3222->phy)) {
+ 		dev_err(dev, "failed to create PHY: %d\n", ret);
+-- 
+2.34.1
+

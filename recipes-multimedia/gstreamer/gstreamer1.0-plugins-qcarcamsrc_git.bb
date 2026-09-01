@@ -18,8 +18,8 @@ DEPENDS += "\
 RDEPENDS:${PN} += "\
     gbm \
 "
-SRC_URI = "${PATH_TO_REPO}/gstreamer/gst-plugins-qti-oss/.git;protocol=${PROTO};destsuffix=gstreamer/gst-plugins-qti-oss;usehead=1"
-SRCREV = "${AUTOREV}"
+SRC_URI = "${CLO_LA_GIT}/platform/vendor/qcom-opensource/gst-plugins-qti-oss.git;branch=gst-auto-tools-plugins.4.0.r14-rel;protocol=${OSS_PROTO};destsuffix=gstreamer/gst-plugins-qti-oss"
+SRCREV = "a7707fc52a27b191315116288942b768fb69df47"
 S = "${WORKDIR}/gstreamer/gst-plugins-qti-oss/gst-plugin-qcarcamsrc"
 
 inherit meson pkgconfig

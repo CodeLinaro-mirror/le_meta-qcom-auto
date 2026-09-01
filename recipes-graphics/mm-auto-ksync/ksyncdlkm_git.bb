@@ -4,9 +4,9 @@ HOMEPAGE = "https://www.codelinaro.org"
 LICENSE = "GPLv2.0-with-linux-syscall-note"
 LIC_FILES_CHKSUM = "file://${QTI_LICENSE_DIR}/${LICENSE};md5=8afb6abdac9a14cb18a0d6c9c151e9b4"
 
-SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/mm-auto-ksync/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/mm-auto-ksync;usehead=1"
+SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom/opensource/mm-auto-ksync.git;branch=mm-auto-ksync.lnx.1.0.r12-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/mm-auto-ksync"
 
-SRCREV = "${AUTOREV}"
+SRCREV = "c9c98c4f1b6fae73d56e962844b31005f237c3ff"
 
 S = "${WORKDIR}/vendor/qcom/opensource/mm-auto-ksync"
 

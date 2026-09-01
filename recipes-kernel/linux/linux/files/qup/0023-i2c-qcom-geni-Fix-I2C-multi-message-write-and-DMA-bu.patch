@@ -1,0 +1,49 @@
+From 6bd16706322d4d47cd0c337c0a72885a2fcb03e6 Mon Sep 17 00:00:00 2001
+From: Aniket Randive <quic_arandive@quicinc.com>
+Date: Tue, 8 Apr 2025 11:00:07 +0530
+Subject: [PATCH 11/12] i2c: Fix I2C multi-message write and DMA buffer sync
+ issues
+
+Resolve bug in I2C code where multiple write message transfers fail
+due to incorrect GO TRE filling for the second write message. Clear
+the multi_msg flag for write messages to ensure proper operation.
+Address issue of receiving outdated data from DMA buffer after read
+transfers. Use dma_sync_single_for_cpu API to properly sync the
+buffer, ensuring the CPU and device have the most up-to-date and
+correct copy of the DMA buffer.
+
+Change-Id: Icbb0fb88b6d3396a73c9cd6bf413e52e5cb2fbea
+Signed-off-by: Aniket Randive <quic_arandive@quicinc.com>
+---
+ drivers/i2c/busses/i2c-qcom-geni.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/drivers/i2c/busses/i2c-qcom-geni.c b/drivers/i2c/busses/i2c-qcom-geni.c
+index 7520536fae43..d8abd5c7ad2f 100644
+--- a/drivers/i2c/busses/i2c-qcom-geni.c
++++ b/drivers/i2c/busses/i2c-qcom-geni.c
+@@ -1461,6 +1461,9 @@ static int geni_i2c_gpi_xfer(struct geni_i2c_dev *gi2c, struct i2c_msg msgs[], i
+ 
+ 		peripheral->addr = msgs[i].addr;
+ 
++		if (i > 0 && (!(msgs[i].flags & I2C_M_RD)))
++			peripheral->multi_msg = false;
++
+ 		if (gi2c->is_ccu_qup)
+ 			ret = geni_i2c_gpi(gi2c, &msgs[i], &config,
+ 					   &frame->msg[i].addr, &frame->msg[i].tx_buf,
+@@ -1514,6 +1517,11 @@ static int geni_i2c_gpi_xfer(struct geni_i2c_dev *gi2c, struct i2c_msg msgs[], i
+ 			goto err;
+ 		}
+ 
++		if (msgs[i].flags & I2C_M_RD) {
++			dma_sync_single_for_cpu(gi2c->se.dev->parent, rx_addr,
++						msgs[i].len, DMA_FROM_DEVICE);
++		}
++
+ 		geni_i2c_gpi_unmap(gi2c, &msgs[i], tx_buf, tx_addr, rx_buf, rx_addr);
+ 		if (gi2c->is_ccu_qup) {
+ 			if (gi2c->ccu.gpi[idx].released_cnt >= MAX_NUM_FRAMES)
+-- 
+2.34.1
+

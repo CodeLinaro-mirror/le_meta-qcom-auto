@@ -8,7 +8,7 @@ LIC_FILES_CHKSUM = "file://${QTI_LICENSE_DIR}/${LICENSE};md5=b796c0007db682166a1
 DEPENDS:append = " wayland-native pkgconfig-native wayland-protocols gbm gbm-headers virtual/egl bootkpi-logging"
 
 SRC_URI = "\
-    ${PATH_TO_REPO}/vendor/qcom/opensource/auto-gfx-app/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/auto-gfx-app;usehead=1 \
+    ${CLO_LE_GIT}/platform/vendor/qcom/opensource/auto-gfx-app.git;branch=auto-gfx-app.dev.1.0.r7-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/auto-gfx-app \
 "
 
 SRC_URI:append = " \
@@ -16,7 +16,7 @@ SRC_URI:append = " \
     file://gles2_kpi.conf \
 "
 
-SRCREV = "${AUTOREV}"
+SRCREV = "e9aa6a2933e348f7c83d076935155a43139239d2"
 
 inherit cmake systemd sleep-notify-service
 
@@ -50,4 +50,3 @@ FILES:${PN} += "\
     ${systemd_system_unitdir}/*.service \
     ${systemd_system_unitdir}/sleep-notify@gles2_kpi.service.d/ \
 "
-

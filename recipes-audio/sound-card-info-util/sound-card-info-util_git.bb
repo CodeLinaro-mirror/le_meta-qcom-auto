@@ -6,8 +6,8 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/${LICENSE};md5=7a434440b651f4a4
 
 DEPENDS += "expat audio-headers-export audio-log-util virtual/kernel-headers sound-card-info-common-header"
 
-SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/audio-virtio-be/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/audio-virtio-be/sound_card_info_util;subpath=sound_card_info_util;usehead=1"
-SRCREV = "${AUTOREV}"
+SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/audio-virtio-be.git;branch=audio-auto-virtio-snd-be.lnx.1.0.r5-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/audio-virtio-be/sound_card_info_util;subpath=sound_card_info_util"
+SRCREV = "df54461e0ff2b522243fd0d0c4e2fb8ba57f6636"
 
 S = "${WORKDIR}/vendor/qcom/opensource/audio-virtio-be/sound_card_info_util/ar_sound_card_info_util"
 

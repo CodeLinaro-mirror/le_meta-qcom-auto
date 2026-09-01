@@ -1,0 +1,121 @@
+From eb62b7d55cb452b9ea03ae2609229a39e7cdd423 Mon Sep 17 00:00:00 2001
+From: Sriram Dash <quic_sriramd@quicinc.com>
+Date: Fri, 23 May 2025 16:07:00 +0530
+Subject: [PATCH] PENDING: usb: dwc3: drd: expose role-switch control to
+ userspace
+
+For the Carplay usecase which is supported by the Apple Accessory
+Application (AAA), when the Device Under Test (DUT) boots up,
+it initially assumes the USB host role, meaning it can control
+other devices connected to it. When an iPhone is connected to the
+DUT, the iPhone is recognized and enumerated as a device.
+
+If the user decides to enable CarPlay, the AAA sends specific
+commands to the DUT to request a switch in USB roles. This switch
+is crucial because, for CarPlay to function correctly, the iPhone
+needs to act as the host, while the DUT must switch to the device
+role. This role switch request is managed by the DUT, allowing the
+user space entity (software running on the DUT) to change the USB
+role from host to device.
+
+During this transition, the iPhone will temporarily disconnect from
+the USB bus, switch its role to host, and expect the DUT to switch
+to the device role. After the role switch is completed, the iPhone
+will act as the host, controlling the connection, while the DUT
+will function as the device, being controlled by the iPhone.
+
+The allow_userspace_control property enables manual switching of USB
+roles from the user space via sysfs entry nodes. This manual control
+can be utilized by the AAA to ensure the role switch occurs as needed
+for CarPlay functionality.
+
+Add the userspace control functionality as a non-DT property.
+
+Change-Id: I1c531ed2bac8a98dbd50e98c409424bdc20e808c
+Signed-off-by: Sriram Dash <quic_sriramd@quicinc.com>
+Signed-off-by: Shazad Hussain <quic_shazhuss@quicinc.com>
+---
+ drivers/usb/dwc3/core.c | 22 ++++++++++++++++++++++
+ drivers/usb/dwc3/core.h |  3 +++
+ drivers/usb/dwc3/drd.c  |  4 ++++
+ 3 files changed, 29 insertions(+)
+
+diff --git a/drivers/usb/dwc3/core.c b/drivers/usb/dwc3/core.c
+index a71f5530cd97..caa6c855073a 100644
+--- a/drivers/usb/dwc3/core.c
++++ b/drivers/usb/dwc3/core.c
+@@ -1695,6 +1695,26 @@ static void dwc3_get_properties(struct dwc3 *dwc)
+ 	dwc->tx_fifo_resize_max_num = tx_fifo_resize_max_num;
+ }
+ 
++static void dwc3_get_software_properties(struct dwc3 *dwc)
++{
++	struct device *tmpdev;
++
++	/*
++	 * Iterate over all parent nodes for finding swnode properties
++	 * and non-DT (non-ABI) properties.
++	 */
++	if (IS_ENABLED(CONFIG_USB_ROLE_SWITCH) &&
++		device_property_read_bool(dwc->dev, "usb-role-switch")) {
++		for (tmpdev = dwc->dev; tmpdev; tmpdev = tmpdev->parent) {
++			dwc->allow_role_switch_userspace_control =
++					device_property_read_bool(tmpdev,
++					"snps,allow-role-switch-userspace-control");
++			if (dwc->allow_role_switch_userspace_control)
++				break;
++		}
++	}
++}
++
+ /* check whether the core supports IMOD */
+ bool dwc3_has_imod(struct dwc3 *dwc)
+ {
+@@ -1986,6 +2006,8 @@ int dwc3_probe(struct dwc3 *dwc,
+ 	if (IS_ERR(dwc->usb_psy))
+ 		return dev_err_probe(dev, PTR_ERR(dwc->usb_psy), "couldn't get usb power supply\n");
+ 
++	dwc3_get_software_properties(dwc);
++
+ 	if (glue_data && (!glue_data->ignore_resets)) {
+ 		dwc->reset = devm_reset_control_array_get_optional_shared(dev);
+ 		if (IS_ERR(dwc->reset)) {
+diff --git a/drivers/usb/dwc3/core.h b/drivers/usb/dwc3/core.h
+index 6ccfb4923e29..655eeec47cdf 100644
+--- a/drivers/usb/dwc3/core.h
++++ b/drivers/usb/dwc3/core.h
+@@ -1158,6 +1158,8 @@ struct dwc3_glue_data {
+  * @sys_wakeup: set if the device may do system wakeup.
+  * @wakeup_configured: set if the device is configured for remote wakeup.
+  * @suspended: set to track suspend event due to U3/L2.
++ * @allow_role_switch_userspace_control: Expose sysfs entries to allow
++ *					userspace to control role switch.
+  * @susphy_state: state of DWC3_GUSB2PHYCFG_SUSPHY + DWC3_GUSB3PIPECTL_SUSPHY
+  *		  before PM suspend.
+  * @imod_interval: set the interrupt moderation interval in 250ns
+@@ -1387,6 +1389,7 @@ struct dwc3 {
+ 	unsigned		sys_wakeup:1;
+ 	unsigned		wakeup_configured:1;
+ 	unsigned		suspended:1;
++	unsigned		allow_role_switch_userspace_control:1;
+ 	unsigned		susphy_state:1;
+ 
+ 	u16			imod_interval;
+diff --git a/drivers/usb/dwc3/drd.c b/drivers/usb/dwc3/drd.c
+index 620d4a64b460..6ada88203f48 100644
+--- a/drivers/usb/dwc3/drd.c
++++ b/drivers/usb/dwc3/drd.c
+@@ -527,6 +527,10 @@ static int dwc3_setup_role_switch(struct dwc3 *dwc)
+ 	dwc3_role_switch.set = dwc3_usb_role_switch_set;
+ 	dwc3_role_switch.get = dwc3_usb_role_switch_get;
+ 	dwc3_role_switch.driver_data = dwc;
++
++	if (dwc->allow_role_switch_userspace_control)
++		dwc3_role_switch.allow_userspace_control = true;
++
+ 	dwc->role_sw = usb_role_switch_register(dwc->dev, &dwc3_role_switch);
+ 	if (IS_ERR(dwc->role_sw))
+ 		return PTR_ERR(dwc->role_sw);
+-- 
+2.34.1
+

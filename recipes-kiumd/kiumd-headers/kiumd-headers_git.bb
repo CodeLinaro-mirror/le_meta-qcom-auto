@@ -5,9 +5,9 @@ LICENSE = "GPLv2.0-with-linux-syscall-note"
 LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/GPL-2.0-only;md5=801f80980d171dd6425610833a22dbe6"
 
 SRC_URI = "\
-    ${PATH_TO_REPO}/vendor/qcom/opensource/kiumd/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/kiumd;usehead=1 \
+    ${CLO_LE_GIT}/platform/vendor/qcom-opensource/kiumd.git;branch=safe-services.lnx.1.0.r24-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/kiumd \
 "
-SRCREV = "${AUTOREV}"
+SRCREV = "f6e8c384a2d0cc0e7b79e1d8615a1ad5af55e860"
 
 S = "${WORKDIR}/vendor/qcom/opensource/kiumd/kiumd-headers"
 

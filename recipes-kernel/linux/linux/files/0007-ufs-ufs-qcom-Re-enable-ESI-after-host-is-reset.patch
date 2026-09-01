@@ -1,0 +1,142 @@
+From e65892c311ac9e1a86a239a47bad765c35dd7b8f Mon Sep 17 00:00:00 2001
+From: Can Guo <can.guo@oss.qualcomm.com>
+Date: Fri, 8 May 2026 18:22:55 +0530
+Subject: [PATCH 1/2] ufs: ufs-qcom: Re-enable ESI after host is reset
+
+The host controller may be reset during error recovery or
+suspend/resume. After re-initialization, ESI remains disabled.
+
+Re-program ESILBA and ESIUBA, and re-enable ESI in
+ufs_qcom_config_esi(). Skip ESI allocation and handler
+registration if they are already initialized.
+
+Change-Id: I86d94cab1891ffbd59b7535fc21ed761b5b3849e
+Co-developed-by: Nitin Rawat <nitin.rawat@oss.qualcomm.com>
+Signed-off-by: Nitin Rawat <nitin.rawat@oss.qualcomm.com>
+Co-developed-by: Ram Kumar Dwivedi <ram.dwivedi@oss.qualcomm.com>
+Signed-off-by: Ram Kumar Dwivedi <ram.dwivedi@oss.qualcomm.com>
+Signed-off-by: Can Guo <can.guo@oss.qualcomm.com>
+---
+ drivers/ufs/host/ufs-qcom.c | 48 ++++++++++++++++++++++++++++++-------
+ drivers/ufs/host/ufs-qcom.h |  3 +++
+ 2 files changed, 43 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/ufs/host/ufs-qcom.c b/drivers/ufs/host/ufs-qcom.c
+index 2a3c63fb3474..cc0063d3d9c3 100644
+--- a/drivers/ufs/host/ufs-qcom.c
++++ b/drivers/ufs/host/ufs-qcom.c
+@@ -917,10 +917,20 @@ static int ufs_qcom_fmr_suspend(struct ufs_hba *hba, enum ufs_pm_op pm_op,
+ 	enum ufs_notify_change_status status)
+ {
+ 	struct ufs_qcom_host *host = ufshcd_get_variant(hba);
++	struct msi_desc *desc;
+ 
+ 	if (status == PRE_CHANGE)
+ 		return 0;
+ 
++	if (host->esi_configured) {
++		msi_for_each_desc(desc, hba->dev, MSI_DESC_ALL)
++			disable_irq(desc->irq);
++
++		/* Mark ESI as disabled if link has gone off */
++		if (ufs_qcom_is_link_off(hba))
++			host->esi_enabled = false;
++	}
++
+ 	pm_runtime_put_sync(hba->dev);
+ 
+ 	return ufs_qcom_ice_suspend(host);
+@@ -929,8 +939,14 @@ static int ufs_qcom_fmr_suspend(struct ufs_hba *hba, enum ufs_pm_op pm_op,
+ static int ufs_qcom_fmr_resume(struct ufs_hba *hba, enum ufs_pm_op pm_op)
+ {
+ 	struct ufs_qcom_host *host = ufshcd_get_variant(hba);
++	struct msi_desc *desc;
+ 	int err = 0;
+ 
++	if (host->esi_configured) {
++		msi_for_each_desc(desc, hba->dev, MSI_DESC_ALL)
++			enable_irq(desc->irq);
++	}
++
+ 	err = pm_runtime_resume_and_get(hba->dev);
+ 	if (err < 0)
+ 		return err;
+@@ -2186,6 +2202,10 @@ static void ufs_qcom_write_msi_msg(struct msi_desc *desc, struct msi_msg *msg)
+ {
+ 	struct device *dev = msi_desc_to_dev(desc);
+ 	struct ufs_hba *hba = dev_get_drvdata(dev);
++	struct ufs_qcom_host *host = ufshcd_get_variant(hba);
++
++	host->esi_lba = msg->address_lo;
++	host->esi_uba = msg->address_hi;
+ 
+ 	ufshcd_mcq_config_esi(hba, msg);
+ }
+@@ -2214,6 +2234,9 @@ static int ufs_qcom_config_esi(struct ufs_hba *hba)
+ 	if (host->esi_enabled)
+ 		return 0;
+ 
++	if (host->esi_configured)
++		goto enable_esi;
++
+ 	/*
+ 	 * 1. We only handle CQs as of now.
+ 	 * 2. Poll queues do not need ESI.
+@@ -2250,15 +2273,24 @@ static int ufs_qcom_config_esi(struct ufs_hba *hba)
+ 		}
+ 		msi_unlock_descs(hba->dev);
+ 		platform_msi_domain_free_irqs(hba->dev);
+-	} else {
+-		if (host->hw_ver.major >= 6) {
+-			ufshcd_writel(hba,
+-				      ufshcd_readl(hba, REG_UFS_CFG3) | 0x1F000,
+-				      REG_UFS_CFG3);
+-		}
+-		ufshcd_mcq_enable_esi(hba);
++		return ret;
++	}
++
++enable_esi:
++	if (host->esi_configured) {
++		ufshcd_writel(hba, host->esi_lba, REG_UFS_ESILBA);
++		ufshcd_writel(hba, host->esi_uba, REG_UFS_ESIUBA);
+ 	}
+ 
++	if (host->hw_ver.major >= 6) {
++		ufshcd_writel(hba,
++			      ufshcd_readl(hba, REG_UFS_CFG3) | 0x1F000,
++			      REG_UFS_CFG3);
++	}
++
++	ufshcd_mcq_enable_esi(hba);
++	host->esi_configured = true;
++
+ out:
+ 	if (!ret)
+ 		host->esi_enabled = true;
+@@ -2364,7 +2396,7 @@ static int ufs_qcom_remove(struct platform_device *pdev)
+ 
+ 	pm_runtime_get_sync(&(pdev)->dev);
+ 	ufshcd_remove(hba);
+-	if (host->esi_enabled)
++	if (host->esi_configured)
+ 		platform_msi_domain_free_irqs(hba->dev);
+ 	return 0;
+ }
+diff --git a/drivers/ufs/host/ufs-qcom.h b/drivers/ufs/host/ufs-qcom.h
+index db09cf052fe5..760f1ee00361 100644
+--- a/drivers/ufs/host/ufs-qcom.h
++++ b/drivers/ufs/host/ufs-qcom.h
+@@ -264,6 +264,9 @@ struct ufs_qcom_host {
+ 	u32 phy_gear;
+ 
+ 	bool esi_enabled;
++	bool esi_configured;
++	u32 esi_lba;
++	u32 esi_uba;
+ };
+ 
+ static inline u32
+-- 
+2.34.1
+

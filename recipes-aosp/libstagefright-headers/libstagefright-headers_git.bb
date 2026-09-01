@@ -6,8 +6,8 @@ HOMEPAGE = "http://developer.android.com/"
 LICENSE = "Apache-2.0"
 LIC_FILES_CHKSUM = "file://NOTICE;md5=a3fcbe20ea5ac731ed3aa15fe59ba20a"
 
-SRC_URI = "${PATH_TO_REPO}/frameworks/.git;protocol=${PROTO};destsuffix=frameworks;usehead=1"
-SRCREV = "${AUTOREV}"
+SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/le-framework.git;branch=lv-frameworks.lnx.1.0.r61-rel;protocol=${OSS_PROTO};destsuffix=frameworks"
+SRCREV = "e3f88b79c1547e39195e9374bbcc44c9d40bd191"
 S = "${WORKDIR}/frameworks"
 
 do_configure[noexec] = "1"

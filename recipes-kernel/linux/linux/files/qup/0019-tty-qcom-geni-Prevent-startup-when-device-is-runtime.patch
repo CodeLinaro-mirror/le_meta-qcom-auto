@@ -1,0 +1,69 @@
+From b5c661d3ac2bff1b5aabf9c4bdefaa1f0ba9097c Mon Sep 17 00:00:00 2001
+From: Maramaina Naresh <mnaresh@qti.qualcomm.com>
+Date: Thu, 12 Feb 2026 16:51:53 +0530
+Subject: [PATCH] tty: qcom-geni: Prevent startup when device is runtime
+ suspended
+
+Access the GENI UART while the underlying device or its power domain
+remains runtime suspended due to failed clock or resource power on
+can result in unclocked register accesses and NoC errors. This may
+occur when runtime PM resume does not successfully bring the device
+to an active state, yet UART startup continues.
+
+Check the runtime PM state of the associated device and fail the
+startup path when the device is still suspended. This prevents
+invalid hardware access and ensures UART operations proceed only
+when the device is properly powered.
+
+Change-Id: Id1f14c9250aaa68b6e0b8698315f350b2e92f899
+Signed-off-by: Maramaina Naresh <mnaresh@qti.qualcomm.com>
+---
+ drivers/tty/serial/qcom_geni_serial.c | 18 ++++++++++++++++++
+ 1 file changed, 18 insertions(+)
+
+diff --git a/drivers/tty/serial/qcom_geni_serial.c b/drivers/tty/serial/qcom_geni_serial.c
+index e84554e5dfd8..25ed91df1764 100644
+--- a/drivers/tty/serial/qcom_geni_serial.c
++++ b/drivers/tty/serial/qcom_geni_serial.c
+@@ -1259,6 +1259,17 @@ static int qcom_geni_serial_startup(struct uart_port *uport)
+ {
+ 	int ret;
+ 	struct qcom_geni_serial_port *port = to_dev_port(uport);
++	struct device *dev = port->se.pd_list ? port->se.pd_list->pd_devs[DOMAIN_IDX_POWER] :
++						uport->dev;
++
++	if (pm_runtime_status_suspended(dev)) {
++		/* Set pm_state to OFF on failure */
++		if (uport->state)
++			uport->state->pm_state = UART_PM_STATE_OFF;
++
++		dev_err(uport->dev, "Device is suspended, please retry\n");
++		return -EAGAIN;
++	}
+ 
+ 	if (!port->setup) {
+ 		ret = qcom_geni_serial_port_setup(uport);
+@@ -1697,6 +1708,8 @@ static void qcom_geni_serial_pm(struct uart_port *uport,
+ 		unsigned int new_state, unsigned int old_state)
+ {
+ 	struct qcom_geni_serial_port *port = to_dev_port(uport);
++	struct device *dev = port->se.pd_list ? port->se.pd_list->pd_devs[DOMAIN_IDX_POWER] :
++						uport->dev;
+ 	bool state;
+ 	/* If we've never been called, treat it as off */
+ 	if (old_state == UART_PM_STATE_UNDEFINED)
+@@ -1708,6 +1721,11 @@ static void qcom_geni_serial_pm(struct uart_port *uport,
+ 			old_state == UART_PM_STATE_ON)
+ 		state = false;
+ 
++	if (!state && pm_runtime_status_suspended(dev)) {
++		dev_err(uport->dev, "Device is already suspended\n");
++		return;
++	}
++
+ 	if (port->dev_data->geni_se_switch_state)
+ 		port->dev_data->geni_se_switch_state(uport, state);
+ }
+-- 
+2.34.1
+

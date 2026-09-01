@@ -10,8 +10,8 @@ DEPENDS += "audio-log-util audio-headers-export mm-osal libkiumd agm \
     virtual/kernel-headers spf \
 "
 
-SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/audio-ar-service/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/audio-ar-service/audio_driver/ar_service_utils;subpath=audio_driver/ar_service_utils;usehead=1"
-SRCREV = "${AUTOREV}"
+SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/audio-ar-service.git;branch=auto-audio-lrh.lnx.2.0.r5-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/audio-ar-service/audio_driver/ar_service_utils;subpath=audio_driver/ar_service_utils"
+SRCREV = "2c7ab8382615650f3e9e154aa6377951a2b5a2e0"
 
 S = "${WORKDIR}/vendor/qcom/opensource/audio-ar-service/audio_driver/ar_service_utils"
 

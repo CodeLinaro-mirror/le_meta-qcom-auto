@@ -1,0 +1,54 @@
+From 7277310deb1a5e8394c0c4c2a10349b58e48192a Mon Sep 17 00:00:00 2001
+From: Praveen Talari <praveen.talari@oss.qualcomm.com>
+Date: Thu, 13 Aug 2026 21:41:40 +0530
+Subject: [PATCH] PENDING: spi: geni-qcom: Reconfigure SPI mode after system
+ resume
+
+The SPI GENI controller loses its hardware configuration across
+system suspend and resume. However, the driver retains cached mode
+and chip-select information and uses it to avoid redundant register
+programming during subsequent transfers.
+
+As a result, the first transfer after resume may skip reprogramming
+SPI configuration registers even though the hardware state has been
+lost, leaving the controller configured incorrectly.
+
+Introduce a restore-needed flag and invalidate the cached
+configuration during resume. Force SPI mode and chip-select
+parameters to be reconfigured on the first transfer after resume,
+ensuring that the controller state is restored before any data
+transfer is initiated.
+
+Fixes failures observed after system resume where SPI configuration
+was not reapplied because the cached software state matched the
+requested transfer parameters.
+
+Change-Id: I13770c39e1ce9b87e345e0bdd96a3735d3a0705b
+Signed-off-by: Praveen Talari <praveen.talari@oss.qualcomm.com>
+---
+ drivers/spi/spi-geni-qcom.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/drivers/spi/spi-geni-qcom.c b/drivers/spi/spi-geni-qcom.c
+index 5708c6dfa2d9..730afe7ddd57 100644
+--- a/drivers/spi/spi-geni-qcom.c
++++ b/drivers/spi/spi-geni-qcom.c
+@@ -1462,7 +1462,15 @@ static int __maybe_unused spi_geni_resume(struct device *dev)
+ 	if (pm_suspend_target_state == PM_SUSPEND_MEM) {
+ 		dev_dbg(dev, "%s: In S2R\n", __func__);
+ 		mas->cur_xfer_mode = GENI_SE_INVALID;
++
++		/*
++		 * Initialize last_mode, last_cs and cur_bits_per_word to
++		 * 0, ~0U and 0	during system resume to force hardware
++		 * reconfiguration after DSQB.
++		 */
+ 		mas->last_mode = 0;
++		mas->last_cs = U8_MAX;
++		mas->cur_bits_per_word = 0;
+ 		ret = spi_geni_init(mas);
+ 		if (ret)
+ 			return ret;
+-- 
+2.34.1
+

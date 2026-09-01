@@ -10,15 +10,20 @@ LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/BSD-3-Clause-C
 DEPENDS += "cargo-native libcap rust-native rust-llvm-native pkgconfig-native"
 
 SRC_URI = "\
-    ${PATH_TO_REPO}/vendor/qcom/opensource/crosvm-gunyah/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/crosvm-gunyah;usehead=1 \
-    ${PATH_TO_REPO}/external/crosvm/.git;protocol=${PROTO};destsuffix=external/crosvm;usehead=1 \
-    ${PATH_TO_REPO}/external/minijail/.git;protocol=${PROTO};destsuffix=external/minijail;usehead=1 \
-    ${PATH_TO_REPO}/external/rust/crates/android_logger/.git;protocol=${PROTO};destsuffix=external/rust/crates/android_logger;usehead=1 \
-    ${PATH_TO_REPO}/external/rust/crates/simplelog/.git;protocol=${PROTO};destsuffix=external/rust/crates/simplelog;usehead=1 \
-    ${PATH_TO_REPO}/external/rust/crates/vmm_vhost/.git;protocol=${PROTO};destsuffix=external/rust/crates/vmm_vhost;usehead=1 \
+    ${CLO_LE_GIT}/platform/vendor/qcom-opensource/crosvm-gunyah.git;branch=auto-android-core-sys.lnx.13.0.r31-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/crosvm-gunyah;name=platform_vendor_qcom_opensource_crosvm_gunyah \
+    ${CLO_LA_GIT}/platform/external/crosvm.git;branch=auto-vmm.lnx.1.0.r29-rel;protocol=${OSS_PROTO};destsuffix=external/crosvm;name=platform_external_crosvm \
+    ${CLO_LA_GIT}/platform/external/minijail.git;branch=auto-vmm.lnx.1.0.r29-rel;protocol=${OSS_PROTO};destsuffix=external/minijail;name=platform_external_minijail \
+    ${CLO_LA_GIT}/platform/external/rust/crates/android_logger.git;branch=auto-vmm.lnx.1.0.r29-rel;protocol=${OSS_PROTO};destsuffix=external/rust/crates/android_logger;name=platform_external_rust_crates_android_logger \
+    ${CLO_LA_GIT}/platform/external/rust/crates/simplelog.git;branch=auto-android-core-sys.lnx.13.0.r31-rel;protocol=${OSS_PROTO};destsuffix=external/rust/crates/simplelog;name=platform_external_rust_crates_simplelog \
+    ${CLO_LA_GIT}/platform/external/rust/crates/vmm_vhost.git;branch=auto-vmm.lnx.1.0.r29-rel;protocol=${OSS_PROTO};destsuffix=external/rust/crates/vmm_vhost;name=platform_external_rust_crates_vmm_vhost \
 "
-
-SRCREV = "${AUTOREV}"
+SRCREV_platform_vendor_qcom_opensource_crosvm_gunyah = "e359399d556cd6a3f1c1f547411f88003dbe553d"
+SRCREV_platform_external_crosvm = "29befcb0f9cf0a2cebdef961d9f06bde368c57e9"
+SRCREV_platform_external_minijail = "8cb44f9fc32f538a90b6a3f09d3941e26fe6d6f9"
+SRCREV_platform_external_rust_crates_android_logger = "7f4eca1ac49d9c7fc88cfa5f547ca09c7b5eace3"
+SRCREV_platform_external_rust_crates_simplelog = "b2d25e663deaa1e8294c6bf94942eca8d86ae4c2"
+SRCREV_platform_external_rust_crates_vmm_vhost = "e20be590881517ac8a47008986221be81eca505c"
+SRCREV_FORMAT = "platform_vendor_qcom_opensource_crosvm_gunyah_platform_external_crosvm_platform_external_minijail_platform_external_rust_crates_android_logger_platform_external_rust_crates_simplelog_platform_external_rust_crates_vmm_vhost"
 
 S = "${WORKDIR}/vendor/qcom/opensource/crosvm-gunyah"
 
@@ -96,3 +101,7 @@ FILES:${PN}-lvgvm += "\
     ${systemd_system_unitdir}/qcrosvm_lv.service \
     ${sysconfdir}/vm_config_lalv.xml \
 "
+
+cargo_common_do_patch_paths() {
+    :
+}

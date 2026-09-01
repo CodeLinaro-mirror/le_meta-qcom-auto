@@ -11,9 +11,9 @@ PROVIDES = "virtual/bootloader"
 PR = "r1"
 PV = "3.0"
 
-SRC_URI = "${PATH_TO_REPO}/bootable/bootloader/edk2/.git;protocol=${PROTO};destsuffix=bootable/bootloader/edk2;usehead=1"
+SRC_URI = "${CLO_LE_GIT}/abl/tianocore/edk2.git;branch=uefi.lnx.4.0.r89-rel;protocol=${OSS_PROTO};destsuffix=bootable/bootloader/edk2"
 
-SRCREV = "${AUTOREV}"
+SRCREV = "9326eb7971827b9aa42c0a3a04dc822272f54f62"
 
 S = "${WORKDIR}/bootable/bootloader/edk2"
 
@@ -61,6 +61,9 @@ EXTRA_OEMAKE = "'CLANG_BIN=${STAGING_BINDIR_NATIVE}/' \
                 'FLASHING_LOCK_WITHOUT_MISC_PART=${FLASHING_LOCK_WITHOUT_MISC_PART}' \
                 ${@bb.utils.contains('DISTRO_FEATURES', 'qti-avb', 'VERIFIED_BOOT_ENABLED=1', '', d)} \
                 ${@bb.utils.contains('DISTRO_FEATURES', 'qti-avb', 'VERIFIED_BOOT_2=1', '', d)} "
+
+EXTRA_OEMAKE:append = " PYTHON_COMMAND=python3"
+
 
 EXTRA_OEMAKE:append:sa8775 = " 'SUPPORT_AB_BOOT_LXC=1' \
                                'ENABLE_LV_ATOMIC_AB=1' \

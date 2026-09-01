@@ -1,0 +1,114 @@
+From 2afb8dfb57b37fc7a790666ee8aa0f53810e88ae Mon Sep 17 00:00:00 2001
+From: Aniket Randive <arandive@qti.qualcomm.com>
+Date: Mon, 4 Aug 2025 17:24:39 +0530
+Subject: [PATCH 5/6] ccu: Refactor response list handling to prevent
+ corruption across contexts
+
+Introduce a dedicated spinlock to protect access to response_list,
+ensuring safe synchronization between tasklet context writers and
+process context readers. Retain mutex for broader read operation
+synchronization while using spinlock only for list access. This
+avoids list corruption due to concurrent access and maintains
+responsiveness in tasklet execution.
+
+Signed-off-by: Aniket Randive <arandive@qti.qualcomm.com>
+---
+ drivers/soc/qcom/qcom_ccu_qup.c | 45 +++++++++++++++------------------
+ 1 file changed, 20 insertions(+), 25 deletions(-)
+
+diff --git a/drivers/soc/qcom/qcom_ccu_qup.c b/drivers/soc/qcom/qcom_ccu_qup.c
+index bc2c34590652..e8df91797655 100644
+--- a/drivers/soc/qcom/qcom_ccu_qup.c
++++ b/drivers/soc/qcom/qcom_ccu_qup.c
+@@ -190,7 +190,8 @@ static ssize_t ccu_response_read(struct file *filp, char __user *buf,
+ 				 size_t count, loff_t *f_pos)
+ {
+ 	struct ccu_qup *ccu;
+-	struct ccu_response_data *entry, *tmp;
++	struct ccu_response_data *entry;
++	unsigned int flags;
+ 	int ret;
+ 
+ 	if (!filp || !filp->private_data)
+@@ -207,37 +208,33 @@ static ssize_t ccu_response_read(struct file *filp, char __user *buf,
+ 		return -EINVAL;
+ 	}
+ 
++	spin_lock_irqsave(&ccu->lock, flags);
+ 	if (list_empty(&ccu->response_list)) {
+ 		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, "No rx response data available\n");
++		spin_unlock_irqrestore(&ccu->lock, flags);
+ 		mutex_unlock(&ccu->read_lock);
+ 		return -EAGAIN;
+ 	}
+ 
+-	list_for_each_entry_safe(entry, tmp, &ccu->response_list, list) {
+-		if (entry) {
+-			ret = ccu_copy_result_to_user_buf(ccu,
+-							  (struct ccu_xfer_result *)entry->res_buf,
+-							  buf);
+-			if (ret < 0) {
+-				mutex_unlock(&ccu->read_lock);
+-				return ret;
+-			}
+-
+-			list_del(&entry->list);
+-			kfree(entry->res_buf);
+-			kfree(entry);
+-			atomic_dec(&ccu->rx_avail);
++	entry = list_first_entry(&ccu->response_list, struct ccu_response_data, list);
++	list_del(&entry->list);
++	atomic_dec(&ccu->rx_avail);
++	spin_unlock_irqrestore(&ccu->lock, flags);
+ 
+-			CCU_DBG_LOG(LOG_LVL_VERBOSE, ccu->dev,
+-				    "%s: Read operation done for %d bytes\n", __func__, ret);
+-			mutex_unlock(&ccu->read_lock);
+-			return ret;
+-		}
+-		break;
++	ret = ccu_copy_result_to_user_buf(ccu, (struct ccu_xfer_result *)entry->res_buf, buf);
++	if (ret < 0) {
++		kfree(entry->res_buf);
++		kfree(entry);
++		mutex_unlock(&ccu->read_lock);
++		return ret;
+ 	}
+ 
++	kfree(entry->res_buf);
++	kfree(entry);
++	CCU_DBG_LOG(LOG_LVL_VERBOSE, ccu->dev,
++		    "%s: Read operation done for %d bytes\n", __func__, ret);
+ 	mutex_unlock(&ccu->read_lock);
+-	return -EAGAIN;
++	return ret;
+ }
+ 
+ /*
+@@ -278,11 +275,9 @@ void ccu_update_xfer_result(struct ccu_xfer_result *result)
+ 	struct ccu_response_data *entry;
+ 	unsigned long flags;
+ 
+-	spin_lock_irqsave(&ccu->lock, flags);
+ 	entry = kmalloc(sizeof(*entry), GFP_KERNEL);
+ 	if (!entry) {
+ 		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, "Memory allocation failed for entry\n");
+-		spin_unlock_irqrestore(&ccu->lock, flags);
+ 		return;
+ 	}
+ 
+@@ -290,10 +285,10 @@ void ccu_update_xfer_result(struct ccu_xfer_result *result)
+ 	if (!entry->res_buf) {
+ 		CCU_ERR_LOG(LOG_LVL_ERROR, ccu->dev, "Memory allocation failed for buf\n");
+ 		kfree(entry);
+-		spin_unlock_irqrestore(&ccu->lock, flags);
+ 		return;
+ 	}
+ 
++	spin_lock_irqsave(&ccu->lock, flags);
+ 	memcpy(entry->res_buf, result, sizeof(*result));
+ 	INIT_LIST_HEAD(&entry->list);
+ 	/* Add received completion notification result in the list */
+-- 
+2.34.1
+

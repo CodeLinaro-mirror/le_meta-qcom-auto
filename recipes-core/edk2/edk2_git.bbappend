@@ -6,11 +6,11 @@ do_compile:append:gen5 () {
     # the default without it, this is workaround for not having softsku for
     # single-lv-gvm.
     rm -rf ${S}/out/Build
-    oe_runmake -f makefile all "EXTRA_STATIC_CMDLINE=gvmconfig=single-lv-gvm"
+    oe_runmake -f makefile PYTHON_COMMAND=python3 all "EXTRA_STATIC_CMDLINE=gvmconfig=single-lv-gvm"
     cp -f ${S}/../abl.elf ${WORKDIR}/abl-single-lv-gvm.elf
 
     rm -rf ${S}/out/Build
-    oe_runmake -f makefile all
+    oe_runmake -f makefile PYTHON_COMMAND=python3 all
 }
 
 do_deploy:append:gen5 () {
