@@ -38,6 +38,7 @@ SRC_URI:append = " \
     file://files/0014-mailbox-qcom-cpucp-restructure-the-cpucp-mailbox-dri.patch \
     file://files/0015-scmi-support-for-scmi-vendor-protocol-and-log-driver.patch \
     file://files/0016-arm64-dts-qcom-nord-add-reg-names-to-cpucp-mbox-node.patch \
+    file://0020-buffer-fix-NULL-pointer-deref-in-__bh_submit-for-vi.patch \
 "
 
 # Pin to a specific commit once you know it
