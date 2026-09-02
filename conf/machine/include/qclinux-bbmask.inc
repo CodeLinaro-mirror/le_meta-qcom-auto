@@ -66,10 +66,29 @@ MISSING_RECIPE_SRCLIST += "\
     meta-qcom-auto/recipes-multimedia/media/media_0.1.bb \
     meta-qcom-auto/recipes-multimedia/videodlkm/videodlkm_git.bb \
     meta-qcom-auto/recipes-security/securemsmdlkm/securemsmdlkm_git.bb \
+    meta-qcom-auto/recipes-audio/agl-audio-plugin/agl-audio-plugin_0.1.bb \
+    meta-qcom-auto/recipes-audio/agl-audio-plugin/agl-audio-plugin_0.1.bbappend \
+    meta-qcom-auto/recipes-audio/msm-virtio-snd/msm-virtio-snd.bb \
+    meta-qcom-auto/recipes-bsp/platformdlkm/platformdlkm_git.bb \
+    meta-qcom-auto/recipes-connectivity/bt-dlkm/bt-dlkm-secondary_git.bb \
+    meta-qcom-auto/recipes-display/display-devicetree/display-devicetree_1.0.bb \
+    meta-qcom-auto/recipes-display/displaydlkm/msm-ext-display_git.bb \
+    meta-qcom-auto/recipes-graphics/graphics-hgsl/graphics-hgsldlkm_git.bb \
+    meta-qcom-auto/recipes-kernel/dtc/dtc-aosp.bb \
+    meta-qcom-auto/recipes-kernel/edk2/edk2_5.0.bb \
+    meta-qcom-auto/recipes-kernel/linux-msm/linux-ack-headers_6.12.bb \
+    meta-qcom-auto/recipes-kernel/linux-msm/linux-ack_6.12.bb \
+    meta-qcom-auto/recipes-kernel/linux-msm/linux-msm-headers_6.12.bb \
+    meta-qcom-auto/recipes-kernel/linux-msm/linux-msm_6.12.bb \
+    meta-qcom-auto/recipes-kernel/linux-msm/qcom-devicetree_6.12.bb \
+    meta-qcom-auto/recipes-kernel/linux-msm/qcom-dtc-native.bb \
+    meta-qcom-auto/recipes-kernel/linux-msm/soc-modules_6.12.bb \
+    meta-qcom-auto/recipes-kernel/linux/soc-repo.bb \
 "
 
 # Missing recipes in baseline LY.AU.0.1.1 (used by gen5)
 MISSING_RECIPE_SRCLIST_BASELINE_LY011 += "\
+    meta-qcom-auto/recipes-kernel/kernel-aosp-tools/kernel-aosp-tools-native.bb \
     meta-qcom-auto-extras/recipes-qcvirtio/qcvirtio-devices/qcvirtio-devices_git.bb \
     meta-qcom-auto/recipes-audio/ar-audiodlkm/ar-audiodlkm_git.bb \
     meta-qcom-auto/recipes-audio/ar-pal/ar-pal_git.bb \
@@ -129,23 +148,13 @@ MISSING_RECIPE_SRCLIST_BASELINE_LY011 += "\
     meta-qcom-auto/recipes-qcvirtio/simple-can-simulator/simple-can-simulator_git.bb \
     meta-qcom-auto/recipes-qcvirtio/virglrenderer/virglrenderer_1.1.0.bb \
     meta-qcom-auto/recipes-security/securemsmdlkm/securemsmdlkm_git.bb \
-    meta-qcom-auto/recipes-security/security-modules/open-dice_git.bb \
-    meta-qcom-auto/recipes-wlan/cnss-wlan-load/cnss-wlan-load_1.0.bb \
-    meta-qcom-auto/recipes-wlan/device/wlan-conf_git.bb \
-    meta-qcom-auto/recipes-wlan/hostap-daemon/hostap-daemon-qcacld_git.bb \
-    meta-qcom-auto/recipes-wlan/hs20-osu-client/hs20-osu-client_git.bb \
-    meta-qcom-auto/recipes-wlan/wlan-platform-dlkm/wlan-platform-dlkm_git.bb \
-    meta-qcom-auto/recipes-wlan/wlan-sigma-dut/wlan-sigma-dut_git.bb \
-    meta-qcom-auto/recipes-wlan/wlan/qcacld32-ll-genoa_git.bb \
-    meta-qcom-auto/recipes-wlan/wlan/qcacld32-ll-hasting-cnss0_git.bb \
-    meta-qcom-auto/recipes-wlan/wlan/qcacld32-ll-hasting-cnss2_git.bb \
-    meta-qcom-auto/recipes-wlan/wlan/qcacld32-ll-hasting_git.bb \
-    meta-qcom-auto/recipes-wlan/wlan/qcacld32-ll-hmt_git.bb \
-    meta-qcom-auto/recipes-wlan/wlan/qcacld32-ll-hsp_git.bb \
-    meta-qcom-auto/recipes-wlan/wlan/qcacld32-ll-rome_git.bb \
-    meta-qcom-auto/recipes-wlan/wpa-supplicant/wpa-supplicant_git.bb \
     meta-qti-bsp/recipes-bsp/libvmmem/qcom-libvmmem_git.bb \
     meta-qti-bsp/recipes-multimedia/sensors/qcom-sensinghub_1.0.bb \
+    meta-qcom-auto/recipes-qcvirtio/qcvirtio-vhost-usb-gadget-driver-linux/qcvirtio-vhost-usb-gadget-driver-linux_git.bb \
+    meta-qcom-auto/recipes-qcvirtio/qcvirtio-vhost-usb-gadget-driver-linux/qcvirtio-vhost-usb-gadget-driver-linux-headers_git.bb \
+    meta-qcom-auto/recipes-aosp/libion/libion_git.bb \
+    meta-qcom-auto/recipes-aosp/libdmabufheap/libdmabufheap_git.bb \
+    meta-qcom-auto/recipes-security/securemsm-devicetree/securemsm-devicetree.bb \
 "
 
 # Missing recipes in baseline LY.AU.0.2.0 (used by sa8775/sa7255)
@@ -184,18 +193,6 @@ MISSING_RECIPE_SRCLIST_BASELINE_LY020 += "\
     meta-qcom-auto/recipes-qcvirtio/qcvirtio-uclk-driver-linux/qcvirtio-uclk-driver-linux_git.bb \
     meta-qcom-auto/recipes-qcvirtio/qcvirtio-uclk-driver-linux/qcvirtio-uclk-driver-linux-headers_git.bb \
     meta-qcom-auto/recipes-qcvirtio/virglrenderer/virglrenderer_1.1.0.bb \
-    meta-qcom-auto/recipes-wlan/device/wlan-conf_git.bb \
-    meta-qcom-auto/recipes-wlan/hostap-daemon/hostap-daemon-qcacld_git.bb \
-    meta-qcom-auto/recipes-wlan/hs20-osu-client/hs20-osu-client_git.bb \
-    meta-qcom-auto/recipes-wlan/wlan-platform-dlkm/wlan-platform-dlkm_git.bb \
-    meta-qcom-auto/recipes-wlan/wlan-sigma-dut/wlan-sigma-dut_git.bb \
-    meta-qcom-auto/recipes-wlan/wlan/qcacld32-ll-genoa_git.bb \
-    meta-qcom-auto/recipes-wlan/wlan/qcacld32-ll-hasting-cnss0_git.bb \
-    meta-qcom-auto/recipes-wlan/wlan/qcacld32-ll-hasting-cnss2_git.bb \
-    meta-qcom-auto/recipes-wlan/wlan/qcacld32-ll-hasting_git.bb \
-    meta-qcom-auto/recipes-wlan/wlan/qcacld32-ll-hmt_git.bb \
-    meta-qcom-auto/recipes-wlan/wlan/qcacld32-ll-hsp_git.bb \
-    meta-qcom-auto/recipes-wlan/wlan/qcacld32-ll-rome_git.bb \
     meta-qti-bsp/recipes-bsp/libvmmem/qcom-libvmmem_git.bb \
     meta-qti-bsp/recipes-multimedia/sensors/qcom-sensinghub_1.0.bb \
     meta-qcom-auto-internal/recipes/qt5/qtbase_%.bbappend \
@@ -205,4 +202,19 @@ MISSING_RECIPE_SRCLIST_BASELINE_LY020 += "\
     meta-qcom-auto-internal/recipes-graphics/dprx-ss/dprx-ss.bbappend \
     meta-qcom-auto-internal/recipes-multimedia/mm-frameworks/mm-frameworks_git.bbappend \
     meta-qcom-auto-internal/recipes-multimedia/mm-umd-hwfence/libhwfence_git.bbappend \
+    meta-qcom-auto/recipes-qcvirtio/qcvirtio-vhost-usb-gadget-driver-linux/qcvirtio-vhost-usb-gadget-driver-linux-headers_git.bb \
+    meta-qcom-auto/recipes-qcvirtio/qcvirtio-vhost-usb-gadget-driver-linux/qcvirtio-vhost-usb-gadget-driver-linux_git.bb \
+    meta-qcom-auto/recipes-security/securemsm-devicetree/securemsm-devicetree.bb \
+    meta-qcom-auto/recipes-aosp/libion/libion_git.bb \
+    meta-qcom-auto/recipes-aosp/libdmabufheap/libdmabufheap_git.bb \
+"
+
+# Keep non-Nord WLAN variants masked; Gen5 Nord uses HSP/HMT only.
+BBMASK += " \
+    meta-qcom-auto/recipes-wlan/hs20-osu-client/hs20-osu-client_git.bb \
+    meta-qcom-auto/recipes-wlan/wlan/qcacld32-ll-genoa_git.bb \
+    meta-qcom-auto/recipes-wlan/wlan/qcacld32-ll-hasting-cnss0_git.bb \
+    meta-qcom-auto/recipes-wlan/wlan/qcacld32-ll-hasting-cnss2_git.bb \
+    meta-qcom-auto/recipes-wlan/wlan/qcacld32-ll-hasting_git.bb \
+    meta-qcom-auto/recipes-wlan/wlan/qcacld32-ll-rome_git.bb \
 "

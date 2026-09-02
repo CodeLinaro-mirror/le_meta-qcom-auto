@@ -50,4 +50,3 @@ FILES:${PN} += "\
     ${systemd_system_unitdir}/*.service \
     ${systemd_system_unitdir}/sleep-notify@gles2_kpi.service.d/ \
 "
-

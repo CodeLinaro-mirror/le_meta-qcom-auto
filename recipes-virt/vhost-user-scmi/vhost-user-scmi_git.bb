@@ -7,17 +7,19 @@ LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/${LICENSE};md5
 SYSTEMD_SERVICE:${PN} = "vhost-user-scmi.service"
 SYSTEMD_SERVICE:${PN}-lvgvm:append:sa8255-ivi = " vhost-user-scmi-lv.service"
 SYSTEMD_SERVICE:${PN}-lvgvm:append:sa8775-flex = " vhost-user-scmi-lv.service"
+SYSTEMD_SERVICE:${PN}-lvgvm:append:gen5 = " vhost-user-scmi-lv.service"
 
 DEPENDS += "safelinux-cfg-modules vhost-user-lib"
 
 SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/vhost-user-scmi.git;branch=vhost-user-scmi.lnx.1.0.r15-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/vhost-user-scmi"
-SRCREV = "83f6d63a2cc19efde3080bca579dc00de74a2de1"
+SRCREV = "e5afc9fb84ff73934f6251a77c31c14b6086b923"
 
 S = "${WORKDIR}/vendor/qcom/opensource/vhost-user-scmi"
 
 do_install:append:gen5() {
     install -d ${D}${systemd_unitdir}/system/
     install -m 0644 ${S}/vhost-user-scmi-sa8797.service ${D}/${systemd_unitdir}/system/vhost-user-scmi.service
+    install -m 0644 ${S}/vhost-user-scmi-sa8797-lv.service ${D}/${systemd_unitdir}/system/vhost-user-scmi-lv.service
 }
 
 do_install:append:sa8775() {

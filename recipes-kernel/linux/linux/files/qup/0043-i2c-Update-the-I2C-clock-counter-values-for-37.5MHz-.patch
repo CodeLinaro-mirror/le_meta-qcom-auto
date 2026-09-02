@@ -1,15 +1,19 @@
-From 29f378ea05705448bf9122631a27e505e0b37c13 Mon Sep 17 00:00:00 2001
-From: Aniket Randive <arandive@qti.qualcomm.com>
-Date: Mon, 29 Sep 2025 16:10:16 +0530
-Subject: [PATCH] i2c: Update the I2C clock counter values for 37.5MHz source
- clock
+From e2dc257d920a15e5a81118fdaa17dc5aa633aa65 Mon Sep 17 00:00:00 2001
+From: Chiluka Harish <chiluka.harish@oss.qualcomm.com>
+Date: Mon, 8 Jun 2026 21:41:23 +0530
+Subject: [PATCH] Subject: [PATCH] i2c: i2c-qcom-geni: Update counter setting
+ for CCU QUP
 
-Update the I2C clock counter values for 37.5MHz serial engine
-clock for CCU QUP and add a support to provide clock source
-using config TRE.
+Add 38.4MHz serial engine clock in Titan clock controller
+to achieve 1MHz bus frequency. Include counter settings
+for 38.4MHz input serial engine clock. Use the same counter
+settings to achieve 100KHz or 400KHz with a 38.4MHz source
+clock as used with a 19.2MHz source clock.
 
-Change-Id: Ib1f7670262aa18f773f9961d495054165463883c
-Signed-off-by: Aniket Randive <arandive@qti.qualcomm.com>
+Introduce a separate counter table for CCU I2C serial engine.
+
+Change-Id: I1cf3a0c0f2465712024af19de03d5706d323677a
+Signed-off-by: Aniket Randive <quic_arandive@quicinc.com>
 ---
  drivers/dma/qcom/gpi.c             |  1 +
  drivers/i2c/busses/i2c-qcom-geni.c | 26 +++++++++-----------------
@@ -17,10 +21,10 @@ Signed-off-by: Aniket Randive <arandive@qti.qualcomm.com>
  3 files changed, 12 insertions(+), 17 deletions(-)
 
 diff --git a/drivers/dma/qcom/gpi.c b/drivers/dma/qcom/gpi.c
-index 2450e9cca86d..c281e07a245a 100644
+index a7cfcf2c4d9d..ceb73ba13410 100644
 --- a/drivers/dma/qcom/gpi.c
 +++ b/drivers/dma/qcom/gpi.c
-@@ -2337,6 +2337,7 @@ static int gpi_create_i2c_tre(struct gchan *chan, struct gpi_desc *desc,
+@@ -2339,6 +2339,7 @@ static int gpi_create_i2c_tre(struct gchan *chan, struct gpi_desc *desc,
  		tre->dword[1] |= u32_encode_bits(i2c->delay, TRE_I2C_C0_DELAY);
  
  		tre->dword[2] = u32_encode_bits(i2c->clk_div, TRE_C0_CLK_DIV);
@@ -29,10 +33,10 @@ index 2450e9cca86d..c281e07a245a 100644
  
  		tre->dword[3] = u32_encode_bits(TRE_TYPE_CONFIG0, TRE_FLAGS_TYPE);
 diff --git a/drivers/i2c/busses/i2c-qcom-geni.c b/drivers/i2c/busses/i2c-qcom-geni.c
-index f7657c9a1af6..b976fb9cc5d6 100644
+index fc328902f2b8..13da25e05a49 100644
 --- a/drivers/i2c/busses/i2c-qcom-geni.c
 +++ b/drivers/i2c/busses/i2c-qcom-geni.c
-@@ -306,9 +306,9 @@ static const struct geni_i2c_clk_fld geni_i2c_clk_map[] = {
+@@ -310,9 +310,9 @@ static const struct geni_i2c_clk_fld geni_i2c_clk_map[] = {
   * only for CCU QUP.
   */
  static const struct geni_i2c_clk_fld geni_ccu_i2c_clk_map[] = {
@@ -45,7 +49,7 @@ index f7657c9a1af6..b976fb9cc5d6 100644
  };
  
  static int setup_gpi_dma(struct geni_i2c_dev *gi2c, int idx);
-@@ -360,16 +360,7 @@ static void qcom_geni_i2c_conf(struct geni_i2c_dev *gi2c)
+@@ -364,16 +364,7 @@ static void qcom_geni_i2c_conf(struct geni_i2c_dev *gi2c)
  	const struct geni_i2c_clk_fld *itr = gi2c->clk_fld;
  	u32 val;
  
@@ -58,12 +62,12 @@ index f7657c9a1af6..b976fb9cc5d6 100644
 -	if (gi2c->is_ccu_qup && (itr->clk_freq_out == KHZ(1000)))
 -		writel_relaxed(1, gi2c->se.base + SE_GENI_CLK_SEL);
 -	else
--		writel_relaxed(0, gi2c->se.base + SE_GENI_CLK_SEL);
-+	writel_relaxed(0, gi2c->se.base + SE_GENI_CLK_SEL);
+-		writel_relaxed(gi2c->clk_idx & CLK_SEL_MSK, gi2c->se.base + SE_GENI_CLK_SEL);
++	writel_relaxed(gi2c->clk_idx & CLK_SEL_MSK, gi2c->se.base + SE_GENI_CLK_SEL);
  
  	val = (itr->clk_div << CLK_DIV_SHFT) | SER_CLK_EN;
  	writel_relaxed(val, gi2c->se.base + GENI_SER_M_CLK_CFG);
-@@ -1577,6 +1568,7 @@ static int geni_i2c_gpi_xfer(struct geni_i2c_dev *gi2c, struct i2c_msg msgs[], i
+@@ -1581,6 +1572,7 @@ static int geni_i2c_gpi_xfer(struct geni_i2c_dev *gi2c, struct i2c_msg msgs[], i
  	peripheral->high_count = itr->t_high_cnt;
  	peripheral->low_count = itr->t_low_cnt;
  	peripheral->clk_div = itr->clk_div;
@@ -71,8 +75,8 @@ index f7657c9a1af6..b976fb9cc5d6 100644
  	peripheral->set_config = 1;
  	peripheral->multi_msg = false;
  	peripheral->gi2c = gi2c;
-@@ -1779,12 +1771,12 @@ static int geni_i2c_xfer(struct i2c_adapter *adap,
- 		atomic_inc(&dev->power.usage_count);
+@@ -1776,12 +1768,12 @@ static int geni_i2c_xfer(struct i2c_adapter *adap,
+ 			return ret;
  	}
  
 -	qcom_geni_i2c_conf(gi2c);

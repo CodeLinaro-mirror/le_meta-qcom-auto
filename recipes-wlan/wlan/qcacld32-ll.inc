@@ -1,7 +1,7 @@
 PROVIDES_NAME = "kernel-module-${_MODNAME}"
 
-DEPENDS += "wlan-platform-dlkm"
-inherit autotools-brokensep module qperf module-sign qti-kernel-arch-clang
+DEPENDS += "wlan-platform-dlkm virtual/kernel python3-native"
+inherit autotools-brokensep module qperf module-sign
 
 WLAN_PLATFORM_PATH = "${STAGING_INCDIR}/wlan-platform"
 WLAN_KBUILD_EXTRA = "KBUILD_EXTRA_SYMBOLS=${WLAN_PLATFORM_PATH}/Module.symvers"
@@ -17,9 +17,15 @@ WLAN_PLATFORM_CFG = "\
                    "
 EXTRA_OEMAKE:append = " ${WLAN_PLATFORM_CFG} "
 
-_LINUX_BUILD_TOP = "${WORKDIR}/wlan"
+_LINUX_BUILD_TOP = "${WORKDIR}/${TARGET_DIR}wlan"
 
 do_unpack[deptask] = "do_populate_sysroot"
+
+qcacld_prepare_kbuild() {
+    sed -i 's/python -c/python3 -c/g' ${S}/Kbuild
+}
+do_configure[prefuncs] += "qcacld_prepare_kbuild"
+
 do_compile:prepend() {
     #Add gnu99 for compiler compatible issues
     sed -i '$a\ccflags-y += -std=gnu99' ${S}/Kbuild
@@ -41,11 +47,15 @@ do_compile:prepend() {
     sed -i -e "/$(CONFIG_QCA_CLD_WLAN_PROFILE)_defconfig$/i${FRAME_SIZE_FLAG}" ${S}/Kbuild
 }
 
+# lock to avoid parallel compiling
+do_compile[lockfiles] += "${TMPDIR}/qti-techpack.lock"
+
 RPROVIDES:${PN} += "${PROVIDES_NAME}-${KERNEL_VERSION}"
 
 FILES:${PN} += "${nonarch_base_libdir}/firmware/wlan/*"
 FILES:${PN} += "${nonarch_base_libdir}/firmware/*"
 FILES:${PN} += "${nonarch_base_libdir}/modules/${KERNEL_VERSION}/extra/*"
+FILES:${PN} += "${nonarch_base_libdir}/modules/${KERNEL_VERSION}/updates/*"
 
 LDFLAGS:aarch64 = "-O1 --hash-style=gnu --as-needed"
 

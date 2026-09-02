@@ -11,7 +11,7 @@ SYSTEMD_PACKAGES = "${PN} ${PN}-lvgvm"
 SRC_URI = "\
     ${CLO_LE_GIT}/platform/vendor/qcom-opensource/kiumd.git;branch=safe-services.lnx.1.0.r24-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/kiumd \
 "
-SRCREV = "a48ae3399863aa9cb06f42eb04abbfb5d7865024"
+SRCREV = "f6e8c384a2d0cc0e7b79e1d8615a1ad5af55e860"
 
 S = "${WORKDIR}/vendor/qcom/opensource/kiumd/gvm_net_config"
 
@@ -36,4 +36,3 @@ FILES:${PN}-lvgvm += "\
 "
 
 FILES:${PN} += "/usr/local/bin/gvm_net_config.sh"
-

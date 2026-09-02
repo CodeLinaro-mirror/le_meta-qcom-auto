@@ -11,7 +11,7 @@ DEPENDS += "audio-log-util audio-headers-export mm-osal libkiumd agm \
 "
 
 SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/audio-ar-service.git;branch=auto-audio-lrh.lnx.2.0.r5-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/audio-ar-service/audio_driver/ar_service_utils;subpath=audio_driver/ar_service_utils"
-SRCREV = "448b14e0fae27e93b570a0a073e2d71da32557a6"
+SRCREV = "2c7ab8382615650f3e9e154aa6377951a2b5a2e0"
 
 S = "${WORKDIR}/vendor/qcom/opensource/audio-ar-service/audio_driver/ar_service_utils"
 
@@ -26,6 +26,14 @@ CFLAGS += "\
 EXTRA_OECONF += "\
     --with-glib \
 "
+
+OEM_CONF_SRC_DIR = "config/etc/audio_oem_cfg"
+OEM_CONF_DEST_DIR = "/etc/audio_oem_cfg"
+
+do_install:append:gen5() {
+    install -d ${D}${OEM_CONF_DEST_DIR}/
+    install -m 0666 ${S}/${OEM_CONF_SRC_DIR}/gen5/ar_prm_mclk.cfg ${D}${OEM_CONF_DEST_DIR}/
+}
 
 SOLIBS = ".so"
 FILES_SOLIBSDEV = ""

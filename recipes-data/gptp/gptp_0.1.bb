@@ -15,7 +15,7 @@ DEPENDS += "\
 SRC_URI = "\
     ${CLO_LA_GIT}/platform/external/Open-AVB.git;branch=vnw-gptp.lnx.2.0.r67-rel;protocol=${OSS_PROTO};destsuffix=external/open-avb \
 "
-SRCREV = "cf7675a22c7d3bdb31ef4bc07aef3e3b7d874978"
+SRCREV = "0462fde6f47b887e8128fe038479d241beff9dd9"
 
 S = "${WORKDIR}/external/open-avb"
 
@@ -38,6 +38,7 @@ EXTRA_OEMAKE += "${@bb.utils.contains('MACHINE_FEATURES', 'qti-hypervisor', '', 
 EXTRA_OEMAKE += "${@bb.utils.contains('MACHINE_FEATURES', 'qti-hypervisor', 'AVB_FEATURE_GVM_MODE=1', '', d)}"
 EXTRA_OEMAKE:append:sa8775 = " ${@bb.utils.contains('MACHINE_FEATURES', 'qti-umd', 'GPTP_VFIO=1', '', d)}"
 EXTRA_OEMAKE:append:sa7255 = " ${@bb.utils.contains('MACHINE_FEATURES', 'qti-umd', 'GPTP_VFIO=1', '', d)}"
+EXTRA_OEMAKE:append:gen5 = " ${@bb.utils.contains('MACHINE_FEATURES', 'qti-umd', 'TSC_FEATURE=1', '', d)}"
 EXTRA_OEMAKE += "${@bb.utils.contains('MACHINE_FEATURES', 'qti-umd', 'GPTP_DSQB_ENABLED=1', 'GPTP_DSQB_ENABLED=0', d)}"
 SYSTEMD_SERVICE:${PN} = "${@bb.utils.contains('MACHINE_FEATURES', 'qti-hypervisor', '', 'gptp.service sleep-notify@gptp.service', d)}"
 

@@ -13,13 +13,11 @@ PV = "3.0"
 
 SRC_URI = "${CLO_LE_GIT}/abl/tianocore/edk2.git;branch=uefi.lnx.4.0.r89-rel;protocol=${OSS_PROTO};destsuffix=bootable/bootloader/edk2"
 
-SRCREV = "dd11f1e45b36164ce25bc2173031594c16f191a7"
+SRCREV = "9326eb7971827b9aa42c0a3a04dc822272f54f62"
 
 S = "${WORKDIR}/bootable/bootloader/edk2"
 
-inherit deploy python3native
-
-DEPENDS += "python3-setuptools-native"
+inherit deploy
 
 TOOLCHAIN = "clang"
 
@@ -64,6 +62,9 @@ EXTRA_OEMAKE = "'CLANG_BIN=${STAGING_BINDIR_NATIVE}/' \
                 ${@bb.utils.contains('DISTRO_FEATURES', 'qti-avb', 'VERIFIED_BOOT_ENABLED=1', '', d)} \
                 ${@bb.utils.contains('DISTRO_FEATURES', 'qti-avb', 'VERIFIED_BOOT_2=1', '', d)} "
 
+EXTRA_OEMAKE:append = " PYTHON_COMMAND=python3"
+
+
 EXTRA_OEMAKE:append:sa8775 = " 'SUPPORT_AB_BOOT_LXC=1' \
                                'ENABLE_LV_ATOMIC_AB=1' \
                                'ENABLE_SAIL_FLASHING=1' \
@@ -76,7 +77,8 @@ EXTRA_OEMAKE:append:gen5 = " 'SUPPORT_AB_BOOT_LXC=1' \
                                'ENABLE_SAIL_BOOT=1' \
                                'BOOTIMAGE_LOAD_VERIFY_IN_PARALLEL=1' \
                                'LOAD_TWO_KM_TAS=1' \
-                               'FLASHING_LOCK_WITHOUT_MISC_PART=1' "
+                               'FLASHING_LOCK_WITHOUT_MISC_PART=1' \
+                               'SOC_OP_MODE_IN_CMDLINE=1' "
 
 EXTRA_OEMAKE:append:sa7255 = " 'SUPPORT_AB_BOOT_LXC=1' \
                                'AB_RETRYCOUNT_DISABLE=1' \
@@ -101,7 +103,7 @@ do_compile () {
         export LINUX_BOOT_CPU_SELECTION_ENABLED=1
         export TARGET_LINUX_BOOT_CPU_ID=7
     fi
-    oe_runmake -f makefile PYTHON_COMMAND=python3 all
+    oe_runmake -f makefile all
 }
 do_install() {
     install -d ${D}/boot

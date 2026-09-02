@@ -30,8 +30,8 @@ Signed-off-by: Abhishek Chauhan <quic_abchauha@quicinc.com>
 Signed-off-by: Suraj Jaiswal <quic_jsuraj@quicinc.com>
 Signed-off-by: Srinath Pandey <srinpand@qti.qualcomm.com>
 ---
- .../stmicro/stmmac/dwmac-qcom-ethqos.c        | 322 +++++++++++++++++-
- 1 file changed, 312 insertions(+), 10 deletions(-)
+ .../stmicro/stmmac/dwmac-qcom-ethqos.c        | 321 +++++++++++++++++-
+ 1 file changed, 311 insertions(+), 10 deletions(-)
 
 diff --git a/drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c b/drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c
 index 6bd7cd189d54..2b46ad5ff3b4 100644
@@ -46,7 +46,7 @@ index 6bd7cd189d54..2b46ad5ff3b4 100644
  #include <linux/pcs-xpcs-qcom.h>
  
  #include "stmmac.h"
-@@ -115,6 +117,13 @@
+@@ -115,6 +117,14 @@
  
  #define SGMII_10M_RX_CLK_DVDR			0x31
  
@@ -55,6 +55,7 @@ index 6bd7cd189d54..2b46ad5ff3b4 100644
 +	POWER_CLK = 1,
 +	PERF_SERDES = 2,
 +	PERF_5G_SERDES = 3,
++	QCOM_ETHQOS_NUM_DOMAINS,
 +};
 +
  struct ethqos_emac_por {
@@ -75,12 +76,13 @@ index 6bd7cd189d54..2b46ad5ff3b4 100644
  };
  
  struct qcom_ethqos {
-@@ -159,6 +170,8 @@ struct qcom_ethqos {
+@@ -159,6 +171,9 @@ struct qcom_ethqos {
  	bool has_macsec;
  	bool needs_sgmii_loopback;
  	bool needs_rx_prog_swap;
 +	bool use_domains;
 +	struct dev_pm_domain_list *pd_list;
++	bool domain_vote[QCOM_ETHQOS_NUM_DOMAINS];
  };
  
  static int rgmii_readl(struct qcom_ethqos *ethqos, unsigned int offset)
@@ -132,7 +134,7 @@ index 6bd7cd189d54..2b46ad5ff3b4 100644
  	.dwxgmac_addrs = {
  		.dma_even_chan_base  = 0x00008500,
  		.dma_odd_chan_base = 0x00008580,
-@@ -441,8 +467,94 @@ static const struct ethqos_emac_driver_data emac_v6_6_1_data = {
+@@ -441,8 +470,91 @@ static const struct ethqos_emac_driver_data emac_v6_6_1_data = {
  		.pps_base = 0x00007080,
  		.pps_offset = 0x10,
  	},
@@ -143,13 +145,6 @@ index 6bd7cd189d54..2b46ad5ff3b4 100644
 +	},
  };
  
-+static int qcom_ethqos_is_genpd_on(struct device *dev)
-+{
-+	struct generic_pm_domain *genpd = pd_to_genpd(dev->pm_domain);
-+
-+	return (genpd->status == GENPD_STATE_ON);
-+}
-+
 +static int qcom_ethqos_domain_attach(struct qcom_ethqos *ethqos)
 +{
 +	struct ethqos_emac_driver_data *data;
@@ -170,12 +165,14 @@ index 6bd7cd189d54..2b46ad5ff3b4 100644
 +	struct device *dev = ethqos->pd_list->pd_devs[dom];
 +	int ret = 0;
 +
-+	if (!qcom_ethqos_is_genpd_on(dev)) {
++	if (!ethqos->domain_vote[dom]) {
 +		ret = pm_runtime_resume_and_get(dev);
-+		if (ret < 0)
++		if (ret < 0) {
 +			dev_err(dev, "poweron(domain=%d) failed.(err=%d)\n", dom, ret);
-+
++			return ret;
++		}
 +		dev_dbg(dev, "Requesting power on for (domain=%d)", dom);
++		ethqos->domain_vote[dom] = true;
 +	} else {
 +		dev_dbg(dev, "Domain is already on (domain=%d)", dom);
 +	}
@@ -187,12 +184,14 @@ index 6bd7cd189d54..2b46ad5ff3b4 100644
 +	struct device *dev = ethqos->pd_list->pd_devs[dom];
 +	int ret = 0;
 +
-+	if (qcom_ethqos_is_genpd_on(dev)) {
++	if (ethqos->domain_vote[dom]) {
 +		ret = pm_runtime_put_sync(dev);
-+		if (ret < 0)
++		if (ret < 0) {
 +			dev_err(dev, "poweroff(domain=%d) failed.(err=%d)\n", dom, ret);
-+
++			return;
++		}
 +		dev_dbg(dev, "Requesting power off for (domain=%d)", dom);
++		ethqos->domain_vote[dom] = false;
 +	} else {
 +		dev_dbg(dev, "Domain is already off (domain=%d)", dom);
 +	}
@@ -302,7 +301,7 @@ index 6bd7cd189d54..2b46ad5ff3b4 100644
  	rgmii_updatel(ethqos, RGMII_BYPASS_EN, RGMII_BYPASS_EN, RGMII_IO_MACRO_BYPASS);
  	rgmii_updatel(ethqos, RGMII_CONFIG2_MODE_EN_VIA_GMII, 0, RGMII_IO_MACRO_CONFIG2);
  	rgmii_updatel(ethqos, SGMII_PHY_CNTRL0_2P5G_1G_CLK_SEL, BIT(5),
-@@ -1010,6 +1144,143 @@ static void qcom_ethqos_serdes_powerdown(struct net_device *ndev, void *priv)
+@@ -1010,6 +1142,143 @@ static void qcom_ethqos_serdes_powerdown(struct net_device *ndev, void *priv)
  	phy_exit(ethqos->serdes_phy);
  }
  
@@ -524,4 +523,3 @@ index 6bd7cd189d54..2b46ad5ff3b4 100644
  	{ .compatible = "qcom,sm8150-ethqos", .data = &emac_v2_1_0_data},
 -- 
 2.43.0
-

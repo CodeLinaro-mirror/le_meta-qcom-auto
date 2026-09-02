@@ -1,0 +1,52 @@
+From d2f62e48605a5de98e3677bbee761ca4e1e1b958 Mon Sep 17 00:00:00 2001
+From: Aniket Randive <aniket.randive@oss.qualcomm.com>
+Date: Fri, 19 Jun 2026 16:07:44 +0530
+Subject: [PATCH] serial: qcom_geni: Disable closing_wait for console to
+ prevent shutdown timeout
+
+During power-off, systemd blocks in tty_wait_until_sent() waiting for TX
+completion before uart_shutdown() can cancel pending TX operations. With
+the default closing_wait of 30s, this causes a watchdog reset when
+systemd is responsible for watchdog feeding.
+
+Set closing_wait to ASYNC_CLOSING_WAIT_NONE in startup() for console
+ports to bypass tty_wait_until_sent() on close, allowing uart_shutdown()
+to cancel TX commands cleanly. Regular UART ports are unaffected.
+
+Change-Id: I8aad2cd4e0fb1fa2044c4669b1ba2305f185f02a
+Signed-off-by: Aniket Randive <aniket.randive@oss.qualcomm.com>
+---
+ drivers/tty/serial/qcom_geni_serial.c | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/drivers/tty/serial/qcom_geni_serial.c b/drivers/tty/serial/qcom_geni_serial.c
+index 04d7b3914d0a..02f00ea2088f 100644
+--- a/drivers/tty/serial/qcom_geni_serial.c
++++ b/drivers/tty/serial/qcom_geni_serial.c
+@@ -1297,6 +1297,7 @@ static int qcom_geni_serial_startup(struct uart_port *uport)
+ {
+ 	int ret;
+ 	struct qcom_geni_serial_port *port = to_dev_port(uport);
++	struct tty_port *tport = &uport->state->port;
+ 	struct device *dev = port->se.pd_list ? port->se.pd_list->pd_devs[DOMAIN_IDX_POWER] :
+ 						uport->dev;
+ 
+@@ -1314,6 +1315,15 @@ static int qcom_geni_serial_startup(struct uart_port *uport)
+ 		if (ret)
+ 			return ret;
+ 	}
++
++	/*
++	 * Disable closing_wait for console ports to prevent blocking during
++	 * system power-off. This avoids timeout in tty_wait_until_sent()
++	 * which can cause watchdog resets when systemd is closing the console.
++	 */
++	if (uart_console(uport))
++		tport->closing_wait = ASYNC_CLOSING_WAIT_NONE;
++
+ 	enable_irq(uport->irq);
+ 
+ 	return 0;
+-- 
+2.34.1
+

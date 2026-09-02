@@ -6,9 +6,9 @@ LIC_FILES_CHKSUM = "\
     file://${COREBASE}/meta/files/common-licenses/BSD-3-Clause;md5=550794465ba0ec5312d6919e203a55f9 \
 "
 
-SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/base-devicetree.git;branch=auto-kernel.qclinux.1.0.r13-rel;protocol=${PROP_PROTO};destsuffix=vendor/qcom/opensource/base-devicetree"
+SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/base-devicetree.git;branch=auto-kernel.qclinux.1.0.r13-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/base-devicetree"
 
-SRCREV = "09a159427f8fc7f0855b1c12e55c10041ddcf1f0"
+SRCREV = "39c6d885995bec784d0e888e3878e822d7584172"
 
 S = "${WORKDIR}/vendor/qcom/opensource/base-devicetree"
 
@@ -17,6 +17,18 @@ inherit deploy kernel-arch module-base
 do_compile() {
     make dtbos KDIR=${STAGING_KERNEL_DIR} O=${STAGING_KERNEL_BUILDDIR} CC="${KERNEL_CC}" LD="${KERNEL_LD}"
 }
+
+# Install oot-dt-bindings headers to sysroot so that vms-devicetree
+# and other out-of-tree devicetree recipes can include them.
+do_install:append:gen5() {
+    if [ -d ${S}/arch/arm64/boot/dts/qcom/oot-dt-bindings ]; then
+        install -d ${D}${includedir}/oot-dt-bindings
+        install -m 0644 ${S}/arch/arm64/boot/dts/qcom/oot-dt-bindings/*.h \
+            ${D}${includedir}/oot-dt-bindings/
+    fi
+}
+
+FILES:${PN}-dev:append:gen5 = " ${includedir}/oot-dt-bindings/*"
 
 # lock to avoid parallel compiling with techpack
 do_compile[lockfiles] += "${TMPDIR}/qti-techpack.lock"
@@ -34,19 +46,10 @@ do_deploy() {
 
     if [ -n "${OOT_DDR_DTBOS}" ]; then
         install -d ${DEPLOYDIR}/build-artifacts/ddrdtbos
-        install -d ${DEPLOYDIR}/build-artifacts/ddrdtbosflex
 
         for dtb in ${OOT_DDR_DTBOS}; do
             if [ -f ${B}/$dtb ]; then
-                # copy flex dtbo in separate directory
-                case "$dtb" in
-                    *flex*)
-                        install -m 0644 ${B}/$dtb ${DEPLOYDIR}/build-artifacts/ddrdtbosflex
-                        ;;
-                    *)
-                        install -m 0644 ${B}/$dtb ${DEPLOYDIR}/build-artifacts/ddrdtbos
-                        ;;
-                esac
+                install -m 0644 ${B}/$dtb ${DEPLOYDIR}/build-artifacts/ddrdtbos
             fi
         done
     fi

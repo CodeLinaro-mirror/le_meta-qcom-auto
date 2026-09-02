@@ -8,7 +8,7 @@ DEPENDS += "audio-log-util ar-osal libkiumd"
 DEPENDS:append:gen5 = " ar-scmi"
 
 SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/audio-ar-service.git;branch=auto-audio-lrh.lnx.2.0.r5-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/audio-ar-service"
-SRCREV = "448b14e0fae27e93b570a0a073e2d71da32557a6"
+SRCREV = "2c7ab8382615650f3e9e154aa6377951a2b5a2e0"
 
 S = "${WORKDIR}/vendor/qcom/opensource/audio-ar-service/audio_driver/ar_dev_plugin"
 

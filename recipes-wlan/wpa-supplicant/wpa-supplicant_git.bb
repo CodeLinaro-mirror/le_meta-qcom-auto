@@ -11,14 +11,7 @@ SRC_URI = "${CLO_LA_GIT}/platform/external/wpa_supplicant_8.git;branch=auto-wlan
            file://wpa-supplicant.sh \
            file://99_wpa_supplicant \
           "
-SRC_URI:sa8775-flex = "${CLO_LA_GIT}/platform/external/gen4-5/wpa_supplicant_8.git;branch=auto-wlan-service_gen4-5.lnx.1.1.r2-rel;protocol=${OSS_PROTO};destsuffix=external/wpa_supplicant_8 \
-           file://wpa_supplicant.conf-sane \
-           file://defconfig-qcacld \
-           file://wpa-supplicant.sh \
-           file://99_wpa_supplicant \
-          "
-SRCREV = "a4d0363506082096f3def02f66f60753edd8f7f3"
-SRCREV:sa8775-flex = "033b843b76ad435aa48060248ac988f9342c9a40"
+SRCREV = "27f94995d8738f1324936440111bada0f1577439"
 PR = "r5.2"
 
 SOLIBS = "*.so"

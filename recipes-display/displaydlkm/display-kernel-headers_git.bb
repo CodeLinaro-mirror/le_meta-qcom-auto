@@ -6,9 +6,9 @@ LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/GPL-2.0-only;m
 
 SRC_URI = "${CLO_LE_GIT}/platform/vendor/opensource/display-drivers.git;branch=display-kernel.lnx.12.5.r18-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/display-drivers"
 SRC_URI:sa8775-flex = "${CLO_LE_GIT}/platform/vendor/opensource/gen4-5/display-drivers.git;branch=display-kernel_gen4-5.lnx.5.15.1.r2-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/display-drivers"
-SRCREV = "9dcfc62635bff621aa28ab64bda6b2a088ff85be"
+SRCREV = "9e756ed0a7e89e66c15508d48a1324d7d090977e"
 
-SRCREV:sa8775-flex = "82f107b639086e9fafee933529cd049bf6218101"
+SRCREV:sa8775-flex = "76924a6d16bc6a9d03fdfa0933e9db818b3627e5"
 S = "${WORKDIR}/vendor/qcom/opensource/display-drivers/include/uapi"
 
 

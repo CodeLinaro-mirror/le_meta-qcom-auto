@@ -20,7 +20,7 @@ QCNODE_ENABLE_RSM_V2 = "OFF"
 QCNODE_ENABLE_C2C = "OFF"
 QCNODE_ENABLE_TRACE = "OFF"
 QCNODE_ENABLE_GENIE = "OFF"
-QCNODE_ENABLE_RADAR = "OFF"
+QCNODE_ENABLE_RADAR = "ON"
 QCNODE_ENABLE_RESMON = "OFF"
 QCNODE_QC_TARGET_SOC = "8797"
 
@@ -28,7 +28,7 @@ DEPENDS += "aosal apdf fastrpc libkiumd libstd rpcmem camera-qcx fadas adreno vi
             nlohmann-json sv-auto sv-auto-noship safetylibs vidc-test-app"
 
 SRC_URI = "${CLO_LE_GIT}/vendor/qcom/opensource/qcnode.git;branch=qcnode.auto.2.0.r4-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/qcnode"
-SRCREV = "c63d87334f73b630b5b4a71e8af9091cadfeeed1"
+SRCREV = "a76e0ad0c5cce2c8da51537898a4c8c209dba5b9"
 S = "${WORKDIR}/vendor/qcom/opensource/qcnode"
 
 inherit cmake
@@ -103,4 +103,5 @@ FILES:${PN}-dev += "\
     ${bindir}/*gtest* \
     ${includedir}/* \
     ${libdir}/cmake \
+    ${libdir}/*Mock* \
 "

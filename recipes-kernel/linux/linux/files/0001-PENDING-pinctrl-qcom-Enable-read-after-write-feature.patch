@@ -1,4 +1,4 @@
-From 57932327babe39308e158739e679ba3e92bb15e2 Mon Sep 17 00:00:00 2001
+From 3fcc9d05a04815f63ea6415f69f88da146b739c7 Mon Sep 17 00:00:00 2001
 From: Sankalp Negi <snegi@qti.qualcomm.com>
 Date: Thu, 20 Feb 2025 04:53:53 -0800
 Subject: [PATCH] PENDING: pinctrl: qcom: Enable read-after-write feature
@@ -9,24 +9,25 @@ read-after-write scenario.
 Change-Id: Icb1b7247db17c2c3111f12b1833de3398d857ff0
 Signed-off-by: Sankalp Negi <snegi@qti.qualcomm.com>
 ---
- drivers/pinctrl/qcom/pinctrl-msm.c | 106 ++++++++++++++++++++++++++++-
- 1 file changed, 105 insertions(+), 1 deletion(-)
+ drivers/pinctrl/qcom/pinctrl-msm.c | 116 ++++++++++++++++++++++++++++-
+ 1 file changed, 115 insertions(+), 1 deletion(-)
 
 diff --git a/drivers/pinctrl/qcom/pinctrl-msm.c b/drivers/pinctrl/qcom/pinctrl-msm.c
-index 6df46f4c968c..4aa809b44c89 100644
+index 488a70001b48..52413505725b 100644
 --- a/drivers/pinctrl/qcom/pinctrl-msm.c
 +++ b/drivers/pinctrl/qcom/pinctrl-msm.c
-@@ -21,6 +21,9 @@
+@@ -21,6 +21,10 @@
  #include <linux/slab.h>
  #include <linux/spinlock.h>
  #include <linux/suspend.h>
 +#include <linux/debugfs.h>
 +#include <linux/iopoll.h>
++#include <linux/irq_work.h>
 +#include <linux/poll.h>
  
  #include <linux/pinctrl/machine.h>
  #include <linux/pinctrl/pinconf-generic.h>
-@@ -81,8 +84,13 @@ struct msm_pinctrl {
+@@ -81,8 +85,14 @@ struct msm_pinctrl {
  	void __iomem *regs[MAX_NR_TILES];
  	u32 phys_base[MAX_NR_TILES];
  	struct msm_gpio_regs *gpio_regs;
@@ -34,13 +35,14 @@ index 6df46f4c968c..4aa809b44c89 100644
 +	bool fusa_read_after_write_triggered;
 +	raw_spinlock_t fusa_lock;
 +	wait_queue_head_t fusa_wq;
++	struct irq_work fusa_wake_work;
  };
  
 +#define IO_REG_BITMASK	~BIT(0)
  #define MSM_ACCESSOR(name) \
  static u32 msm_readl_##name(struct msm_pinctrl *pctrl, \
  			    const struct msm_pingroup *g) \
-@@ -92,7 +100,28 @@ static u32 msm_readl_##name(struct msm_pinctrl *pctrl, \
+@@ -92,7 +102,28 @@ static u32 msm_readl_##name(struct msm_pinctrl *pctrl, \
  static void msm_writel_##name(u32 val, struct msm_pinctrl *pctrl, \
  			      const struct msm_pingroup *g) \
  { \
@@ -63,16 +65,23 @@ index 6df46f4c968c..4aa809b44c89 100644
 +		raw_spin_lock_irqsave(&pctrl->fusa_lock, flags); \
 +		pctrl->fusa_read_after_write_errs++; \
 +		pctrl->fusa_read_after_write_triggered = true; \
-+		wake_up_interruptible_poll(&pctrl->fusa_wq, EPOLLIN | EPOLLRDNORM); \
 +		raw_spin_unlock_irqrestore(&pctrl->fusa_lock, flags); \
++		irq_work_queue(&pctrl->fusa_wake_work); \
 +	} \
  }
  
  MSM_ACCESSOR(ctl)
-@@ -1640,6 +1669,75 @@ SIMPLE_DEV_PM_OPS(msm_pinctrl_dev_pm_ops, msm_pinctrl_suspend,
+@@ -1640,6 +1671,82 @@ SIMPLE_DEV_PM_OPS(msm_pinctrl_dev_pm_ops, msm_pinctrl_suspend,
  
  EXPORT_SYMBOL(msm_pinctrl_dev_pm_ops);
  
++
++static void msm_fusa_wake_fn(struct irq_work *work)
++{
++	struct msm_pinctrl *pctrl =
++		container_of(work, struct msm_pinctrl, fusa_wake_work);
++	wake_up_interruptible_poll(&pctrl->fusa_wq, EPOLLIN | EPOLLRDNORM);
++}
 +
 +#ifdef CONFIG_DEBUG_FS
 +static ssize_t fusa_read_after_write_errs_read(struct file *file,
@@ -145,16 +154,17 @@ index 6df46f4c968c..4aa809b44c89 100644
  int msm_pinctrl_probe(struct platform_device *pdev,
  		      const struct msm_pinctrl_soc_data *soc_data)
  {
-@@ -1660,6 +1758,8 @@ int msm_pinctrl_probe(struct platform_device *pdev,
+@@ -1660,6 +1767,9 @@ int msm_pinctrl_probe(struct platform_device *pdev,
  					"qcom,ipq8064-pinctrl");
  
  	raw_spin_lock_init(&pctrl->lock);
 +	raw_spin_lock_init(&pctrl->fusa_lock);
 +	init_waitqueue_head(&pctrl->fusa_wq);
++	init_irq_work(&pctrl->fusa_wake_work, msm_fusa_wake_fn);
  
  	if (soc_data->tiles) {
  		for (i = 0; i < soc_data->ntiles; i++) {
-@@ -1708,9 +1808,13 @@ int msm_pinctrl_probe(struct platform_device *pdev,
+@@ -1708,9 +1818,13 @@ int msm_pinctrl_probe(struct platform_device *pdev,
  
  	platform_set_drvdata(pdev, pctrl);
  

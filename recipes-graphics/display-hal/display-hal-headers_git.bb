@@ -11,7 +11,7 @@ DISPLAY_DIR:sa7255 = "display/display-hal"
 
 SRC_URI = "${CLO_LA_GIT}/platform/vendor/opensource/display-core.git;branch=display.lnx.12.5.r16-rel;protocol=${OSS_PROTO};destsuffix=${DISPLAY_DIR}"
 SRC_URI:sa8775-flex = "${CLO_LA_GIT}/platform/hardware/qcom/gen4-5/display.git;branch=display_gen4-5.lnx.5.1.2.r2-rel;protocol=${OSS_PROTO};destsuffix=${DISPLAY_DIR}"
-SRCREV = "345f79e722d5d716a603a0636960f8946b0c1c03"
+SRCREV = "0b380dac5dc78ad0b7025e6e2298248f60cfe4ef"
 SRCREV:sa8775-flex = "2290c05832da3ee2e5575de5cb3e1063556d9b8f"
 S = "${WORKDIR}/${DISPLAY_DIR}"
 
@@ -21,7 +21,9 @@ do_install() {
     install -d ${D}${includedir}
     install -m 644 ${S}/include/*.h ${D}${includedir}
     if ${@bb.utils.contains_any('PREFERRED_PROVIDER_virtual/kernel', 'linux-qcom-custom linux-qcom-custom-rt', 'false', 'true', d)}; then
-      install -m 644 ${S}/libqservice/*.h ${D}${includedir}
+      if ls ${S}/libqservice/*.h >/dev/null 2>&1; then
+         install -m 644 ${S}/libqservice/*.h ${D}${includedir}
+      fi
     fi
 }
 

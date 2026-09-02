@@ -8,10 +8,8 @@ DEPENDS += "libcutils liblog libutils system-core-headers"
 
 SRC_URI = "\
     ${CLO_LE_GIT}/platform/hardware/libhardware.git;branch=lv-blast.lnx.1.1.r63-rel;protocol=${OSS_PROTO};destsuffix=hardware/libhardware \
-    https://git.codelinaro.org/clo/la/platform/hardware/libhardware/-/raw/keystone/p-keystone-qcom-release/include/hardware/gralloc1.h;downloadfilename=gralloc1.h;name=gralloc-h \
 "
-SRC_URI[gralloc-h.sha256sum] = "19e9f8acac6ab89d8ec11aefa1e6e0aa6ca49b73f2c6fd17cb7bc487b5841ee6"
-SRCREV = "30e539c3b2dbcdd2cd21d0a7bbbb82e394ffd737"
+SRCREV = "c4e4351f6cf886204735474c3fcc1b992d476fbc"
 
 S = "${WORKDIR}/hardware/libhardware"
 

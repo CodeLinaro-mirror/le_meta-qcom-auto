@@ -13,4 +13,3 @@ SRCREV = "edc91039526c90b1160ed84344fe875e4b7cedd8"
 S = "${WORKDIR}/vendor/qcom/opensource/hyp-udmabuf/test"
 
 inherit cmake
-

@@ -11,8 +11,8 @@ DEPENDS += "libcutils libhardware-headers liblog libutils virtual/kernel-headers
 PR = "r3"
 
 SRC_URI = "${CLO_LA_GIT}/platform/vendor/qcom-opensource/display-commonsys-intf.git;branch=display-sysintf.lnx.14.0.r27-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/commonsys-intf/display"
-
 SRC_URI:sa8775-flex = "${CLO_LA_GIT}/platform/vendor/qcom-opensource/gen4-5/display-commonsys-intf.git;branch=display-android-commonsys_gen4-5.lnx.1.0.r2-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/commonsys-intf/display"
+
 SRCREV = "ed017f86c7348e3a4b1d9b8087e4073982c4b44e"
 
 
@@ -41,6 +41,10 @@ do_install:append() {
 }
 
 do_install:append:gen5() {
+    rm -f ${D}${includedir}/color_extensions.h
+}
+
+do_install:append:gvm-gen5() {
     rm -f ${D}${includedir}/color_extensions.h
 }
 

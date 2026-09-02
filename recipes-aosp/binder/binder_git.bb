@@ -13,7 +13,7 @@ SRC_URI = "\
     file://create-binder.sh \
     file://create-binder.service \
 "
-SRCREV = "8d1eff3b8af56e7753e3deafc141cdb17b4967c3"
+SRCREV = "e3f88b79c1547e39195e9374bbcc44c9d40bd191"
 
 S = "${WORKDIR}/frameworks/binder"
 
@@ -28,7 +28,7 @@ PACKAGECONFIG[qti-vndbinder] = "--enable-vendor-binder,--disable-vendor-binder"
 
 SYSTEMD_SERVICE:${PN} = "servicemanager.service create-binder.service"
 SYSTEMD_SERVICE:${PN} += "${@bb.utils.contains('DISTRO_FEATURES', 'qti-vndbinder', 'vndservicemanager.service', '', d)}"
-SYSTEMD_AUTO_ENABLE:${PN} = "disable"
+SYSTEMD_AUTO_ENABLE:${PN} = "${@bb.utils.contains('MACHINE_FEATURES', 'qti-hypervisor', 'enable', 'disable', d)}"
 
 # servicemanager.service and create-binder.service run as binder user
 USERADD_PACKAGES = "${PN}"

@@ -17,8 +17,8 @@ SRC_URI = "\
     ${CLO_LA_GIT}/platform/external/rust/crates/simplelog.git;branch=auto-android-core-sys.lnx.13.0.r31-rel;protocol=${OSS_PROTO};destsuffix=external/rust/crates/simplelog;name=platform_external_rust_crates_simplelog \
     ${CLO_LA_GIT}/platform/external/rust/crates/vmm_vhost.git;branch=auto-vmm.lnx.1.0.r29-rel;protocol=${OSS_PROTO};destsuffix=external/rust/crates/vmm_vhost;name=platform_external_rust_crates_vmm_vhost \
 "
-SRCREV_platform_vendor_qcom_opensource_crosvm_gunyah = "2511efb3b93b7dc88ee61251c7b4e62e99c8ac0b"
-SRCREV_platform_external_crosvm = "4d85a154de6ff5552568a069913ae2a59e7491eb"
+SRCREV_platform_vendor_qcom_opensource_crosvm_gunyah = "e359399d556cd6a3f1c1f547411f88003dbe553d"
+SRCREV_platform_external_crosvm = "29befcb0f9cf0a2cebdef961d9f06bde368c57e9"
 SRCREV_platform_external_minijail = "8cb44f9fc32f538a90b6a3f09d3941e26fe6d6f9"
 SRCREV_platform_external_rust_crates_android_logger = "7f4eca1ac49d9c7fc88cfa5f547ca09c7b5eace3"
 SRCREV_platform_external_rust_crates_simplelog = "b2d25e663deaa1e8294c6bf94942eca8d86ae4c2"
@@ -36,9 +36,7 @@ CARGO_BUILD_FLAGS += "${@bb.utils.contains('DISTRO_FEATURES', 'qti-qcvirtio', '-
 CFLAGS:append = " -Wno-error=stringop-overflow="
 
 SYSTEMD_SERVICE:${PN} = "qcrosvm.service"
-SYSTEMD_SERVICE:${PN}-lvgvm:append:sa7255-ivi = " qcrosvm_lv.service"
-SYSTEMD_SERVICE:${PN}-lvgvm:append:sa8255-ivi = " qcrosvm_lv.service"
-SYSTEMD_SERVICE:${PN}-lvgvm:append:sa8775-flex = " qcrosvm_lv.service"
+SYSTEMD_SERVICE:${PN}-lvgvm = "qcrosvm_lv.service"
 SYSTEMD_PACKAGES = "${PN} ${PN}-lvgvm"
 
 EXTRA_OECMAKE += "\
@@ -49,6 +47,7 @@ VM_CONFIG_XML ?= "vm_config_la.xml"
 VM_CONFIG_XML:sa8255-ivi = "vm_config_lalv.xml"
 VM_CONFIG_XML:sa7255-ivi = "vm_config_lalv.xml"
 VM_CONFIG_XML:sa8775-flex = "vm_config_lalv.xml"
+VM_CONFIG_XML:gen5 = "vm_config_lalv.xml"
 
 do_install:append() {
     install -d ${D}${sysconfdir}
@@ -58,6 +57,7 @@ do_install:append() {
 do_install:append:gen5() {
     install -d ${D}${systemd_unitdir}/system/
     install -m 0644 ${S}/qcrosvm_sa8797.service ${D}/${systemd_unitdir}/system/qcrosvm.service
+    install -m 0644 ${S}/qcrosvm_lv_sa8797.service ${D}/${systemd_unitdir}/system/qcrosvm_lv.service
 }
 
 do_install:append:sa8775() {
@@ -79,6 +79,8 @@ do_install:append:sa8255-ivi() {
     install -d ${D}${systemd_unitdir}/system/
     if ${@bb.utils.contains('DISTRO_FEATURES', 'qti-qcvirtio', 'true', 'false', d)}; then
         install -m 0644 ${S}/qcrosvm_lv_qcvirtio.service ${D}/${systemd_unitdir}/system/qcrosvm_lv.service
+        install -m 0644 ${S}/qcrosvm-trout.service ${D}/${systemd_unitdir}/system/qcrosvm.service
+
         install -d ${D}${bindir}
         install -m 0755 ${S}/qcrosvm_lv_qcvirtio.sh ${D}/${bindir}
     else

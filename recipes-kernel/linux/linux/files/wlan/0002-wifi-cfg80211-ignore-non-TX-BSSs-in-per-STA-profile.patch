@@ -1,0 +1,114 @@
+From 6169a82198a2a8b838c51976b93120a341c2d8f6 Mon Sep 17 00:00:00 2001
+From: Ben Wang <benw@qti.qualcomm.com>
+Date: Fri, 17 Jul 2026 10:51:14 +0800
+Subject: [PATCH] wifi: cfg80211: ignore non-TX BSSs in per-STA profile
+
+If a non-TX BSS is included in a per-STA profile, then we cannot set
+transmitted_bss for it. Even worse, if we do things properly we should
+be configuring both bssid_index and max_bssid_indicator correctly. We do
+not actually have both pieces of information (and, some APs currently
+do not include either).
+
+So, ignore any per-STA profile where the RNR says that the BSS is not
+transmitted. Also fix transmitted_bss to never be set for per-STA
+profiles.
+
+This fixes issues where mac80211 was setting the reference BSSID to an
+incorrect value.
+
+Fixes: 2481b5da9c6b ("wifi: cfg80211: handle BSS data contained in ML probe responses")
+Change-Id: I7da094dd7caf407e776aba016dddbf148c263f4c
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+Reviewed-by: Johannes Berg <johannes.berg@intel.com>
+Signed-off-by: Miri Korenblit <miriam.rachel.korenblit@intel.com>
+Link: https://msgid.link/20240318184907.6a0babed655a.Iad447fea417c63f683da793556b97c31d07a4aab@changeid
+Signed-off-by: Johannes Berg <johannes.berg@intel.com>
+Signed-off-by: Ben Wang <benw@qti.qualcomm.com>
+---
+ net/wireless/scan.c | 29 +++++++++++++++++++++++++----
+ 1 file changed, 25 insertions(+), 4 deletions(-)
+
+diff --git a/net/wireless/scan.c b/net/wireless/scan.c
+index c1d64e250454..7a5ea6884c9a 100644
+--- a/net/wireless/scan.c
++++ b/net/wireless/scan.c
+@@ -2150,12 +2150,16 @@ cfg80211_inform_single_bss_data(struct wiphy *wiphy,
+ 	tmp.parent_tsf = drv_data->parent_tsf;
+ 	ether_addr_copy(tmp.parent_bssid, drv_data->parent_bssid);
+ 
+-	if (data->bss_source != BSS_SOURCE_DIRECT) {
++	switch (data->bss_source) {
++	case BSS_SOURCE_MBSSID:
+ 		tmp.pub.transmitted_bss = data->source_bss;
++		fallthrough;
++	case BSS_SOURCE_STA_PROFILE:
+ 		ts = bss_from_pub(data->source_bss)->ts;
+ 		tmp.pub.bssid_index = data->bssid_index;
+ 		tmp.pub.max_bssid_indicator = data->max_bssid_indicator;
+-	} else {
++		break;
++	case BSS_SOURCE_DIRECT:
+ 		ts = jiffies;
+ 
+ 		if (channel->band == NL80211_BAND_60GHZ) {
+@@ -2170,6 +2174,7 @@ cfg80211_inform_single_bss_data(struct wiphy *wiphy,
+ 				regulatory_hint_found_beacon(wiphy, channel,
+ 							     gfp);
+ 		}
++		break;
+ 	}
+ 
+ 	/*
+@@ -2584,7 +2589,7 @@ cfg80211_defrag_mle(const struct element *mle, const u8 *ie, size_t ielen,
+ static bool
+ cfg80211_tbtt_info_for_mld_ap(const u8 *ie, size_t ielen, u8 mld_id, u8 link_id,
+ 			      const struct ieee80211_neighbor_ap_info **ap_info,
+-			      const u8 **tbtt_info)
++			      const u8 **tbtt_info, bool *non_tx)
+ {
+ 	const struct ieee80211_neighbor_ap_info *info;
+ 	const struct element *rnr;
+@@ -2637,8 +2642,15 @@ cfg80211_tbtt_info_for_mld_ap(const u8 *ie, size_t ielen, u8 mld_id, u8 link_id,
+ 
+ 				if (mld_id == mld_params->mld_id &&
+ 				    link_id == lid) {
++					const struct ieee80211_tbtt_info_ge_11 *tbtt_info_ge_11 =
++						(void *)pos;
+ 					*ap_info = info;
+ 					*tbtt_info = pos;
++					*non_tx =
++						(tbtt_info_ge_11->bss_params &
++						 (IEEE80211_RNR_TBTT_PARAMS_MULTI_BSSID |
++						  IEEE80211_RNR_TBTT_PARAMS_TRANSMITTED_BSSID)) ==
++						IEEE80211_RNR_TBTT_PARAMS_MULTI_BSSID;
+ 
+ 					return true;
+ 				}
+@@ -2733,6 +2745,7 @@ cfg80211_parse_ml_elem_sta_data(struct wiphy *wiphy,
+ 		const u8 *tbtt_info;
+ 		ssize_t profile_len;
+ 		u8 link_id;
++		bool non_tx;
+ 
+ 		if (!ieee80211_mle_basic_sta_prof_size_ok((u8 *)mle->sta_prof[i],
+ 							  mle->sta_prof_len[i]))
+@@ -2776,7 +2789,15 @@ cfg80211_parse_ml_elem_sta_data(struct wiphy *wiphy,
+ 		/* Find in RNR to look up channel information */
+ 		if (!cfg80211_tbtt_info_for_mld_ap(tx_data->ie, tx_data->ielen,
+ 						   mld_id, link_id,
+-						   &ap_info, &tbtt_info))
++						   &ap_info, &tbtt_info,
++						   &non_tx))
++			continue;
++
++		/*
++		 * Without both pieces of information we cannot calculate the
++		 * reference BSSID, so simply ignore the BSS.
++		 */
++		if (non_tx)
+ 			continue;
+ 
+ 		/* We could sanity check the BSSID is included */
+-- 
+2.43.0
+

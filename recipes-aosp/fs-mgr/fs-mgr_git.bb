@@ -9,7 +9,7 @@ LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/Apache-2.0;md5
 DEPENDS += "logwrapper libmincrypt ext4-utils glib-2.0"
 
 SRC_URI = "${CLO_LE_GIT}/platform/system/core.git;branch=lv-blast.lnx.1.1.r63-rel;protocol=${OSS_PROTO};destsuffix=system/core"
-SRCREV = "cbf2a7461173d37cded2701a56cf48aee4f7816f"
+SRCREV = "e407a64ace2ee2d2b77ce3d659edbf9f92254ef6"
 
 S = "${WORKDIR}/system/core/fs_mgr"
 

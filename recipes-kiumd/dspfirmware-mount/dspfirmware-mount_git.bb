@@ -8,7 +8,7 @@ SRC_URI = "\
     ${CLO_LE_GIT}/platform/vendor/qcom-opensource/kiumd.git;branch=safe-services.lnx.1.0.r24-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/kiumd \
     file://mnt_fs.conf \
 "
-SRCREV = "a48ae3399863aa9cb06f42eb04abbfb5d7865024"
+SRCREV = "f6e8c384a2d0cc0e7b79e1d8615a1ad5af55e860"
 
 S = "${WORKDIR}/vendor/qcom/opensource/kiumd/dspfirmware-mount"
 inherit systemd
@@ -16,8 +16,7 @@ inherit systemd
 SYSTEMD_SERVICE:${PN} = "usr-lib-firmware-qcom.automount usr-lib-firmware-qcom.mount"
 SYSTEMD_SERVICE:${PN}-bt = "bluetooth-mount.service"
 SYSTEMD_SERVICE:${PN}-vmm:append = "${@bb.utils.contains('MACHINE_FEATURES', 'qti-vmm', ' firmware-vm-boot-autoghgvm-mount.service', '', d)}"
-SYSTEMD_SERVICE:${PN}-lvgvm:append:sa7255 = "${@bb.utils.contains('MACHINE_FEATURES', 'qti-vmm', ' firmware-vm-boot-autoghgvmlv-mount.service', '', d)}"
-SYSTEMD_SERVICE:${PN}-lvgvm:append:sa8775 = "${@bb.utils.contains('MACHINE_FEATURES', 'qti-vmm', ' firmware-vm-boot-autoghgvmlv-mount.service', '', d)}"
+SYSTEMD_SERVICE:${PN}-lvgvm = "${@bb.utils.contains('MACHINE_FEATURES', 'qti-vmm', 'firmware-vm-boot-autoghgvmlv-mount.service', '', d)}"
 SYSTEMD_PACKAGES = "${PN} ${PN}-bt ${PN}-vmm ${PN}-lvgvm"
 
 do_compile[noexec] = "1"
@@ -28,17 +27,14 @@ do_install:append() {
     install -d -p ${D}/vendor/dsp
 
     install -m 0644 ${WORKDIR}/mnt_fs.conf -D ${D}${libdir}/modules-load.d/mnt_fs.conf
-    install -m 0644 ${S}/vendor-dsp.mount -D ${D}${systemd_unitdir}/system/vendor-dsp.mount
-    install -m 0644 ${S}/vendor-dsp.automount -D ${D}${systemd_unitdir}/system/vendor-dsp.automount
+    install -m 0644 ${S}/vendor-dsp-mount.service -D ${D}${systemd_unitdir}/system/vendor-dsp-mount.service
 
     if ${@bb.utils.contains('DISTRO_FEATURES', 'selinux', 'true', 'false', d)}; then
-        sed -i '/^Options=/s/defaults/&,context=system_u:object_r:dsp_file_t:s0/' ${D}${systemd_unitdir}/system/vendor-dsp.mount
+        sed -i '/^Options=/s/defaults/&,context=system_u:object_r:dsp_file_t:s0/' ${D}${systemd_unitdir}/system/vendor-dsp-mount.service
     fi
 
-    ln -sf ${systemd_unitdir}/system/vendor-dsp.mount \
-        ${D}${systemd_unitdir}/system/multi-user.target.wants/vendor-dsp.mount
-    ln -sf ${systemd_unitdir}/system/vendor-dsp.automount \
-        ${D}${systemd_unitdir}/system/multi-user.target.wants/vendor-dsp.automount
+    ln -sf ${systemd_unitdir}/system/vendor-dsp-mount.service \
+        ${D}${systemd_unitdir}/system/multi-user.target.wants/vendor-dsp-mount.service
 
     if ${@bb.utils.contains('MACHINE_FEATURES', 'qti-vmm', 'true', 'false', d)}; then
         install -d -p ${D}/firmware/vm/boot/autoghgvm
@@ -67,16 +63,12 @@ do_install:append() {
         install -m 0755 ${S}/cdsp1_cfg ${D}${sysconfdir}/sysconfig/cdsp1_cfg
         install -m 0755 ${S}/gpdsp0_cfg ${D}${sysconfdir}/sysconfig/gpdsp0_cfg
         install -m 0755 ${S}/gpdsp1_cfg ${D}${sysconfdir}/sysconfig/gpdsp1_cfg
+    fi
 
-        if ${@bb.utils.contains('MACHINE_FEATURES', 'qti-vmm', 'true', 'false', d)}; then
-            install -d -p ${D}/firmware/vm/boot/autoghgvmlv
-
-            install -m 0777 ${S}/firmware-vm-boot-autoghgvmlv-mount.service ${D}${systemd_unitdir}/system/firmware-vm-boot-autoghgvmlv-mount.service
-
-            if ${@bb.utils.contains('DISTRO_FEATURES', 'selinux', 'true', 'false', d)}; then
-                sed -i '/^Options=/s/defaults/&,context=system_u:object_r:qcrosvm_boot_t:s0/' ${D}${systemd_unitdir}/system/firmware-vm-boot-autoghgvmlv-mount.service
-            fi
-        fi
+    install -d -p ${D}/firmware/vm/boot/autoghgvmlv
+    install -m 0777 ${S}/firmware-vm-boot-autoghgvmlv-mount.service ${D}${systemd_unitdir}/system/firmware-vm-boot-autoghgvmlv-mount.service
+    if ${@bb.utils.contains('DISTRO_FEATURES', 'selinux', 'true', 'false', d)}; then
+        sed -i '/^Options=/s/defaults/&,context=system_u:object_r:qcrosvm_boot_t:s0/' ${D}${systemd_unitdir}/system/firmware-vm-boot-autoghgvmlv-mount.service
     fi
 }
 
@@ -96,7 +88,9 @@ do_install:append:gen5() {
     install -m 0755 ${S}/sa8797_hpass0_compute_cfg ${D}${sysconfdir}/sysconfig/sa8797_hpass0_compute_cfg
     install -m 0755 ${S}/sa8797_hpass1_compute_cfg ${D}${sysconfdir}/sysconfig/sa8797_hpass1_compute_cfg
     install -m 0755 ${S}/sa8797_hpass2_compute_cfg ${D}${sysconfdir}/sysconfig/sa8797_hpass2_compute_cfg
+
     install -m 0777 ${S}/sa8797_firmware-vm-boot-autoghgvm-mount.service ${D}${systemd_unitdir}/system/sa8797_firmware-vm-boot-autoghgvm-mount.service
+    sed -i 's|^WantedBy=multi-user.target|WantedBy=multi-gvm.target\nWantedBy=single-lv-gvm.target|' ${D}${systemd_unitdir}/system/firmware-vm-boot-autoghgvmlv-mount.service
 }
 
 PACKAGES =+ "${PN}-bt ${PN}-lvgvm ${PN}-vmm"

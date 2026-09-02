@@ -12,9 +12,9 @@ LICENSE = "BSD-2-Clause"
 LIC_FILES_CHKSUM = "file://${WORKDIR}/external/wpa_supplicant_8/COPYING;md5=5ebcb90236d1ad640558c3d3cd3035df"
 
 DEPENDS += "libnl openssl pkgconfig"
-SRC_URI = "${PATH_TO_REPO}/external/wpa_supplicant_8/.git;protocol=${PROTO};destsuffix=external/wpa_supplicant_8;usehead=1 \
+SRC_URI = "${CLO_LA_GIT}/platform/external/wpa_supplicant_8.git;branch=auto-wlan-service.lnx.1.4.r8-rel;protocol=${OSS_PROTO};destsuffix=external/wpa_supplicant_8 \
            file://defconfig-qcacld"
-SRCREV = "${AUTOREV}"
+SRCREV = "27f94995d8738f1324936440111bada0f1577439"
 PR = "r4.2"
 
 S = "${WORKDIR}/external/wpa_supplicant_8/hostapd"

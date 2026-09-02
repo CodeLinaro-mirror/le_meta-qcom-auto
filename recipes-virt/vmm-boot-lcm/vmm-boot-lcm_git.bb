@@ -6,11 +6,14 @@ LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/${LICENSE};md5
 
 DEPENDS += "glib-2.0 vmm-lib abctl"
 SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/vmm-boot-lcm.git;branch=vmm.apss.1.0.r17-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/vmm-boot-lcm"
-SRCREV = "9b2caa12480aa510addac95f00d77eef09c5027b"
+SRCREV = "bb546dda28abc80b89d0a8e1cefeefdd8e932cac"
 S = "${WORKDIR}/vendor/qcom/opensource/vmm-boot-lcm"
 RDEPENDS:${PN} = "vmm-lib abctl"
 
 SYSTEMD_SERVICE:${PN} = "vmm-boot-lcm.service"
+
+VMM_BOOT_LCM_SERVICE ?= "vmm-boot-lcm.service"
+VMM_BOOT_LCM_SERVICE:gen5 = "vmm-boot-lcm-gen5.service"
 
 PACKAGE_ARCH = "${MACHINE_ARCH}"
 
@@ -18,5 +21,5 @@ inherit cmake pkgconfig systemd
 
 do_install:append() {
     install -d ${D}/${systemd_unitdir}/system
-    install -m 0644 ${S}/vmm-boot-lcm.service ${D}/${systemd_unitdir}/system/vmm-boot-lcm.service
+    install -m 0644 ${S}/${VMM_BOOT_LCM_SERVICE} ${D}/${systemd_unitdir}/system/vmm-boot-lcm.service
 }

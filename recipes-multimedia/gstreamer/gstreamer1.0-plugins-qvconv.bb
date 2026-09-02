@@ -9,15 +9,14 @@ DEPENDS += "\
     adreno \
     glib-2.0 \
     gstreamer1.0 \
-    gstreamer1.0-plugins-bad \
     gstreamer1.0-plugins-base \
-    ${@bb.utils.contains('MACHINE_FEATURES', 'qti-umd', '', 'graphicsdlkm videodlkm displaydlkm', d)} \
+    ${@bb.utils.contains('MACHINE_FEATURES', 'qti-umd', '', 'videodlkm displaydlkm', d)} \
     virtual/kernel-headers \
     virtual/libc \
 "
 
 SRC_URI = "${CLO_LA_GIT}/platform/vendor/qcom-opensource/gst-plugins-qti-oss.git;branch=gst-auto-tools-plugins.4.0.r14-rel;protocol=${OSS_PROTO};destsuffix=gstreamer/gst-plugins-qti-oss"
-SRCREV = "9ebed5a9e5cfa1613a84db38db650a4e87bc80cf"
+SRCREV = "a7707fc52a27b191315116288942b768fb69df47"
 S = "${WORKDIR}/gstreamer/gst-plugins-qti-oss/gst-plugin-qvconv"
 
 #inherit python3native to export related STAGING ENVs

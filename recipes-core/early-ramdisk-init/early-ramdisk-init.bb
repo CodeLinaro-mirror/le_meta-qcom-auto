@@ -6,7 +6,7 @@ DEPENDS = "kmod util-linux"
 
 SRC_URI = "${CLO_LE_GIT}/platform/vendor/opensource/early-ramdisk-init.git;branch=lv-blast.lnx.1.1.r63-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/early-ramdisk-init"
 SRC_URI:append = "${@bb.utils.contains("MACHINE_FEATURES", "qti-umd", " file://vfio_param.conf", "", d)}"
-SRCREV = "1b0dd17afae7344c2dee9950bb8c27082bad41e0"
+SRCREV = "fff4a1f288c72dff634b52150b2bb6794d21906b"
 
 S = "${WORKDIR}/vendor/qcom/opensource/early-ramdisk-init"
 
@@ -19,6 +19,7 @@ CFLAGS += "${@bb.utils.contains('DISTRO_FEATURES', 'early_init', '-DEARLY_INIT',
 CFLAGS:append:sa8775 = " ${@bb.utils.contains('MACHINE_FEATURES', 'qti-umd', '-DVFIO_BIND_DEVICE -DVENDOR_DSP_MOUNT -DFIRMWARE_MOUNT -DPRELOAD_UNIT', '', d)}"
 CFLAGS:append:sa7255 = " ${@bb.utils.contains('MACHINE_FEATURES', 'qti-umd', '-DVFIO_BIND_DEVICE -DVENDOR_DSP_MOUNT -DFIRMWARE_MOUNT -DPRELOAD_UNIT', '', d)}"
 CFLAGS:append:gen5 = " ${@bb.utils.contains('MACHINE_FEATURES', 'qti-umd', '-DVFIO_BIND_DEVICE -DMM_VFIO_BIND_DEVICE -DVENDOR_DSP_MOUNT -DFIRMWARE_MOUNT -DPRELOAD_UNIT', '', d)}"
+CFLAGS:append:gvm-gen4-5 = " -DLIB_UNIFICATION"
 
 TARGET_PATH_NAME ?= "${MACHINE}"
 TARGET_PATH_NAME:sa8775 = "sa8775-qclinux"

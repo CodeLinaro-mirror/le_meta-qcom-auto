@@ -1,0 +1,48 @@
+From 2297abd85bd6cdbfc76945a2f6e77520246c9272 Mon Sep 17 00:00:00 2001
+From: Aravind Vijayakumar <aprasann@qti.qualcomm.com>
+Date: Wed, 22 Jul 2026 13:36:34 -0700
+Subject: [PATCH] QCLINUX:iommu:arm-smmu: protect the dereference of adreno
+ priv
+
+Instead of returning ENIVAL, protect the dereference
+of adreno priv after checking if its NULL. In Auto,
+currently GPU is a vfio device, so we are not setting
+the priv data for GPU. So instead of returning EINVAL,
+check if its NULL and then proceed.
+
+Change-Id: Ifd3d73048638bc5fa43b4c4222a4df48f6d6f3f4
+Signed-off-by: Aravind Vijayakumar <aprasann@qti.qualcomm.com>
+---
+ drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c | 16 ++++++++--------
+ 1 file changed, 8 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c b/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c
+index c05af245f06c..11079983752a 100644
+--- a/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c
++++ b/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c
+@@ -917,14 +917,14 @@ static int qcom_adreno_smmu_init_context(struct arm_smmu_domain *smmu_domain,
+ 	 */
+ 
+ 	priv = dev_get_drvdata(dev);
+-	if (!priv)
+-		return -ENODATA;
+-	priv->cookie = smmu_domain;
+-	priv->get_ttbr1_cfg = qcom_adreno_smmu_get_ttbr1_cfg;
+-	priv->set_ttbr0_cfg = qcom_adreno_smmu_set_ttbr0_cfg;
+-	priv->get_fault_info = qcom_adreno_smmu_get_fault_info;
+-	priv->set_stall = qcom_adreno_smmu_set_stall;
+-	priv->resume_translation = qcom_adreno_smmu_resume_translation;
++	if (priv) { /*Skip if priv is NULL*/
++		priv->cookie = smmu_domain;
++		priv->get_ttbr1_cfg = qcom_adreno_smmu_get_ttbr1_cfg;
++		priv->set_ttbr0_cfg = qcom_adreno_smmu_set_ttbr0_cfg;
++		priv->get_fault_info = qcom_adreno_smmu_get_fault_info;
++		priv->set_stall = qcom_adreno_smmu_set_stall;
++		priv->resume_translation = qcom_adreno_smmu_resume_translation;
++	}
+ 
+ 	return 0;
+ }
+-- 
+2.25.1
+

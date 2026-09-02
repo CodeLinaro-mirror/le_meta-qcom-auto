@@ -7,7 +7,7 @@ LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/GPL-2.0-only;m
 SRC_URI = "\
     ${CLO_LE_GIT}/platform/vendor/qcom-opensource/kiumd.git;branch=safe-services.lnx.1.0.r24-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/kiumd \
 "
-SRCREV = "a48ae3399863aa9cb06f42eb04abbfb5d7865024"
+SRCREV = "f6e8c384a2d0cc0e7b79e1d8615a1ad5af55e860"
 
 S = "${WORKDIR}/vendor/qcom/opensource/kiumd/kiumd-headers"
 

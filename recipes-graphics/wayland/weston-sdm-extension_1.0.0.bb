@@ -35,9 +35,9 @@ CODE_DIR:sa7255 = "graphics/weston-sdm-extension"
 
 SRC_URI = "${CLO_LE_GIT}/graphics/weston-sdm-extension.git;branch=display-le.lnx.6.5.r8-rel;protocol=${OSS_PROTO};destsuffix=${CODE_DIR}"
 SRC_URI:sa8775-flex = "${CLO_LE_GIT}/graphics/gen4-5/weston-sdm-extension.git;branch=display-userspace_gen4-5.lnx.3.2.r2-rel;protocol=${OSS_PROTO};destsuffix=${CODE_DIR}"
-SRCREV = "7a56cd1793ebad276fadeafcc74385f6c733da81"
+SRCREV = "e3a228821c772f7e8e2e3a04a46ee9b182e20cf2"
 
-SRCREV:sa8775-flex = "b4773dc10d720bd228e655c5bff1e29df2d33e32"
+SRCREV:sa8775-flex = "a4eefe71996d8a712b3ed4cf59c4360b42e7d69e"
 S = "${WORKDIR}/${CODE_DIR}"
 
 inherit meson pkgconfig
@@ -64,8 +64,8 @@ PACKAGECONFIG ??= "${@bb.utils.contains('MACHINE_FEATURES', 'qti-umd', 'pmsnserv
 # early-init
 PACKAGECONFIG[early] = "-Denable-early-boot=true,-Denable-early-boot=false"
 # pm
-PACKAGECONFIG[pmsnservice] = "-Denable-pm-snservice=true,-Denable-pm-snservice=false"
-PACKAGECONFIG[pmdbus] = "-Denable-pm-dbus=true,-Denable-pm-dbus=false"
+PACKAGECONFIG[pmsnservice] = "-Denable-pm-snservice=true,"
+PACKAGECONFIG[pmdbus] = "-Denable-pm-dbus=true,"
 
 do_install:append() {
     if ${@bb.utils.contains('MACHINE_FEATURES', 'qti-umd', 'true', 'false', d)}; then
@@ -77,7 +77,7 @@ do_install:append() {
 SYSTEMD_SERVICE:${PN} = "${@bb.utils.contains('MACHINE_FEATURES', 'qti-umd', 'sleep-notify@weston.service', '', d)}"
 
 # rt_schedule
-PACKAGECONFIG[rt_schedule] = "-Denable-rt_schedule=true,-Denable-rt_schedule=false"
+PACKAGECONFIG[rt_schedule] = "-Denable-rt_schedule=true,"
 
 FILES:${PN} += "\
     ${libdir}/libweston-${WESTON_MAJOR_VERSION}/* \

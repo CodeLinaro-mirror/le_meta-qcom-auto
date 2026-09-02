@@ -15,22 +15,24 @@ DEPENDS += "display-commonsys-intf-linux \
             libhardware \
             virtual/kernel-headers \
             system-core \
-            ${@bb.utils.contains_any("PREFERRED_VERSION_linux-msm", '5.15 6.1', 'displaydlkm', '', d)} \
+            ${@bb.utils.contains_any("PREFERRED_VERSION_linux-msm", '5.15 6.1 6.12', 'displaydlkm', '', d)} \
             ${@bb.utils.contains('MACHINE_FEATURES', 'qti-umd', 'display-kernel-headers', '', d)} \
             ${@bb.utils.contains('MACHINE_FEATURES', 'qti-umd', 'compute-resmgr', '', d)} \
 "
 
 DEPENDS:append:gen5 = " display-kernel-headers display-intf-headers"
+DEPENDS:append:gvm-gen5 = " display-intf-headers"
 
 PR = "r8"
 
 DISPLAY_DIR = "${@bb.utils.contains_any('PREFERRED_PROVIDER_virtual/kernel', 'linux-qcom-custom linux-qcom-custom-rt',"vendor/qcom/opensource/display-core", "display/display-hal", d)}"
 DISPLAY_DIR:sa8775 = "display/display-hal"
 DISPLAY_DIR:sa7255 = "display/display-hal"
+DISPLAY_DIR:gvm-gen5 = "vendor/qcom/opensource/display-core"
 
 SRC_URI = "${CLO_LA_GIT}/platform/vendor/opensource/display-core.git;branch=display.lnx.12.5.r16-rel;protocol=${OSS_PROTO};destsuffix=${DISPLAY_DIR}"
 SRC_URI:sa8775-flex = "${CLO_LA_GIT}/platform/hardware/qcom/gen4-5/display.git;branch=display_gen4-5.lnx.5.1.2.r2-rel;protocol=${OSS_PROTO};destsuffix=${DISPLAY_DIR}"
-SRCREV = "345f79e722d5d716a603a0636960f8946b0c1c03"
+SRCREV = "0b380dac5dc78ad0b7025e6e2298248f60cfe4ef"
 SRCREV:sa8775-flex = "2290c05832da3ee2e5575de5cb3e1063556d9b8f"
 S = "${WORKDIR}/${DISPLAY_DIR}"
 
@@ -54,6 +56,7 @@ CPPFLAGS += "-I${WORKDIR}/${DISPLAY_DIR}/libqdutils"
 CPPFLAGS += "-I${WORKDIR}/${DISPLAY_DIR}/libqservice"
 CPPFLAGS += "-I${STAGING_INCDIR}/libdrm"
 
+CPPFLAGS:append:gvm-gen5 = " -DTRUSTED_VM"
 CPPFLAGS:append:gen5 = " -DDEMURA_STAND_ALONE"
 CPPFLAGS:append:sa8775 = " -DTARGET_HEADLESS"
 CPPFLAGS:append:sa7255 = " -DTARGET_HEADLESS"

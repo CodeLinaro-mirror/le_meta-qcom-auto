@@ -1,4 +1,4 @@
-FILESEXTRAPATHS:prepend := "${THISDIR}/linux/files:"
+FILESEXTRAPATHS:prepend = "${SRC_DIR_ROOT}/layers/meta-qcom-auto/recipes-kernel/linux/files:"
 
 S = "${WORKDIR}/kernel/kernel_platform/kernel"
 

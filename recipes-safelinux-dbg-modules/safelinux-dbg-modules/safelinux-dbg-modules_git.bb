@@ -8,7 +8,7 @@ SYSTEMD_SERVICE:${PN} = "qcom-dcc.service"
 SYSTEMD_AUTO_ENABLE:${PN} = "enable"
 
 SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/safelinux-dbg-modules.git;branch=safe-services.lnx.1.0.r24-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/safelinux-dbg-modules"
-SRCREV = "f53307c06e4284876b631a868cfb5ccd477418a9"
+SRCREV = "910a0e64f10301fa419a19d11db35182384f4b4a"
 
 S = "${WORKDIR}/vendor/qcom/opensource/safelinux-dbg-modules"
 
