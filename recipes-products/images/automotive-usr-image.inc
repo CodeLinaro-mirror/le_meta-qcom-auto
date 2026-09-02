@@ -6,6 +6,11 @@ USR_IMAGE_BASENAME ?= "${PRODUCT}-usrfs"
 USR_IMAGE_ROOTFS ?= "${TMPDIR}/rootfs/${USR_IMAGE_BASENAME}"
 OUTPUT_FILE_EXT4 ?= "${DEPLOY_DIR_IMAGE}/${USERDATAIMAGE_TARGET}"
 
+# USR_IMAGE_ROOTFS lives under TMPDIR/rootfs/, outside PSEUDO_INCLUDE_PATHS.
+# Add it explicitly so pseudo intercepts stat()/chown() calls from mkfs.ext4 -d,
+# ensuring files are packed with root:root ownership instead of the build user's uid/gid.
+PSEUDO_INCLUDE_PATHS:append = ",${USR_IMAGE_ROOTFS}"
+
 ROOTFS_POSTPROCESS_COMMAND:prepend = "clean_usr_rootfs; purge_rootfs; symlink_modules; sync_hostfs;"
 
 # Generating userdata image in EXT4
