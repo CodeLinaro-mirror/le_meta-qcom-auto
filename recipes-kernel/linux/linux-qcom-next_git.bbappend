@@ -36,8 +36,7 @@ SRC_URI:append = " \
 "
 
 # Pin to a specific commit once you know it
-# tag: early/hwe/nord-next tip as of 2026-08-17 (previous pin fell off history after upstream branch rewrite)
-SRCREV = "c0bd3ab23cd9fe3f6938bf9373572a4d3ada7c19"
+SRCREV = "da28394e5c5b0a590086385484d3ea2453ec825e"
 
 KERNEL_CONFIG_FRAGMENTS = "\
     arch/arm64/configs/hardening.config \
