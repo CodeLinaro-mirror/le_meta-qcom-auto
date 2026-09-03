@@ -1,0 +1,46 @@
+From eebd8745f4a73ac105da0079fb39440c05b96f99 Mon Sep 17 00:00:00 2001
+From: Ajender Reddy Mallikarjuna <ajenderr@qti.qualcomm.com>
+Date: Thu, 3 Sep 2026 10:01:49 +0530
+Subject: [PATCH] ksync: adapt trace __assign_str usage for newer tracing
+ macros
+
+Change-Id: I020e43f78a2cc7c2803808f0972fe9dff7a4edad
+Signed-off-by: Ajender Reddy Mallikarjuna <ajenderr@qti.qualcomm.com>>
+---
+ include/ksync_trace.h | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/include/ksync_trace.h b/include/ksync_trace.h
+index a8595bf..9c95e8b 100644
+--- a/include/ksync_trace.h
++++ b/include/ksync_trace.h
+@@ -35,7 +35,7 @@ DECLARE_EVENT_CLASS(ksync_timeline,
+ 	),
+ 
+ 	TP_fast_assign(
+-		__assign_str(name, timeline->name);
++		__assign_str(name);
+ 		__entry->id = timeline->id;
+ 		__entry->is64 = timeline->is64;
+ 		__entry->seqno = timeline->signaled_seqno;
+@@ -91,7 +91,7 @@ DECLARE_EVENT_CLASS(ksync_fence,
+ 	),
+ 
+ 	TP_fast_assign(
+-		__assign_str(name, fence->timeline->name);
++		__assign_str(name);
+ 		__entry->id = fence->timeline->id;
+ 		__entry->fence = (long)(void *)fence;
+ 		__entry->seqno = fence->seqno;
+@@ -137,7 +137,7 @@ DECLARE_EVENT_CLASS(ksync_source_fence,
+ 	),
+ 
+ 	TP_fast_assign(
+-		__assign_str(name, fence->parent->name);
++		__assign_str(name);
+ 		__entry->id = fence->parent->id;
+ 		__entry->refcnt = kref_read(&fence->base.refcount);
+ 	),
+-- 
+2.43.0
+
