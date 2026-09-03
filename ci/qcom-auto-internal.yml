@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/siemens/kas/master/kas/schema-kas.json
+
+header:
+  version: 14
+
+bblayers_conf_header:
+  automotive-internal-layer:
+    BBLAYERS:prepend = "${TOPDIR}/../meta-qti-automotive-internal "
