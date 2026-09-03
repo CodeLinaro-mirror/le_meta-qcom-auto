@@ -1,0 +1,31 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jie Ma <mjie@qti.qualcomm.com>
+Date: Wed, 2 Sep 2026 00:00:00 +0200
+Subject: [PATCH] firmware: qcom_scm: allow qseecom on Nord
+
+The SA8797 Ride SX device tree reports qcom,nord-ride and qcom,nord.
+The firmware exposes QSEECOM, but qcom_scm skips creating the qcom_qseecom
+platform device because the machine is not in the temporary allowlist.
+
+Allow this platform while qseecomd/smcinvoke bring-up is being debugged.
+
+Upstream-Status: Inappropriate [platform bring-up]
+
+Signed-off-by: Jie Ma <mjie@qti.qualcomm.com>
+---
+ drivers/firmware/qcom/qcom_scm.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/drivers/firmware/qcom/qcom_scm.c b/drivers/firmware/qcom/qcom_scm.c
+--- a/drivers/firmware/qcom/qcom_scm.c
++++ b/drivers/firmware/qcom/qcom_scm.c
+@@ -2382,3 +2382,5 @@ static const struct of_device_id qcom_scm_qseecom_allowlist[] __maybe_unused = {
+ 	{ .compatible = "qcom,hamoa-iot-evk" },
+ 	{ .compatible = "qcom,sc8180x-primus" },
++	{ .compatible = "qcom,nord" },
++	{ .compatible = "qcom,nord-ride" },
+ 	{ .compatible = "qcom,x1e001de-devkit" },
+ 	{ .compatible = "qcom,x1e80100-crd" },
+ 	{ .compatible = "qcom,x1e80100-qcp" },
+--
+2.34.1

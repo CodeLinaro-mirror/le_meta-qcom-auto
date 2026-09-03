@@ -2,7 +2,7 @@ SECTION = "kernel"
 
 COMPATIBLE_MACHINE .= "|sa8797-ride-sx"
 
-FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
+FILESEXTRAPATHS:prepend := "${THISDIR}/${PN}:${THISDIR}/files:"
 
 DEPENDS += "skales-native xxd-native"
 
@@ -10,7 +10,9 @@ SRC_URI = "git://github.com/qualcomm-linux/kernel-topics.git;branch=refs/tags/no
 # Additional kernel configs.
 SRC_URI:append = " \
     file://configs/bsp-additions.cfg \
-    file://files/0001-qcom_scm_addon-Enable-qcom-scm-addons.patch \
+    file://0001-qcom_scm_addon-Enable-qcom-scm-addons.patch \
+    file://0002-qcom_scm-add-legacy-qtee-smcinvoke-helper.patch \
+    file://0003-qcom-scm-allow-qseecom-on-nord.patch \
     file://files/0002-pmdomain-core-Skip-sync_state-when-pd_ignore_unused-.patch \
     file://files/0001-QCLINUX-iommu-arm-smmu-protect-the-dereference-of-ad.patch \
     file://files/0002-arm-smmu-add-qcom-secure-vmid.patch \

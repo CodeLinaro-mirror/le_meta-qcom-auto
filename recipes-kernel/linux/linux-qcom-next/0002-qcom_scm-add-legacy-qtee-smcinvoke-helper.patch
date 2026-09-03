@@ -1,0 +1,94 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jie Ma <mjie@qti.qualcomm.com>
+Date: Tue, 1 Sep 2026 15:00:00 +0200
+Subject: [PATCH] qcom_scm: add legacy qtee smcinvoke helper
+
+The legacy /dev/scmnode_sec userspace ABI can still issue the original
+SMCInvoke command 0x0. Kernel 7.0 only exposes qcom_scm_qtee_invoke_smc(),
+which always uses the cache-coherent command 0x2 and only returns two SCM
+result registers.
+
+Add a compatibility helper that lets out-of-tree users keep the legacy
+command ID and retrieve the third result register used as listener callback
+data by the old userspace service.
+
+Upstream-Status: Inappropriate [legacy userspace compatibility]
+
+Signed-off-by: Jie Ma <mjie@qti.qualcomm.com>
+---
+ drivers/firmware/qcom/qcom_scm.c       | 46 +++++++++++++++++++++++++
+ include/linux/firmware/qcom/qcom_scm.h |  4 +++
+ 2 files changed, 50 insertions(+)
+
+diff --git a/drivers/firmware/qcom/qcom_scm.c b/drivers/firmware/qcom/qcom_scm.c
+--- a/drivers/firmware/qcom/qcom_scm.c
++++ b/drivers/firmware/qcom/qcom_scm.c
+@@ -2414,6 +2414,52 @@ static int qcom_scm_qseecom_call(const struct qcom_scm_desc *desc,
+
+ #endif /* CONFIG_QCOM_QSEECOM */
+
++/**
++ * qcom_scm_qtee_invoke_smc_legacy() - Invoke a QTEE object using the
++ * legacy SMCInvoke command ID.
++ * @inbuf: start address of memory area used for inbound buffer.
++ * @inbuf_size: size of the memory area used for inbound buffer.
++ * @outbuf: start address of memory area used for outbound buffer.
++ * @outbuf_size: size of the memory area used for outbound buffer.
++ * @result: result of QTEE object invocation.
++ * @response_type: response type returned by QTEE.
++ * @data: extra response data returned by QTEE.
++ *
++ * Return: On success, return 0 or <0 on failure.
++ */
++int qcom_scm_qtee_invoke_smc_legacy(phys_addr_t inbuf, size_t inbuf_size,
++				    phys_addr_t outbuf, size_t outbuf_size,
++				    u64 *result, u64 *response_type, u64 *data)
++{
++	struct qcom_scm_desc desc = {
++		.svc = QCOM_SCM_SVC_SMCINVOKE,
++		.cmd = QCOM_SCM_SMCINVOKE_INVOKE_LEGACY,
++		.owner = ARM_SMCCC_OWNER_TRUSTED_OS,
++		.args[0] = inbuf,
++		.args[1] = inbuf_size,
++		.args[2] = outbuf,
++		.args[3] = outbuf_size,
++		.arginfo = QCOM_SCM_ARGS(4, QCOM_SCM_RW, QCOM_SCM_VAL,
++					 QCOM_SCM_RW, QCOM_SCM_VAL),
++	};
++	struct qcom_scm_res res;
++	int ret;
++
++	ret = qcom_scm_call(__scm->dev, &desc, &res);
++	if (ret)
++		return ret;
++
++	if (response_type)
++		*response_type = res.result[0];
++	if (result)
++		*result = res.result[1];
++	if (data)
++		*data = res.result[2];
++
++	return 0;
++}
++EXPORT_SYMBOL(qcom_scm_qtee_invoke_smc_legacy);
++
+ /**
+  * qcom_scm_qtee_invoke_smc() - Invoke a QTEE object.
+  * @inbuf: start address of memory area used for inbound buffer.
+diff --git a/include/linux/firmware/qcom/qcom_scm.h b/include/linux/firmware/qcom/qcom_scm.h
+--- a/include/linux/firmware/qcom/qcom_scm.h
++++ b/include/linux/firmware/qcom/qcom_scm.h
+@@ -233,6 +233,10 @@ static inline int qcom_scm_qseecom_app_send(u32 app_id,
+
+ #endif /* CONFIG_QCOM_QSEECOM */
+
++int qcom_scm_qtee_invoke_smc_legacy(phys_addr_t inbuf, size_t inbuf_size,
++				    phys_addr_t outbuf, size_t outbuf_size,
++				    u64 *result, u64 *response_type, u64 *data);
++
+ int qcom_scm_qtee_invoke_smc(phys_addr_t inbuf, size_t inbuf_size,
+ 			     phys_addr_t outbuf, size_t outbuf_size,
+ 			     u64 *result, u64 *response_type);
+--
+2.34.1
