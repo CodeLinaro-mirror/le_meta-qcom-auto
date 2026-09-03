@@ -1,0 +1,159 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jie Ma <mjie@qti.qualcomm.com>
+Date: Wed, 2 Sep 2026 16:00:00 +0200
+Subject: [PATCH] scm_user_intf_sec: sync dma-buf for smcinvoke calls
+
+SMCInvoke passes a dma-buf backed request/response buffer to TrustZone. The
+driver maps that buffer to patch embedded memory-object physical addresses,
+but it kept CPU access active while issuing the secure call. On kernel 7 this
+can leave the buffer in the wrong cache ownership state for TrustZone.
+
+Track the dma-buf CPU access state, fail early if begin/end access fails, and
+release CPU access before SMCInvoke calls that hand the buffer to TrustZone.
+Reacquire CPU access before unmapping when the driver needs to resume CPU-side
+cleanup.
+
+Upstream-Status: Pending
+
+Signed-off-by: Jie Ma <mjie@qti.qualcomm.com>
+---
+ drivers/scm_user_intf_sec.c | 68 ++++++++++++++++++++++++++++++++++++----
+ 1 file changed, 62 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/scm_user_intf_sec.c b/drivers/scm_user_intf_sec.c
+index 3222e27..306e408 100644
+--- a/drivers/scm_user_intf_sec.c
++++ b/drivers/scm_user_intf_sec.c
+@@ -70,6 +70,7 @@ typedef struct {
+ 	struct sg_table *sgt;
+ 	struct dma_buf_attachment *attach;
+ 	struct dma_buf *dmabuf;
++	bool cpu_access_active;
+ 	mem_obj_info_list_t mem_obj_info_list;
+ } dma_buf_info_t;
+ 
+@@ -221,16 +222,18 @@ static int scm_user_intf_dmabuf_map(int fd, dma_buf_info_t *dma_buf_info)
+ 		goto err;
+ 	}
+ 
+-	dma_buf_begin_cpu_access(dma_buf_info->dmabuf, DMA_BIDIRECTIONAL);
++	ret = dma_buf_begin_cpu_access(dma_buf_info->dmabuf, DMA_BIDIRECTIONAL);
++	if (ret) {
++		dev_err(__scm_dev->dev, "dma_buf_begin_cpu_access failed, ret=%d\n", ret);
++		goto err;
++	}
++	dma_buf_info->cpu_access_active = true;
+ 
+ 	ret = dma_buf_vmap(dma_buf_info->dmabuf, &new_dma_buf_map);
+ 	new_va = ret ? NULL : new_dma_buf_map.vaddr;
+ 	if (!new_va) {
+ 		dev_err(__scm_dev->dev, "dma_buf_vmap failed\n");
+ 		ret = -ENOMEM;
+-		//Flush the buffer (i.e. clean and invalidate)
+-		dma_buf_end_cpu_access(dma_buf_info->dmabuf, DMA_BIDIRECTIONAL);
+-		dma_buf_begin_cpu_access(dma_buf_info->dmabuf, DMA_BIDIRECTIONAL);
+ 		goto err;
+ 	}
+ 	dma_buf_info->vaddr = new_va;
+@@ -250,9 +253,12 @@ static void scm_user_intf_dmabuf_unmap(dma_buf_info_t *dma_buf_info)
+ 	if (dma_buf_info->vaddr) {
+ 		struct iosys_map dmabufmap = IOSYS_MAP_INIT_VADDR(dma_buf_info->vaddr);
+ 		dma_buf_vunmap(dma_buf_info->dmabuf, &dmabufmap);
+-		dma_buf_end_cpu_access(dma_buf_info->dmabuf, DMA_BIDIRECTIONAL);
+ 		dma_buf_info->vaddr = NULL;
+ 	}
++	if (dma_buf_info->cpu_access_active) {
++		dma_buf_end_cpu_access(dma_buf_info->dmabuf, DMA_BIDIRECTIONAL);
++		dma_buf_info->cpu_access_active = false;
++	}
+ 	if (dma_buf_info->sgt) {
+ 		dma_buf_unmap_attachment(dma_buf_info->attach, dma_buf_info->sgt, DMA_BIDIRECTIONAL);
+ 		dma_buf_info->sgt = NULL;
+@@ -383,6 +389,25 @@ static long scm_smcinvoke_ioctl(struct file *file, unsigned int cmd, unsigned lo
+ 	u64 in_buf_size = scm_data.args_buffer[1];
+ 	u64 out_buf = scm_data.args_buffer[0] + scm_data.args_buffer[1];
+ 	u64 out_buf_size = scm_data.args_buffer[2];
++	bool direct_smcinvoke = no_dma_fds > 0 &&
++		scm_data.cmd == QCOM_SCM_SMCINVOKE;
++#if (LINUX_VERSION_CODE != KERNEL_VERSION(5, 14, 0))
++	direct_smcinvoke = direct_smcinvoke || (no_dma_fds > 0 &&
++		scm_data.cmd == QCOM_SCM_SMCINVOKE_LEGACY);
++#endif
++
++	if (direct_smcinvoke) {
++		ret = scm_user_intf_dmabuf_map(dmabuf_fd, &dma_buf_info);
++		if (ret)
++			return ret;
++
++		ret = dma_buf_end_cpu_access(dma_buf_info.dmabuf, DMA_BIDIRECTIONAL);
++		if (ret) {
++			scm_user_intf_dmabuf_unmap(&dma_buf_info);
++			return ret;
++		}
++		dma_buf_info.cpu_access_active = false;
++	}
+ 
+ #if (LINUX_VERSION_CODE != KERNEL_VERSION(5, 14, 0))
+ 	if (scm_data.cmd == QCOM_SCM_SMCINVOKE_LEGACY) {
+@@ -414,7 +439,23 @@ static long scm_smcinvoke_ioctl(struct file *file, unsigned int cmd, unsigned lo
+ 			return ret;
+ 		}
+ 
++		ret = dma_buf_end_cpu_access(dma_buf_info.dmabuf, DMA_BIDIRECTIONAL);
++		if (ret) {
++			scm_smcinvoke_memobj_clear_paddr(&scm_data, &dma_buf_info);
++			scm_user_intf_dmabuf_unmap(&dma_buf_info);
++			return ret;
++		}
++		dma_buf_info.cpu_access_active = false;
++
+ 		scm_data.ret = qcom_scm_qtee_callback_response(out_buf, out_buf_size, &res.result[1], &res.result[0]);
++
++		ret = dma_buf_begin_cpu_access(dma_buf_info.dmabuf, DMA_BIDIRECTIONAL);
++		if (ret) {
++			scm_user_intf_dmabuf_unmap(&dma_buf_info);
++			return ret;
++		}
++		dma_buf_info.cpu_access_active = true;
++
+ 		scm_user_intf_dmabuf_unmap(&dma_buf_info);
+ 	} else {
+ 		return -EFAULT;
+@@ -447,6 +488,13 @@ static long scm_smcinvoke_ioctl(struct file *file, unsigned int cmd, unsigned lo
+ 			scm_user_intf_dmabuf_unmap(&dma_buf_info);
+ 			return ret;
+ 		}
++		ret = dma_buf_end_cpu_access(dma_buf_info.dmabuf, DMA_BIDIRECTIONAL);
++		if (ret) {
++			scm_smcinvoke_memobj_clear_paddr(&scm_data, &dma_buf_info);
++			scm_user_intf_dmabuf_unmap(&dma_buf_info);
++			return ret;
++		}
++		dma_buf_info.cpu_access_active = false;
+ 		scm_user_intf_dmabuf_unmap(&dma_buf_info);
+ 	} else {
+ 		return -EFAULT;
+@@ -455,6 +503,16 @@ static long scm_smcinvoke_ioctl(struct file *file, unsigned int cmd, unsigned lo
+ 	scm_data.ret = qcom_scm_call(__scm_dev->dev, &desc, &res);
+ #endif
+ 
++	if (direct_smcinvoke) {
++		ret = dma_buf_begin_cpu_access(dma_buf_info.dmabuf, DMA_BIDIRECTIONAL);
++		if (ret) {
++			scm_user_intf_dmabuf_unmap(&dma_buf_info);
++			return ret;
++		}
++		dma_buf_info.cpu_access_active = true;
++		scm_user_intf_dmabuf_unmap(&dma_buf_info);
++	}
++
+ 	for (i = 0; i < 3; i++) {
+ 		scm_data.qcom_scm_res[i] = res.result[i];
+ 	}
+@@ -630,4 +688,3 @@ module_platform_driver(qcom_scm_intf_sec_driver);
+ MODULE_IMPORT_NS("DMA_BUF");
+ MODULE_DESCRIPTION("Qualcomm Technologies, Inc. user interface Security SCM driver");
+ MODULE_LICENSE("GPL v2");
+-
+-- 
+2.34.1

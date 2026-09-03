@@ -1,0 +1,41 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jie Ma <mjie@qti.qualcomm.com>
+Date: Tue, 1 Sep 2026 15:00:00 +0200
+Subject: [PATCH] scm_user_intf_sec: find SCM device by compatible
+
+The SCM device node name can differ across device trees. On SA8797P the
+SCM node is compatible with "qcom,scm", but scm_user_intf_sec looks for a
+node named "qcom_scm" and fails to get the SCM driver data.
+
+Find the SCM node by compatible first, then keep the existing node-name
+lookup as a fallback for older device trees.
+
+Upstream-Status: Pending
+
+Signed-off-by: Jie Ma <mjie@qti.qualcomm.com>
+---
+ drivers/scm_user_intf_sec.c | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/scm_user_intf_sec.c b/drivers/scm_user_intf_sec.c
+index 86ac9b6..a9b135b 100644
+--- a/drivers/scm_user_intf_sec.c
++++ b/drivers/scm_user_intf_sec.c
+@@ -478,10 +478,12 @@ static int qcom_scm_get_scm_drvdata(void **scm_drvdata)
+ 	struct platform_device *pdev = NULL;
+ 	struct device_node* np = NULL;
+ 
+-	np = of_find_node_by_name(NULL, scm_dev_name);
++	np = of_find_compatible_node(NULL, NULL, "qcom,scm");
++	if (!np)
++		np = of_find_node_by_name(NULL, scm_dev_name);
+ 	if (!np)
+ 	{
+-		pr_err("Failed to find name of scm device\n");
++		pr_err("Failed to find scm device\n");
+ 		return -ENODEV;
+ 	}
+ 
+-- 
+2.25.1
+
