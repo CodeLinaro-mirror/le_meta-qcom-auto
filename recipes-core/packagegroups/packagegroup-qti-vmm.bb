@@ -27,6 +27,7 @@ RDEPENDS:${PN} = "\
     vmm-boot-lcm \
     vm-powerctl \
     dspfirmware-mount-vmm \
+    vm-gvminfo \
 "
 
 RDEPENDS:${PN}:append:gen5 = " \
@@ -35,4 +36,8 @@ RDEPENDS:${PN}:append:gen5 = " \
 "
 RDEPENDS:${PN}:remove:gen5 = "\
     gvm-net-config \
+"
+
+RDEPENDS:${PN} += "\
+    ${@bb.utils.contains('DISTRO_FEATURES', 'qti-qcvirtio', 'adbd-relay', '', d)} \
 "

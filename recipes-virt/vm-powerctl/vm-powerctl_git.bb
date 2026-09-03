@@ -5,7 +5,7 @@ LICENSE = "BSD-3-Clause-Clear"
 LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/${LICENSE};md5=7a434440b651f4a472ca93716d01033a"
 
 DEPENDS += "vmm-lib"
-SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/vm-tools/vm-powerctl/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/vm-tools/vm-powerctl;usehead=1"
+SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/vm-tools/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/vm-tools;usehead=1"
 SRCREV = "${AUTOREV}"
 S = "${WORKDIR}/vendor/qcom/opensource/vm-tools/vm-powerctl"
 RDEPENDS:${PN} = "vmm-lib"
