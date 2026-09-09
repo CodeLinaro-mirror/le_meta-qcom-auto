@@ -43,7 +43,7 @@ IMAGE_INSTALL += "libgomp"
 inherit ${@bb.utils.contains('DISTRO_FEATURES', 'selinux', 'selinux-image', '', d)}
 
 IMAGE_INSTALL += "\
-    ${@bb.utils.contains('DISTRO_FEATURES', 'selinux', 'packagegroup-selinux-minimal packagegroup-selinux-policycoreutils checkpolicy secilc auditd selinux-policy', '', d)} \
+    ${@bb.utils.contains('DISTRO_FEATURES', 'selinux', 'packagegroup-selinux-minimal packagegroup-selinux-policycoreutils checkpolicy secilc auditd refpolicy-targeted', '', d)} \
 "
 
 do_rootfs[postfuncs] += "prune_busybox_unused"
