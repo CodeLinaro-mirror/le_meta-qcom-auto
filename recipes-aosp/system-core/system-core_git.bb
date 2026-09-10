@@ -119,6 +119,11 @@ do_install:append() {
         fi
         sed -i -e '/^ExecStartPre/d' ${D}${systemd_unitdir}/system/usb.service
         sed -i -e '/^Descr/a\ConditionVirtualization=!container' ${D}${systemd_unitdir}/system/usb.service
+
+        # libcomposite registers /sys/kernel/config/usb_gadget — must be loaded
+        # before usb.service runs, otherwise g1 mkdir fails at boot.
+        install -d ${D}${sysconfdir}/modules-load.d
+        printf 'libcomposite\n' > ${D}${sysconfdir}/modules-load.d/usb-gadget.conf
     fi
 
     # remove headers, use system-core-headers recipe
@@ -140,6 +145,7 @@ FILES:${PN}-usb += "\
     ${systemd_unitdir}/system/usb.service \
     ${systemd_unitdir}/system/multi-user.target.wants/usb.service \
     ${sysconfdir}/initscripts/usb \
+    ${sysconfdir}/modules-load.d/usb-gadget.conf \
 "
 
 FILES:${PN}-dlkm += "\
