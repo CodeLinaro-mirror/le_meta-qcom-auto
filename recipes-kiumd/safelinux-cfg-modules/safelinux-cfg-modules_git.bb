@@ -21,7 +21,7 @@ SRCREV = "${AUTOREV}"
 # Yocto 6: avoid double slash, keep S aligned with where patches are applied
 S = "${UNPACKDIR}/safelinux-cfg-modules/safelinux-modules"
 
-TECHPACK_MODULES = "apps_pinctrl.ko scm_user_intf.ko qcom_dload_mode.ko vfio_iommu_qcom.ko iommu_iova_map.ko kiumd.ko qcom_uscmi.ko kryo_arm64_edac.ko kiumd_kgsl.ko mhi_ep_net.ko profiler.ko arm-smmu-qcom-fusa.ko pinctrl_fusa.ko qcom_vdev.ko dmabuf_share.ko iommu_faults.ko qcom_remote_virq.ko"
+TECHPACK_MODULES = "apps_pinctrl.ko scm_user_intf.ko qcom_dload_mode.ko vfio_iommu_qcom.ko iommu_iova_map.ko kiumd.ko qcom_uscmi.ko kryo_arm64_edac.ko kiumd_kgsl.ko mhi_ep_net.ko profiler.ko arm-smmu-qcom-fusa.ko pinctrl_fusa.ko qcom_vdev.ko dmabuf_share.ko iommu_faults.ko qcom_remote_virq.ko qcom_secure_buffer.ko mem_buf.ko qcom_dma_heaps.ko"
 TECHPACK_MODULES:append:gen5 = " vendor_uscmi.ko  qcom_vm_cpufreq.ko"
 TECHPACK_MODULES:append:sa8775 = " qcom_ethqos_filter.ko qcom_l3_cache_config.ko iommu_faults.ko"
 TECHPACK_MODULES:append:sa7255 = " qcom_ethqos_filter.ko qcom_l3_cache_config.ko iommu_faults.ko"
@@ -84,6 +84,10 @@ RPROVIDES:${PN} += "kernel-module-vendor-uscmi-${KERNEL_VERSION}"
 RPROVIDES:${PN} += "kernel-module-qcom-ethqos-filter-${KERNEL_VERSION}"
 RPROVIDES:${PN} += "kernel-module-qcom-l3-cache-config-${KERNEL_VERSION}"
 RPROVIDES:${PN} += "kernel-module-qcom-remote-virq-${KERNEL_VERSION}"
+# Secure DMA-BUF stack for DRM secure-pixel (Nord QLI2.0):
+RPROVIDES:${PN} += "kernel-module-qcom-secure-buffer-${KERNEL_VERSION}"
+RPROVIDES:${PN} += "kernel-module-mem-buf-${KERNEL_VERSION}"
+RPROVIDES:${PN} += "kernel-module-qcom-dma-heaps-${KERNEL_VERSION}"
 # gen5 additional modules
 RPROVIDES:${PN}:append:gen5 = " kernel-module-qcom-vm-cpufreq-${KERNEL_VERSION}"
 # Remove self-referential RDEPENDS: these modules are bundled inside this package,
