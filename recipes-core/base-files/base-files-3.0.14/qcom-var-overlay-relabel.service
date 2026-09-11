@@ -1,0 +1,17 @@
+[Unit]
+Description=Relabel QCOM /var overlay view
+Documentation=man:tmpfiles.d(5) man:systemd-tmpfiles(8)
+DefaultDependencies=no
+Requires=var.mount
+After=var.mount
+Before=sysinit.target
+ConditionPathIsMountPoint=/var
+ConditionPathExists=/etc/selinux/config
+
+[Service]
+Type=oneshot
+ExecStart=systemd-tmpfiles --create --boot --prefix=/var /usr/lib/tmpfiles.d/qcom-var-overlay.conf
+RemainAfterExit=yes
+
+[Install]
+WantedBy=sysinit.target
