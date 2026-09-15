@@ -31,6 +31,9 @@ inherit qti-techpack
 EXTRA_OEMAKE += "CONFIG_PROFILER=y"
 TECHPACK_MAKE_ARGS:append = " KCFLAGS='-Wno-error'"
 TECHPACK_MAKE_ARGS = "${@bb.utils.contains('PREFERRED_PROVIDER_virtual/kernel', 'linux-ark', 'KBUILD_EXTRA_SYMBOLS=${STAGING_INCDIR}/safelinux-sec-modules/Module.symvers', '', d)}"
+# Kbuild gates qcom_secure_buffer/mem_buf/qcom_dma_heaps behind QLI2_SECURE_DMABUF=1;
+# without this they're silently skipped even though TECHPACK_MODULES/RPROVIDES list them.
+TECHPACK_MAKE_ARGS:append = " QLI2_SECURE_DMABUF=1"
 
 # qcom_io_mem.c hunk 3 shifted 327 lines in our workspace vs QLI-2.0-AUTO —
 # apply the two remaining changes (platform_driver.remove void, MODULE_IMPORT_NS string) via sed
