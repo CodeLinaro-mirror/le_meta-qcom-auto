@@ -1,0 +1,357 @@
+From e15c8a32e4a2b5ecf3310e4c0bb4fae069d3fe80 Mon Sep 17 00:00:00 2001
+From: Jichao Zhu <jichzhu@qti.qualcomm.com>
+Date: Tue, 15 Sep 2026 13:37:15 +0800
+Subject: [PATCH] phy: qcom: add SCMI-managed SGMII SerDes PHY driver
+
+Add phy-qcom-sgmii-eth-scmi, a firmware-managed PHY driver for
+Qualcomm SGMII SerDes. Supports SA8255P (single perf domain:
+perf_serdes) and SA8797P (dual perf domain: perf_serdes +
+perf_5g_serdes).
+
+Signed-off-by: Jichao Zhu <jichzhu@qti.qualcomm.com>
+---
+ arch/arm64/configs/defconfig                  |   1 +
+ drivers/phy/qualcomm/Kconfig                  |   9 +
+ drivers/phy/qualcomm/Makefile                 |   1 +
+ .../phy/qualcomm/phy-qcom-sgmii-eth-scmi.c    | 300 ++++++++++++++++++
+ 4 files changed, 311 insertions(+)
+ create mode 100644 drivers/phy/qualcomm/phy-qcom-sgmii-eth-scmi.c
+
+diff --git a/arch/arm64/configs/defconfig b/arch/arm64/configs/defconfig
+index 2ef95aaf5308..3340ffe6a965 100644
+--- a/arch/arm64/configs/defconfig
++++ b/arch/arm64/configs/defconfig
+@@ -1801,6 +1801,7 @@ CONFIG_PHY_QCOM_USB_SNPS_FEMTO_V2=m
+ CONFIG_PHY_QCOM_USB_HS_28NM=m
+ CONFIG_PHY_QCOM_USB_SS=m
+ CONFIG_PHY_QCOM_SGMII_ETH=m
++CONFIG_PHY_QCOM_SGMII_ETH_SCMI=m
+ CONFIG_PHY_R8A779F0_ETHERNET_SERDES=y
+ CONFIG_PHY_RCAR_GEN3_PCIE=y
+ CONFIG_PHY_RCAR_GEN3_USB2=y
+diff --git a/drivers/phy/qualcomm/Kconfig b/drivers/phy/qualcomm/Kconfig
+index d910a5d1a1ac..5475c2429079 100644
+--- a/drivers/phy/qualcomm/Kconfig
++++ b/drivers/phy/qualcomm/Kconfig
+@@ -242,3 +242,12 @@ config PHY_QCOM_SGMII_ETH
+ 	help
+ 	  Enable this to support the internal SerDes/SGMII PHY on various
+ 	  Qualcomm chipsets.
++
++config PHY_QCOM_SGMII_ETH_SCMI
++	tristate "Qualcomm DWMAC SGMII SerDes/PHY driver (firmware managed)"
++	depends on OF && (ARCH_QCOM || COMPILE_TEST)
++	select GENERIC_PHY
++	help
++	  Enable this to support the internal SerDes/SGMII PHY on Qualcomm
++	  chipsets where the SerDes hardware (clocks and registers) is owned
++	  by the firmware.
+diff --git a/drivers/phy/qualcomm/Makefile b/drivers/phy/qualcomm/Makefile
+index 8bf887d58ee4..4972009b217e 100644
+--- a/drivers/phy/qualcomm/Makefile
++++ b/drivers/phy/qualcomm/Makefile
+@@ -26,3 +26,4 @@ obj-$(CONFIG_PHY_QCOM_USB_SS)		+= phy-qcom-usb-ss.o
+ obj-$(CONFIG_PHY_QCOM_USB_SNPS_FEMTO_V2)+= phy-qcom-snps-femto-v2.o
+ obj-$(CONFIG_PHY_QCOM_IPQ806X_USB)	+= phy-qcom-ipq806x-usb.o
+ obj-$(CONFIG_PHY_QCOM_SGMII_ETH)	+= phy-qcom-sgmii-eth.o
++obj-$(CONFIG_PHY_QCOM_SGMII_ETH_SCMI)	+= phy-qcom-sgmii-eth-scmi.o
+diff --git a/drivers/phy/qualcomm/phy-qcom-sgmii-eth-scmi.c b/drivers/phy/qualcomm/phy-qcom-sgmii-eth-scmi.c
+new file mode 100644
+index 000000000000..835fd3289384
+--- /dev/null
++++ b/drivers/phy/qualcomm/phy-qcom-sgmii-eth-scmi.c
+@@ -0,0 +1,291 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
++ *
++ * Qualcomm SGMII SerDes/PHY driver (firmware managed via SCMI).
++ */
++
++#include <linux/delay.h>
++#include <linux/module.h>
++#include <linux/of.h>
++#include <linux/phy.h>
++#include <linux/phy/phy.h>
++#include <linux/platform_device.h>
++#include <linux/pm_domain.h>
++#include <linux/pm_runtime.h>
++
++#define PD_IDX_SERDES		0
++#define PD_IDX_5G_SERDES	1
++
++struct qcom_sgmii_phy_scmi_cfg {
++	const char * const *pd_names;
++	unsigned int num_pds;
++};
++
++struct qcom_sgmii_phy_scmi {
++	const struct qcom_sgmii_phy_scmi_cfg *cfg;
++	struct dev_pm_domain_list *pds;
++	int active_pd_idx;
++	unsigned int perf_state;
++};
++
++static const char * const sa8255p_pd_names[] = {
++	"perf_serdes",
++};
++
++static const struct qcom_sgmii_phy_scmi_cfg sa8255p_cfg = {
++	.pd_names	= sa8255p_pd_names,
++	.num_pds	= ARRAY_SIZE(sa8255p_pd_names),
++};
++
++static const char * const sa8797p_pd_names[] = {
++	"perf_serdes",
++	"perf_5g_serdes",
++};
++
++static const struct qcom_sgmii_phy_scmi_cfg sa8797p_cfg = {
++	.pd_names	= sa8797p_pd_names,
++	.num_pds	= ARRAY_SIZE(sa8797p_pd_names),
++};
++
++static int qcom_sgmii_phy_scmi_power_on(struct phy *phy)
++{
++	struct qcom_sgmii_phy_scmi *priv = phy_get_drvdata(phy);
++	struct device *dev = phy->dev.parent;
++	int ret;
++
++	dev_info(dev, "power_on: pd[%d] perf_state=%u\n",
++		priv->active_pd_idx, priv->perf_state);
++
++	ret = pm_runtime_resume_and_get(dev);
++	if (ret) {
++		dev_err(dev, "power_on: pm_runtime_resume_and_get failed (%d)\n", ret);
++		return ret;
++	}
++
++	ret = dev_pm_genpd_set_performance_state(
++		priv->pds->pd_devs[priv->active_pd_idx], priv->perf_state);
++	if (ret) {
++		dev_err(dev, "power_on: set perf_state=%u pd[%d] failed (%d)\n",
++			priv->perf_state, priv->active_pd_idx, ret);
++		pm_runtime_put(dev);
++		return ret;
++	}
++
++	dev_info(dev, "power_on: perf_state=%u ok, stabilising\n", priv->perf_state);
++	usleep_range(5000, 10000);
++
++	return 0;
++}
++
++static int qcom_sgmii_phy_scmi_power_off(struct phy *phy)
++{
++	struct qcom_sgmii_phy_scmi *priv = phy_get_drvdata(phy);
++	struct device *dev = phy->dev.parent;
++
++	dev_info(dev, "power_off: pd[%d] -> idle perf_state=%u\n",
++		priv->active_pd_idx, SPEED_10);
++
++	/* Use SPEED_10 as minimum idle level; state=0 is rejected by SCMI */
++	dev_pm_genpd_set_performance_state(
++		priv->pds->pd_devs[priv->active_pd_idx], SPEED_10);
++	pm_runtime_put_sync(dev);
++
++	return 0;
++}
++
++static int qcom_sgmii_phy_scmi_validate(struct phy *phy,
++					enum phy_mode mode, int submode,
++					union phy_configure_opts *opts)
++{
++	if (mode != PHY_MODE_ETHERNET)
++		return -EINVAL;
++
++	switch (submode) {
++	case PHY_INTERFACE_MODE_SGMII:
++	case PHY_INTERFACE_MODE_1000BASEX:
++	case PHY_INTERFACE_MODE_2500BASEX:
++	case PHY_INTERFACE_MODE_5GBASER:
++	case PHY_INTERFACE_MODE_USXGMII:
++	case PHY_INTERFACE_MODE_10GBASER:
++		return 0;
++	default:
++		return -EINVAL;
++	}
++}
++
++static int qcom_sgmii_phy_scmi_set_mode(struct phy *phy,
++					enum phy_mode mode, int submode)
++{
++	struct qcom_sgmii_phy_scmi *priv = phy_get_drvdata(phy);
++	struct device *dev = phy->dev.parent;
++	int old_idx = priv->active_pd_idx;
++	int new_idx;
++	int ret;
++
++	ret = qcom_sgmii_phy_scmi_validate(phy, mode, submode, NULL);
++	if (ret)
++		return ret;
++
++	if (submode == PHY_INTERFACE_MODE_USXGMII ||
++		submode == PHY_INTERFACE_MODE_10GBASER) {
++		new_idx = PD_IDX_SERDES;
++	} else if (submode == PHY_INTERFACE_MODE_5GBASER) {
++		new_idx = PD_IDX_5G_SERDES;
++	} else {
++		new_idx = PD_IDX_SERDES;
++	}
++
++	if (new_idx >= (int)priv->pds->num_pds) {
++		dev_err(dev, "set_mode: submode=%d requires pd[%d], only %u available\n",
++			submode, new_idx, priv->pds->num_pds);
++		return -EINVAL;
++	}
++
++	priv->active_pd_idx = new_idx;
++
++	dev_info(dev, "set_mode: submode=%d pd[%d->%d] power_count=%d\n",
++		submode, old_idx, new_idx, phy->power_count);
++
++	return 0;
++}
++
++static int qcom_sgmii_phy_scmi_set_speed(struct phy *phy, int speed)
++{
++	struct qcom_sgmii_phy_scmi *priv = phy_get_drvdata(phy);
++	struct device *dev = phy->dev.parent;
++	int ret;
++
++	priv->perf_state = speed;
++
++	dev_info(dev, "set_speed: speed=%d pd[%d] power_count=%d\n",
++		speed, priv->active_pd_idx, phy->power_count);
++
++	if (phy->power_count == 0)
++		return 0;
++
++	ret = dev_pm_genpd_set_performance_state(
++		priv->pds->pd_devs[priv->active_pd_idx], priv->perf_state);
++	if (ret) {
++		dev_err(dev, "set_speed: set perf_state=%u pd[%d] failed (%d)\n",
++			priv->perf_state, priv->active_pd_idx, ret);
++		return ret;
++	}
++
++	dev_info(dev, "set_speed: perf_state=%u ok, stabilising\n", priv->perf_state);
++	usleep_range(5000, 10000);
++
++	return 0;
++}
++
++static const struct phy_ops qcom_sgmii_phy_scmi_ops = {
++	.power_on	= qcom_sgmii_phy_scmi_power_on,
++	.power_off	= qcom_sgmii_phy_scmi_power_off,
++	.set_mode	= qcom_sgmii_phy_scmi_set_mode,
++	.set_speed	= qcom_sgmii_phy_scmi_set_speed,
++	.validate	= qcom_sgmii_phy_scmi_validate,
++	.owner		= THIS_MODULE,
++};
++
++static void qcom_sgmii_phy_scmi_runtime_disable(void *data)
++{
++	struct device *dev = data;
++
++	pm_runtime_disable(dev);
++}
++
++static int qcom_sgmii_phy_scmi_probe(struct platform_device *pdev)
++{
++	const struct qcom_sgmii_phy_scmi_cfg *cfg;
++	struct qcom_sgmii_phy_scmi *priv;
++	struct device *dev = &pdev->dev;
++	struct phy_provider *provider;
++	struct phy *phy;
++	int ret;
++
++	cfg = device_get_match_data(dev);
++	if (!cfg)
++		return -ENODEV;
++
++	if (cfg->num_pds == 0)
++		return dev_err_probe(dev, -EINVAL, "no perf domains configured\n");
++
++	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
++	if (!priv)
++		return -ENOMEM;
++
++	priv->cfg = cfg;
++	priv->active_pd_idx = PD_IDX_SERDES;
++	priv->perf_state = SPEED_1000;
++
++	if (cfg->num_pds == 1) {
++		/*
++		 * Single PD: device core auto-attaches it before probe runs.
++		 * Wrap dev in a minimal pds so power_on/off can use pd_devs[0] uniformly.
++		 * No cleanup needed: device core owns the genpd detach.
++		 */
++		priv->pds = devm_kzalloc(dev, sizeof(*priv->pds), GFP_KERNEL);
++		if (!priv->pds)
++			return -ENOMEM;
++		priv->pds->pd_devs = devm_kcalloc(dev, 1,
++						   sizeof(*priv->pds->pd_devs),
++						   GFP_KERNEL);
++		if (!priv->pds->pd_devs)
++			return -ENOMEM;
++		priv->pds->pd_devs[0] = dev;
++		priv->pds->num_pds = 1;
++	} else {
++		const struct dev_pm_domain_attach_data pd_data = {
++			.pd_names     = cfg->pd_names,
++			.num_pd_names = cfg->num_pds,
++			.pd_flags     = PD_FLAG_DEV_LINK_ON,
++		};
++
++		ret = devm_pm_domain_attach_list(dev, &pd_data, &priv->pds);
++		if (ret < 0)
++			return dev_err_probe(dev, ret,
++					     "failed to attach perf domains\n");
++	}
++
++	pm_runtime_enable(dev);
++
++	ret = devm_add_action_or_reset(dev,
++				       qcom_sgmii_phy_scmi_runtime_disable,
++				       dev);
++	if (ret)
++		return ret;
++
++	phy = devm_phy_create(dev, NULL, &qcom_sgmii_phy_scmi_ops);
++	if (IS_ERR(phy))
++		return dev_err_probe(dev, PTR_ERR(phy), "failed to create the phy\n");
++
++	phy_set_drvdata(phy, priv);
++
++	provider = devm_of_phy_provider_register(dev, of_phy_simple_xlate);
++	if (IS_ERR(provider))
++		return dev_err_probe(dev, PTR_ERR(provider),
++				     "failed to register the PHY provider\n");
++
++	dev_info(dev, "probed: %u perf domain(s)\n", priv->pds->num_pds);
++
++	return 0;
++}
++
++static const struct of_device_id qcom_sgmii_phy_scmi_of_match[] = {
++	{ .compatible = "qcom,sa8255p-dwmac-sgmii-phy", .data = &sa8255p_cfg},
++	{ .compatible = "qcom,sa8797p-dwmac-sgmii-phy", .data = &sa8797p_cfg},
++	{ }
++};
++MODULE_DEVICE_TABLE(of, qcom_sgmii_phy_scmi_of_match);
++
++static struct platform_driver qcom_sgmii_phy_scmi_driver = {
++	.probe	= qcom_sgmii_phy_scmi_probe,
++	.driver = {
++		.name		= "qcom-sgmii-phy-scmi",
++		.of_match_table	= qcom_sgmii_phy_scmi_of_match,
++	},
++};
++module_platform_driver(qcom_sgmii_phy_scmi_driver);
++
++MODULE_DESCRIPTION("Qualcomm SGMII PHY driver (firmware managed)");
++MODULE_LICENSE("GPL");
+-- 
+2.34.1
+

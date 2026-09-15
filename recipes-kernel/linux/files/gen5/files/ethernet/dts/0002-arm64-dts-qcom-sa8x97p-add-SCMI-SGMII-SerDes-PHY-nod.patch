@@ -1,0 +1,53 @@
+From 361f382720a76dd46c9fe32607ed45849db93b0e Mon Sep 17 00:00:00 2001
+From: Jichao Zhu <jichzhu@qti.qualcomm.com>
+Date: Tue, 15 Sep 2026 16:13:08 +0800
+Subject: [PATCH 2/2] arm64: dts: qcom: sa8x97p: add SCMI SGMII SerDes PHY node
+
+Signed-off-by: Jichao Zhu <jichzhu@qti.qualcomm.com>
+---
+ arch/arm64/boot/dts/qcom/nord.dtsi | 22 ++++++++++++++++++++--
+ 1 file changed, 20 insertions(+), 2 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/qcom/nord.dtsi b/arch/arm64/boot/dts/qcom/nord.dtsi
+index d880b2f4c7ba..8edfd6227414 100644
+--- a/arch/arm64/boot/dts/qcom/nord.dtsi
++++ b/arch/arm64/boot/dts/qcom/nord.dtsi
+@@ -5688,6 +5688,21 @@ xpcs0: xpcs@0x1A14000 {
+ 		reg-names = "qxpcs";
+ 	};
+ 
++	serdes0: serdes0-phy {
++		compatible = "qcom,sa8797p-dwmac-sgmii-phy";
++		power-domains = <&scmi7_dvfs 0>, <&scmi7_dvfs 1>;
++		power-domain-names = "perf_serdes", "perf_5g_serdes";
++		#phy-cells = <0>;
++	};
++
++	serdes1: serdes1-phy {
++		compatible = "qcom,sa8797p-dwmac-sgmii-phy";
++		status = "disabled";
++		power-domains = <&scmi8_dvfs 0>, <&scmi8_dvfs 1>;
++		power-domain-names = "perf_serdes", "perf_5g_serdes";
++		#phy-cells = <0>;
++	};
++
+ 	ethernet0: ethernet@0x1A00000 {
+ 		compatible = "qcom,sa8797p-ethqos", "snps,dwxgmac";
+ 		reg = <0x0 0x1A00000 0x0 0x14000>,
+@@ -5720,8 +5735,11 @@ ethernet0: ethernet@0x1A00000 {
+ 			 <&apps_smmu_2 0x1209 0x0>,
+ 			 <&apps_smmu_2 0x120a 0x0>;
+ 
+-		power-domains = <&scmi7_pd 0>, <&scmi7_pd 1>, <&scmi7_dvfs 0>, <&scmi7_dvfs 1>;
+-		power-domain-names = "power_core", "power_mdio", "perf_serdes", "perf_5g_serdes";
++		power-domains = <&scmi7_pd 0>, <&scmi7_pd 1>;
++		power-domain-names = "power_core", "power_mdio";
++
++		phys = <&serdes0>;
++		phy-names = "serdes";
+ 
+ 
+ 		snps,tso;
+-- 
+2.34.1
+

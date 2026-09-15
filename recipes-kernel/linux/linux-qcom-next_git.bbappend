@@ -89,6 +89,9 @@ SRC_URI:append = " \
     file://files/ethernet/stmmac-caller/0029-enable-ethqos-driver.patch \
     file://files/ethernet/stmmac-caller/0030-hwif-ptp-fix.patch \
     file://files/ethernet/dts/0001-arm64-dts-qcom-nord-enable-ethernet0-and-xpcs0.patch \
+    file://files/ethernet/dts/0002-arm64-dts-qcom-sa8x97p-add-SCMI-SGMII-SerDes-PHY-nod.patch \
+    file://files/ethernet/0017-net-stmmac-dwmac-qcom-ethqos-switch-to-SCMI-PHY-driv.patch \
+    file://files/ethernet/0018-phy-qcom-add-SCMI-managed-SGMII-SerDes-PHY-driver.patch \
 "
 
 # Pin to a specific commit once you know it
