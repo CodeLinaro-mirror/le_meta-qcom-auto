@@ -22,37 +22,29 @@ Upstream-Status: Inappropriate [kernel 7.1 / GCC 15 out-of-tree build compat]
 
 Signed-off-by: Jie Ma <mjie@qti.qualcomm.com>
 ---
- Kbuild                           |  5 ++---
+ Kbuild                           |  2 +-
  hab_linux.c                      |  2 +-
  hypervisor/virtio/hab_virq_hgy.c |  2 +-
  hypervisor/virtio/hab_virtio.c   | 20 +++++++++++++++++---
  os/linux/hab_mem_linux.c         | 11 +++++------
- 5 files changed, 26 insertions(+), 14 deletions(-)
+ 5 files changed, 23 insertions(+), 11 deletions(-)
 
 diff --git a/Kbuild b/Kbuild
 index 38b4ee3..fe64993 100644
 --- a/Kbuild
 +++ b/Kbuild
-@@ -7,11 +7,10 @@ LINUXINCLUDE += -I$(HAB_ROOT)/include \
- 		-I$(HAB_ROOT)/ \
- 		-I$(HAB_ROOT)/hypervisor \
- 		-I$(HAB_ROOT)/os \
--		-I$(KERNEL_SRC)/drivers/vhost \
+@@ -10,10 +10,10 @@ LINUXINCLUDE += -I$(HAB_ROOT)/include \
+ 		-I$(KERNEL_SRC)/drivers/vhost \
                  -I$(KERNEL_SRC)/include \
  		-I$(KERNEL_SRC)/include/uapi/linux
  
 -EXTRA_CFLAGS += -DCONFIG_MSM_VHOST_HAB=1 \
-+ccflags-y += -DCONFIG_MSM_VIRTIO_HAB=1 \
++ccflags-y += -DCONFIG_MSM_VHOST_HAB=1 \
  		-DCONFIG_GH_DBL=1 \
  		-DCONFIG_MSM_VIRQ_HAB=1 \
  		-DCONFIG_MSM_HAB_DEFAULT_VMID=2 \
-@@ -40,5 +39,5 @@ msm_hab-y += os/linux/khab.o \
- msm_hab-y += hypervisor/virtio/hab_virq_hgy.o
- #endif
- #ifdef CONFIG_MSM_VHOST_HAB
--msm_hab-y += hypervisor/virtio/hab_vhost.o
-+msm_hab-y += hypervisor/virtio/hab_virtio.o
- #endif
+                 -Iinclude/linux \
+ 		-I$(INC_DIR) \
 diff --git a/hab_linux.c b/hab_linux.c
 index 755b11a..ad9a669 100644
 --- a/hab_linux.c
