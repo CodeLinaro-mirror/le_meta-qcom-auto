@@ -5,7 +5,9 @@ DEPENDS += "virtual/kernel"
 # audiolite-dlkm is blocked: kernel module requires QTI-specific sa8797 config not in linux-qcom-next
 # safelinux-system-cfg has a do_install:append:gen5 bug (standalone 'false' under set -e) — removed from DEPENDS
 # vfio-device-bind.sh is installed directly by early-ramdisk-init from the source tree
-DEPENDS += "${@bb.utils.contains('MACHINE_FEATURES', 'qti-umd', 'safelinux-sec-modules ', '', d)}"
+# safelinux-cfg-modules RPROVIDEs the fusa/kiumd/uscmi modules in EARLY_RAMDISK_KERNEL_MODULES;
+# needed as a build dep so its ipk reaches the rootfs feed (matches QLI1.0).
+DEPENDS += "${@bb.utils.contains('MACHINE_FEATURES', 'qti-umd', 'safelinux-sec-modules safelinux-cfg-modules ', '', d)}"
 
 IMAGE_CLASSES:remove = "qimage qimage-boot"
 
