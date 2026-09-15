@@ -26,7 +26,7 @@ do_install:append() {
 
     install -d -p ${D}/vendor/dsp
 
-    install -m 0644 ${WORKDIR}/mnt_fs.conf -D ${D}${libdir}/modules-load.d/mnt_fs.conf
+    install -m 0644 ${UNPACKDIR}/mnt_fs.conf -D ${D}${libdir}/modules-load.d/mnt_fs.conf
     install -m 0644 ${S}/vendor-dsp-mount.service -D ${D}${systemd_unitdir}/system/vendor-dsp-mount.service
 
     if ${@bb.utils.contains('DISTRO_FEATURES', 'selinux', 'true', 'false', d)}; then

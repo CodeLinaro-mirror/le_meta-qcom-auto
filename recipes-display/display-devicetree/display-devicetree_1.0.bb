@@ -11,7 +11,7 @@ SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/display-devicetree/.git;protoc
 
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/display-devicetree"
+S = "${UNPACKDIR}/vendor/qcom/opensource/display-devicetree"
 
 EXT_MODULE = "vendor/qcom/opensource/display-devicetree"
 
@@ -22,7 +22,7 @@ do_compile:prepend:gvm-gen5(){
 }
 do_configure[noexec] = "1"
 
-TECHPACK_MODULE_OUT = "${WORKDIR}/display-devicetree"
+TECHPACK_MODULE_OUT = "${UNPACKDIR}/display-devicetree"
 
 TECHPACK_DTBS:quin-gvm-gen4-5 = "\
                  display/quin-vm-display.dtbo \

@@ -6,16 +6,13 @@ LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/${LICENSE};md5
 
 DEPENDS += "${@bb.utils.contains('PREFERRED_PROVIDER_virtual/kernel', 'linux-ark', 'safelinux-sec-modules', '', d)}"
 
-# 0002-*.patch carries the secure-buffer stack (qcom_dma_heaps/qcom_secure_buffer/
-# mem_buf, for /dev/dma_heap/qcom,secure-pixel needed by kgsl) until Gerrit
-# CL 7060929 / 7060930 land on ${SRCBRANCH}; drop that patch line then.
-# 0003-*.patch aligns kiumd/qcom_sg_ops with the embedded-sg_table
-# dma_heap_attachment layout, adds GMU/KGSL ctrl-pending fixed-IOVA
-# staging, and fixes smmu_table registration/unmap pairing. Depends
-# on the secure-buffer stack (qcom_sg_ops.c/.h) landing separately.
+# Kernel 7.3 compatibility changes already exist in the source HEAD.
+# 0002-*.patch carries the kernel 6.18 ARM SMMU macro and platform-driver
+# remove() compatibility changes.
 SRC_URI = "\
     ${PATH_TO_REPO}/vendor/qcom/opensource/safelinux-cfg-modules/.git;protocol=${PROTO};destsuffix=safelinux-cfg-modules;usehead=1 \
     file://0001-safelinux-cfg-modules-fix-remove-signature-for-6.18-.patch;patchdir=.. \
+    file://0003-safelinux-cfg-modules-fix-thermal-cooling-api.patch;patchdir=.. \
     file://fix-kernel71.py \
 "
 

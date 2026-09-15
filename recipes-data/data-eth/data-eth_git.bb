@@ -10,7 +10,7 @@ DEPENDS = "gunyah-drivers"
 SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/data-eth/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/data-eth;usehead=1"
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/data-eth"
+S = "${UNPACKDIR}/vendor/qcom/opensource/data-eth"
 
 RDEPENDS:${PN} += "gunyah-drivers"
 
@@ -29,10 +29,14 @@ TECHPACK_MAKE_ARGS += "CONFIG_ETH_SWITCH_MONITOR=m"
 # gunyah-drivers puts Module.symvers in ${includedir}/ instead of the standard location.
 TECHPACK_MAKE_ARGS += "KBUILD_EXTRA_SYMBOLS=${STAGING_INCDIR}/Module.symvers"
 
+# Keep the legacy remove callback source unchanged; Linux 6.11+ reports the
+# callback signature mismatch as an error when compiling this external module.
+TECHPACK_MAKE_ARGS += "KCFLAGS='-Wno-error=incompatible-pointer-types'"
+
 # Install per-module modules-load.d configs if present.
 do_install:append() {
-    install -d ${D}${libdir}/modules-load.d/
     for conf_file in $(find ${S}/drivers/eth_switch_monitor -name "*.conf" 2>/dev/null); do
+        install -d ${D}${libdir}/modules-load.d/
         install -m 0644 "$conf_file" ${D}${libdir}/modules-load.d/
     done
 }

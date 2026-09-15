@@ -11,7 +11,7 @@ SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/vms-devicetree/.git;protocol=$
 
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/vms-devicetree"
+S = "${UNPACKDIR}/vendor/qcom/opensource/vms-devicetree"
 
 inherit deploy kernel-arch module-base
 

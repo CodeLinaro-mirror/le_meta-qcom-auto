@@ -18,7 +18,7 @@ S = "${UNPACKDIR}/${TARGET_DIR}vendor/qcom/opensource/display-drivers"
 
 EXT_MODULE = "${TARGET_DIR}vendor/qcom/opensource/display-drivers"
 
-TECHPACK_MODULE_OUT = "${WORKDIR}/display-drivers"
+TECHPACK_MODULE_OUT = "${UNPACKDIR}/display-drivers"
 TECHPACK_MODULES = "${@bb.utils.contains('PREFERRED_VERSION_linux-msm', '6.12', bb.utils.contains('MACHINE_FEATURES', 'qti-hypervisor', \
                     'msm_hyp.ko msm_cfg.ko', 'msm_drm.ko', d),bb.utils.contains('MACHINE_FEATURES', 'qti-hypervisor',\
                     'msm-hyp/msm_hyp.ko msm-cfg/msm_cfg.ko', 'msm/msm_drm.ko', d), d)}"
@@ -42,7 +42,7 @@ inherit qti-techpack
 
 do_compile:prepend:gvm-gen5(){
     export GEN5_LVGVM=y
-    export ROOTDIR="${WORKDIR}"
+    export ROOTDIR="${UNPACKDIR}"
     export MM_DRIVERS_INC="${STAGING_INCDIR}"
 }
 

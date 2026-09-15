@@ -21,8 +21,8 @@ USERADD_PARAM:${PN} = "--no-create-home -g security --shell /bin/false fde"
 do_install:append () {
   install -d ${D}${systemd_system_unitdir}
   install -d ${D}${bindir}
-  install -m 0755 ${WORKDIR}/enable-fde.sh ${D}${bindir}/enable-fde.sh
-  install -m 0644 ${WORKDIR}/enable-fde.service ${D}${systemd_unitdir}/system/
+  install -m 0755 ${UNPACKDIR}/enable-fde.sh ${D}${bindir}/enable-fde.sh
+  install -m 0644 ${UNPACKDIR}/enable-fde.service ${D}${systemd_unitdir}/system/
 }
 
 RDEPENDS:${PN} += "e2fsprogs-mke2fs"

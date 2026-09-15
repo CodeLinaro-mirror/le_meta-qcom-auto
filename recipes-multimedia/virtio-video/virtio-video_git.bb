@@ -14,7 +14,7 @@ VIRTIO_SRC:gvm-gen4-5 = "${TARGET_DIR}vendor/qcom/opensource/virtio-video/gen4"
 SRC_URI = "${PATH_TO_REPO}/${VIRTIO_SRC}/.git;protocol=${PROTO};destsuffix=${VIRTIO_SRC};usehead=1"
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/${VIRTIO_SRC}"
+S = "${UNPACKDIR}/${VIRTIO_SRC}"
 
 EXT_MODULE = "${VIRTIO_SRC}"
 

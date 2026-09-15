@@ -18,7 +18,7 @@ SRC_URI:append = " file://adbd-relay-vm3.service"
 
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/${REPO_NAME}"
+S = "${UNPACKDIR}/${REPO_NAME}"
 
 SYSTEMD_PACKAGES = "adbd-relay"
 SYSTEMD_SERVICE:adbd-relay = "adbd-relay-vm2.service adbd-relay-vm3.service"
@@ -68,6 +68,6 @@ do_install() {
 
     # install locally provided systemd unit file
     install -d ${D}${systemd_system_unitdir}
-    install -m 0644 ${WORKDIR}/adbd-relay-vm2.service ${D}${systemd_system_unitdir}
-    install -m 0644 ${WORKDIR}/adbd-relay-vm3.service ${D}${systemd_system_unitdir}
+    install -m 0644 ${UNPACKDIR}/adbd-relay-vm2.service ${D}${systemd_system_unitdir}
+    install -m 0644 ${UNPACKDIR}/adbd-relay-vm3.service ${D}${systemd_system_unitdir}
 }

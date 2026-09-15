@@ -2,7 +2,7 @@
 # This class configure recipes which need customizations in production builds
 #
 
-QPERFDEPLOYDIR = "${WORKDIR}/deploy-qperf-${PN}"
+QPERFDEPLOYDIR = "${UNPACKDIR}/deploy-qperf-${PN}"
 
 python __anonymous() {
     # Append PRODUCT, VARIANT info to PV

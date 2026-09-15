@@ -22,7 +22,7 @@ MAKE_TARGETS = ""
 do_install:append() {
     # Copy udev rule
     install -d ${D}${sysconfdir}/udev/rules.d
-    install -m 0644 ${WORKDIR}/vhost_usb_gadget.rules ${D}${sysconfdir}/udev/rules.d
+    install -m 0644 ${UNPACKDIR}/vhost_usb_gadget.rules ${D}${sysconfdir}/udev/rules.d
 
     install -d ${D}${nonarch_base_libdir}/modules/${KERNEL_VERSION}/extra/
     install -m 0644 ${S}/vhost_usb_gadget.ko ${D}${nonarch_base_libdir}/modules/${KERNEL_VERSION}/extra/

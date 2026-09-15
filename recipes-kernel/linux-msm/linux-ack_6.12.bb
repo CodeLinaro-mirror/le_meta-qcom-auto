@@ -24,8 +24,8 @@ SRCREV_common = "${AUTOREV}"
 SRCREV_socrepo = "${AUTOREV}"
 SRCREV_FORMAT = "common_socrepo"
 
-S = "${WORKDIR}/kernel/kernel-${PV}/kernel_platform/common"
-SOC_REPO_PATH = "${WORKDIR}/kernel/kernel-${PV}/kernel_platform/soc-repo"
+S = "${UNPACKDIR}/kernel/kernel-${PV}/kernel_platform/common"
+SOC_REPO_PATH = "${UNPACKDIR}/kernel/kernel-${PV}/kernel_platform/soc-repo"
 
 PR = "r0"
 
@@ -42,7 +42,7 @@ KERNEL_LD:append:aarch64 = " ${TOOLCHAIN_OPTIONS}"
 
 KERNEL_CONFIG = "generic_auto_defconfig"
 
-SOC_DEFCONFIG = "${WORKDIR}/ack/autogvm_extra.fragment"
+SOC_DEFCONFIG = "${UNPACKDIR}/ack/autogvm_extra.fragment"
 # debug fragment lives in soc-repo, fetched via SRC_URI
 SOC_DEBUG_FRAGMENT = "${@bb.utils.contains_any('VARIANT', 'perf user', '', '${SOC_REPO_PATH}/arch/${ARCH}/configs/generic_auto_debug.fragment', d)}"
 
@@ -116,18 +116,18 @@ do_shared_workdir:append() {
     # awk deduplicates by key (last occurrence wins).
     {
         cat "${STAGING_KERNEL_BUILDDIR}/.config"
-        for f in "${WORKDIR}/ack"/*.fragment "${SOC_DEBUG_FRAGMENT}"; do
+        for f in "${UNPACKDIR}/ack"/*.fragment "${SOC_DEBUG_FRAGMENT}"; do
             [ -f "$f" ] && cat "$f"
         done
     } | awk -F= '/^CONFIG_[^=]+=/{seen[$1]=$0} END{for(k in seen) print seen[k]}' \
-        > "${WORKDIR}/merged_soc.config"
+        > "${UNPACKDIR}/merged_soc.config"
 
     # Write directly to work-shared using > (create/truncate, no pseudo issues).
-    autoconf_patch_add "${WORKDIR}/merged_soc.config" | grep "^CONFIG_" \
+    autoconf_patch_add "${UNPACKDIR}/merged_soc.config" | grep "^CONFIG_" \
         > "${SOC_AUTO_CONF}"
 
     { printf "/* Automatically generated - do not edit */\n#define __LINUX_AUTOCONF_H\n\n"
-      autoconf_patch_add "${WORKDIR}/merged_soc.config" | grep "^#define "
+      autoconf_patch_add "${UNPACKDIR}/merged_soc.config" | grep "^#define "
     } > "${SOC_AUTOCONF_H}"
 
     bbnote "Generated SOC_AUTO_CONF and SOC_AUTOCONF_H in do_shared_workdir"

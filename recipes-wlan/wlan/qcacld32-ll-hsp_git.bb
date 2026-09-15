@@ -71,8 +71,8 @@ do_install() {
     install -d ${WLAN_KO}/wlan
     install -m 0644 ${S}/${_MODNAME}.ko ${WLAN_KO}/wlan/
 
-    install -D -m 0644 ${WORKDIR}/device/qcom/wlan/msm_auto/WCNSS_qcom_cfg_qca6490.ini ${FIRMWARE_PATH}/WCNSS_qcom_cfg.ini
-    install -D -m 0644 ${WORKDIR}/device/qcom/wlan/msm_auto/wlan_mac_hst_1.bin ${FIRMWARE_PATH}/wlan_mac.bin
+    install -D -m 0644 ${UNPACKDIR}/device/qcom/wlan/msm_auto/WCNSS_qcom_cfg_qca6490.ini ${FIRMWARE_PATH}/WCNSS_qcom_cfg.ini
+    install -D -m 0644 ${UNPACKDIR}/device/qcom/wlan/msm_auto/wlan_mac_hst_1.bin ${FIRMWARE_PATH}/wlan_mac.bin
 
     ln -sf /firmware/image/${FW_PATH_NAME} ${D}${nonarch_base_libdir}/firmware/${FW_PATH_NAME}
 }

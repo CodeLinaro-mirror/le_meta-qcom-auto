@@ -66,8 +66,8 @@ do_install() {
     install -d ${D}${includedir}/qcacld/
     install -m 0644 ${S1}/utils/nlink/inc/wlan_nlink_common.h ${D}${includedir}/qcacld/
 
-    install -D -m 0644 ${WORKDIR}/device/qcom/wlan/msm_auto/WCNSS_qcom_cfg_qca6797.ini ${FIRMWARE_PATH}/WCNSS_qcom_cfg.ini
-    install -D -m 0644 ${WORKDIR}/device/qcom/wlan/msm_auto/wlan_mac.bin ${FIRMWARE_PATH}/wlan_mac.bin
+    install -D -m 0644 ${UNPACKDIR}/device/qcom/wlan/msm_auto/WCNSS_qcom_cfg_qca6797.ini ${FIRMWARE_PATH}/WCNSS_qcom_cfg.ini
+    install -D -m 0644 ${UNPACKDIR}/device/qcom/wlan/msm_auto/wlan_mac.bin ${FIRMWARE_PATH}/wlan_mac.bin
 
     ln -sf /firmware/image/${FW_PATH_NAME} ${D}${nonarch_base_libdir}/firmware/${FW_PATH_NAME}
 

@@ -41,6 +41,7 @@ SRC_URI = "${PATH_TO_REPO}/${CODE_DIR}/.git;protocol=${PROTO};destsuffix=${CODE_
            file://0005-finish-weston-15-compositor-sdm-port.patch \
            file://0006-fix-remaining-weston-15-c-build-breaks.patch \
            file://0007-fix-drm-head-and-renderbuffer-cleanup.patch \
+           file://0008-drop-is-touch-only-weston-15.patch \
 "
 SRCREV = "${AUTOREV}"
 

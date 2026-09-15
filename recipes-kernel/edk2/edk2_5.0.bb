@@ -18,5 +18,5 @@ SRC_URI:qclinux-gvm-gen5 = "${PATH_TO_REPO}/kernel_platform/bootable/bootloader/
 
 SRC_URI:append = " file://0001-edk2-remove-register-for-C-17-compiler.patch"
 
-S = "${WORKDIR}/kernel/kernel-${PREFERRED_VERSION_linux-msm}/kernel_platform/bootable/bootloader/edk2"
-S:qclinux-gvm-gen5 = "${WORKDIR}/kernel_platform/bootable/bootloader/edk2"
+S = "${UNPACKDIR}/kernel/kernel-${PREFERRED_VERSION_linux-msm}/kernel_platform/bootable/bootloader/edk2"
+S:qclinux-gvm-gen5 = "${UNPACKDIR}/kernel_platform/bootable/bootloader/edk2"

@@ -2,7 +2,7 @@ SUMMARY = "Qualcomm soc-repo kernel modules"
 DESCRIPTION = "Out-of-tree qualcomm kernel modules from soc-repo"
 HOMEPAGE = "https://git.codelinaro.org"
 LICENSE = "GPLv2.0-with-linux-syscall-note"
-LIC_FILES_CHKSUM = "file://${WORKDIR}/kernel/kernel-${PV}/kernel_platform/soc-repo/COPYING;md5=6bc538ed5bd9a7fc9398086aedcd7e46"
+LIC_FILES_CHKSUM = "file://${UNPACKDIR}/kernel/kernel-${PV}/kernel_platform/soc-repo/COPYING;md5=6bc538ed5bd9a7fc9398086aedcd7e46"
 
 COMPATIBLE_MACHINE = "gvm-gen4-5|gvm-gen5"
 
@@ -36,8 +36,8 @@ SRCREV_common = "${AUTOREV}"
 SRCREV_socrepo = "${AUTOREV}"
 SRCREV_FORMAT = "common_socrepo"
 
-S = "${WORKDIR}/kernel/kernel-${PV}/kernel_platform/soc-repo"
-SOC_REPO = "${WORKDIR}/kernel/kernel-${PV}/kernel_platform/soc-repo"
+S = "${UNPACKDIR}/kernel/kernel-${PV}/kernel_platform/soc-repo"
+SOC_REPO = "${UNPACKDIR}/kernel/kernel-${PV}/kernel_platform/soc-repo"
 
 do_configure:prepend() {
     # Ensure KBA/Makefile points to kernel-source before configure runs.
@@ -49,7 +49,7 @@ do_configure:prepend() {
 }
 
 # copy_common_sources: mirror Bazel common_sources.bzl copy_file() behaviour.
-# Copy ACK common/ source files into the soc-repo WORKDIR so that the OOT
+# Copy ACK common/ source files into the soc-repo UNPACKDIR so that the OOT
 # make build (make -C kernel-source O=KBA M=soc-repo/) can compile them.
 # The soc-repo Makefiles already contain the obj-$(CONFIG_xxx) rules;
 # only the .c sources are missing from soc-repo.
@@ -71,7 +71,7 @@ do_configure:prepend() {
 #     -> cp -r the whole directory from common/, then restore soc-repo's
 #        Makefile and tests/Makefile which are OOT-specific.
 copy_common_sources() {
-    COMMON="${WORKDIR}/kernel/kernel-${PV}/kernel_platform/common"
+    COMMON="${UNPACKDIR}/kernel/kernel-${PV}/kernel_platform/common"
 
     # --- 5 single-file copies ---
     cp -f "${COMMON}/drivers/char/virtio_console.c" \
@@ -106,15 +106,15 @@ copy_common_sources() {
 
     # --- cfg80211: cp -r whole directory, then restore soc-repo Makefiles ---
     cp -f "${SOC_REPO}/net/wireless/Makefile" \
-          "${WORKDIR}/wireless_Makefile.soc-repo"
+          "${UNPACKDIR}/wireless_Makefile.soc-repo"
     cp -f "${SOC_REPO}/net/wireless/tests/Makefile" \
-          "${WORKDIR}/wireless_tests_Makefile.soc-repo"
+          "${UNPACKDIR}/wireless_tests_Makefile.soc-repo"
 
     cp -rf "${COMMON}/net/wireless/." "${SOC_REPO}/net/wireless/"
 
-    cp -f "${WORKDIR}/wireless_Makefile.soc-repo" \
+    cp -f "${UNPACKDIR}/wireless_Makefile.soc-repo" \
           "${SOC_REPO}/net/wireless/Makefile"
-    cp -f "${WORKDIR}/wireless_tests_Makefile.soc-repo" \
+    cp -f "${UNPACKDIR}/wireless_tests_Makefile.soc-repo" \
           "${SOC_REPO}/net/wireless/tests/Makefile"
 
     bbnote "soc-modules: copied ACK common/ sources into soc-repo workdir"

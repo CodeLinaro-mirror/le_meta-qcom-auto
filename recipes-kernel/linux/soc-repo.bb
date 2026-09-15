@@ -45,8 +45,8 @@ TECHPACK_MODULES = "\
 do_compile[depends] += "linux-qcom-custom-rt:do_shared_workdir"
 
 # Source directory
-S = "${WORKDIR}/vendor/qcom/opensource/soc-modules"
-DEFCONFIG_FILE = "${WORKDIR}/configs/soc-repo_defconfig"
+S = "${UNPACKDIR}/vendor/qcom/opensource/soc-modules"
+DEFCONFIG_FILE = "${UNPACKDIR}/configs/soc-repo_defconfig"
 
 # Configure: Overlay headers
 do_configure:append() {

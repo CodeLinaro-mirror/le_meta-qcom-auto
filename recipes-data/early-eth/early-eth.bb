@@ -24,10 +24,10 @@ USERADD_PARAM:${PN} = "--no-create-home -g early-eth --shell /bin/false early-et
 do_install:append() {
     install -d ${D}${systemd_system_unitdir}
     install -d ${D}${bindir}
-    install -m 0644 ${WORKDIR}/early_eth0.service ${D}${systemd_unitdir}/system/early_eth0.service
-    install -m 0644 ${WORKDIR}/early_eth1.service ${D}${systemd_unitdir}/system/early_eth1.service
-    install -m 0755 ${WORKDIR}/eth_module_load.sh ${D}${bindir}/eth_module_load.sh
-    install -m 0644 ${WORKDIR}/eth_module_load.service ${D}${systemd_unitdir}/system/eth_module_load.service
+    install -m 0644 ${UNPACKDIR}/early_eth0.service ${D}${systemd_unitdir}/system/early_eth0.service
+    install -m 0644 ${UNPACKDIR}/early_eth1.service ${D}${systemd_unitdir}/system/early_eth1.service
+    install -m 0755 ${UNPACKDIR}/eth_module_load.sh ${D}${bindir}/eth_module_load.sh
+    install -m 0644 ${UNPACKDIR}/eth_module_load.service ${D}${systemd_unitdir}/system/eth_module_load.service
 }
 
 do_install:append:sa8775() {

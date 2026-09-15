@@ -1,0 +1,27 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jim Wang <jimwan@qti.qualcomm.com>
+Date: Tue, 18 Aug 2026 15:00:00 -0400
+Subject: [PATCH] sdm-backend: drop is_touch_only for weston 15
+
+weston_surface::is_touch_only was removed in weston 15.  The
+touch-only-surface Wayland extension handler that sets it is now a
+no-op; the field simply no longer exists in the ABI.
+
+Upstream-Status: Pending
+
+Signed-off-by: Jim Wang <jimwan@qti.qualcomm.com>
+---
+ sdm-backend/touch-only-surface.c | 1 -
+ 1 file changed, 0 insertions(+), 1 deletion(-)
+
+diff --git a/sdm-backend/touch-only-surface.c b/sdm-backend/touch-only-surface.c
+index abc1234..def5678 100644
+--- a/sdm-backend/touch-only-surface.c
++++ b/sdm-backend/touch-only-surface.c
+@@ -33,5 +33,4 @@ touch_only_surface_set_touch_only(struct wl_client *client,
+		return;
+	}
+
+-	surface->is_touch_only = (enabled != 0);
+ }
+

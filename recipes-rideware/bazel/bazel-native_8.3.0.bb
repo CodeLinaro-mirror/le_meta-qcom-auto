@@ -10,7 +10,7 @@ PV = "8.3.0"
 SRC_URI = "https://github.com/bazelbuild/bazel/releases/download/${PV}/bazel-${PV}-linux-x86_64;name=bazel"
 SRC_URI[bazel.sha256sum] = "55ba395ed114ee35ee9add63fbc44fa46a6b518b3c2f6d0211a574957cddde2d"
 
-S = "${WORKDIR}"
+S = "${UNPACKDIR}"
 
 inherit native
 
@@ -23,6 +23,6 @@ do_compile[noexec] = "1"
 do_install() {
     install -d ${D}${bindir}
     install -m 0755 \
-        ${WORKDIR}/bazel-${PV}-linux-x86_64 \
+        ${UNPACKDIR}/bazel-${PV}-linux-x86_64 \
         ${D}${bindir}/bazel
 }

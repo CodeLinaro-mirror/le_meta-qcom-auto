@@ -10,7 +10,7 @@ SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/audio-kernel-virtio/.git;proto
 "
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/audio-kernel-virtio"
+S = "${UNPACKDIR}/vendor/qcom/opensource/audio-kernel-virtio"
 
 EXT_MODULE = "vendor/qcom/opensource/audio-kernel-virtio"
 TECHPACK_MODULES = "msm_virtio_snd.ko"
@@ -18,7 +18,7 @@ inherit qti-techpack
 
 do_install:append() {
     install -d -m 0755 ${D}${sysconfdir}/modules-load.d
-    install -m 0644 ${WORKDIR}/msm-virtio-snd-load.conf ${D}${sysconfdir}/modules-load.d/msm-virtio-snd-load.conf
+    install -m 0644 ${UNPACKDIR}/msm-virtio-snd-load.conf ${D}${sysconfdir}/modules-load.d/msm-virtio-snd-load.conf
 }
 
 FILES:${PN} += "${nonarch_base_libdir}/modules/${KERNEL_VERSION}/extra/msm_virtio_snd.ko"

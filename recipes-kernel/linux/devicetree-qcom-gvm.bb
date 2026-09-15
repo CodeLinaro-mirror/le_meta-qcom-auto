@@ -9,7 +9,7 @@ COMPATIBLE_MACHINE = "qclinux-gvm-gen5"
 SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/soc-modules/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/soc-modules;usehead=1"
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/soc-modules/devicetree"
+S = "${UNPACKDIR}/vendor/qcom/opensource/soc-modules/devicetree"
 
 CLEANBROKEN = "1"
 

@@ -1,0 +1,161 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Venkatakrishnaiah Pari <vpari@qti.qualcomm.com>
+Date: Fri, 18 Sep 2026 00:00:00 -0700
+Subject: [PATCH] uapi: linux/ccu_qup: add ccu_qup.h header
+
+Add the UAPI header linux/ccu_qup/ccu_qup.h that is required by the
+camera-qcx platformmanager (platformccu.cpp) but is missing from the
+QLI2.0 (linux-qcom-next) kernel tree.  The header was present in the
+QLI1.0 kernel (LY.AU.0.1.1) and is carried forward here unchanged.
+
+Upstream-Status: Inappropriate [QLI2.0 porting]
+Signed-off-by: Venkatakrishnaiah Pari <vpari@qti.qualcomm.com>
+---
+ include/uapi/linux/ccu_qup/ccu_qup.h | 138 ++++++++++++++++++++++++++
+ 1 file changed, 138 insertions(+)
+ create mode 100644 include/uapi/linux/ccu_qup/ccu_qup.h
+
+diff --git a/include/uapi/linux/ccu_qup/ccu_qup.h b/include/uapi/linux/ccu_qup/ccu_qup.h
+new file mode 100644
+index 000000000000..d95fc8e5c5a9
+--- /dev/null
++++ b/include/uapi/linux/ccu_qup/ccu_qup.h
+@@ -0,0 +1,138 @@
++/* SPDX-License-Identifier: GPL-2.0-only WITH Linux-syscall-note */
++/*
++ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
++ */
++#ifndef __UAPI_LINUX_CCU_QUP_H
++#define __UAPI_LINUX_CCU_QUP_H
++#include <linux/types.h>
++#include <linux/i2c-dev.h>
++
++/*
++ * enum cmd_type - CCU QUP request type
++ * @I2C_GPII_RESET: This is used to reset the GPII.
++ * @SYNC_ID_CH_MAP: This is used to map the sync ID and sync CH.
++ * @LOAD_QUP_FW: This is used to load FW for CCU QUP.
++ * @UPDATE_CH_TYPE: This is used to change the ch type & mode of GPII.
++ *                  Channel Type(00-> Regular channel, 01 -> SYNC0 channel,
++ *                  10-> SYNC1 Channel)
++ *                  CCU mode(0-> Sync trigger mode, 1-> CDM mode).
++ * @INTER_DELAY: This is used to add inter transfer delay in microseconds.
++ * @BUS_CLEAR: This cmd is used to check the status of IOS lines and do
++ *             recovery of lines if in bad state.
++ * @POWER_ON: This cmd is used to turn on all the QUP clock.
++ * @POWER_OFF: This cmd is used to turn off all teh QUP clock
++ * @FUSA_IRQ_STATUS: This cmd is used for CCU QUP FUSA IRQ STATUS
++ * @RESERVED_2: Reserved for future use.
++ */
++enum cmd_type {
++	I2C_GPII_RESET = 0,
++	SYNC_ID_CH_MAP = 1,
++	LOAD_QUP_FW = 2,
++	UPDATE_CH_TYPE = 3,
++	INTER_DELAY = 4,
++	BUS_CLEAR = 5,
++	POWER_ON = 6,
++	POWER_OFF = 7,
++	FUSA_IRQ_STATUS = 8,
++	RESERVED_2 = 9,
++	INVALID_CMD = -EINVAL,
++};
++
++/*
++ * struct ccu_i2c_async_read_msg - This structure represents a single asynchronous I2C
++ *				   read message intended for user-space clients during
++ *				   asynchronous data transfers.
++ *
++ * @len: Length of the data to be read, in bytes.
++ * @buf: Data buffer to store the read bytes.
++ */
++struct ccu_i2c_async_read_msg {
++	__u16 len;
++	__u8 buf[8192];
++};
++
++/*
++ * struct ccu_i2c_async_read_msg_info - Structure to hold asynchronous I2C read message
++ *					information
++ *
++ * @len: Length of the data to be read, in bytes.
++ * @buf: pointer of the read buffer.
++ */
++struct ccu_i2c_async_read_msg_info {
++	__u16 len;
++	__u8 *buf;
++};
++
++/*
++ * struct ccu_qup_client_data - This struct represents the client data which
++ *                              will pass to client in asyncronous mode of transfer.
++ * @gpii_no: GPII Number for which error is received.
++ * @adap_nr: This number represents the /dev/i2c-%d number.
++ * @qup_no: indicate the QUP number in case of error notification event
++ * @frame_cookie: Frame cookie to know which frame has error.
++ * @err_no: This represents standard error code in case of transfer failure.
++ * @nr_async_read_msgs: Indicates the number of valid async read messages.
++ * @async_read_msgs: Stores array of async read messages.
++ * @reserved[10]: Reserved for future purpose.
++ */
++struct ccu_qup_client_data {
++	__u8 gpii_no;
++	__u8 adap_nr;
++	__u8 qup_no;
++	__u32 frame_cookie;
++	int err_no;
++	__u8 nr_async_read_msgs;
++	struct ccu_i2c_async_read_msg async_read_msgs[I2C_RDWR_IOCTL_MAX_MSGS];
++	__u32 reserved[10];
++}__attribute__((packed));
++
++/*
++ * struct sync_info - This structure is used to pass the data which can be
++ *                    used to map the sync id and sync channel.
++ * @qup_no: Represents QUP number between QUP0 or QUP1.
++ * @se_no: Represents Serial engine number between SE0 to SE5.
++ * @sync_ch: Represents Sync channel no.
++ * @sync_id: Represents Sync ID no.
++ * @reserved[10]: Reserved for future purpose.
++ */
++struct sync_info {
++	__u8 qup_no;
++	__u8 se_no;
++	__u8 sync_ch;
++	__u8 sync_id;
++	__u32 reserved[10];
++};
++
++/*
++ * struct ccu_qup_config - This structure is used to send information to the
++ *                         CCU QUP driver.
++ * @sync[20]: Array which hold 20 elements of type struct sync_info.
++ * @cmd: Represents command type of a transfer request.
++ * @fd: File descriptor of I2C dev node for associated SE.
++ * @gpii_no: GPII number in case of partial reset of single GPII.
++ * @rst_flag: FALSE – partial reset and TRUE – complete reset.
++ * @premature_cancel: set to true if clinet wants premature cancellation.
++ * @ccu_mode: Represents CCU mode for GPII (0-> Sync trigger mode, 1-> CDM mode).
++ * @ch_type: Represents ch type for GPII (00-> Regular channel, 01 -> SYNC0 channel,
++ *           10 -> SYNC1 channel).
++ * @trigger_type: Represents behaviour of trigger (0-> sticky, 1 -> non-sticky).
++ * @delay: Delay in microseconds.
++ * @qup_no: QUP number where the FuSa interrupt was detected.
++ * @reserved[20]: Reserved for future purpose.
++ */
++struct ccu_qup_config {
++	struct sync_info sync[20];
++	enum cmd_type cmd;
++	int fd;
++	__u8 gpii_no;
++	_Bool rst_flag;
++	_Bool premature_cancel;
++	__u8 ccu_mode;
++	__u8 ch_type;
++	_Bool trigger_type;
++	__u64 delay;
++	__u8 qup_no;
++	__u32 reserved[20];
++};
++
++#endif /*__UAPI_LINUX_CCU_QUP_H */

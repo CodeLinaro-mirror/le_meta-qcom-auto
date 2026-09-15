@@ -23,19 +23,19 @@ do_install() {
     install -d ${D}${nonarch_base_libdir}/firmware/
     ln -sf /bluetooth/image ${D}${nonarch_base_libdir}/firmware/qca
     install -d ${D}${bindir}
-    install -D -m 0755 ${WORKDIR}/load_bt_modules.sh ${D}${bindir}/
+    install -D -m 0755 ${UNPACKDIR}/load_bt_modules.sh ${D}${bindir}/
     install -d ${D}${systemd_unitdir}/system/
-    install -m 0644 ${WORKDIR}/bt_module_load.service -D ${D}${systemd_unitdir}/system/
+    install -m 0644 ${UNPACKDIR}/bt_module_load.service -D ${D}${systemd_unitdir}/system/
     install -d ${D}${sysconfdir}/udev/rules.d/
-    install -m 0644 ${WORKDIR}/99-bt-ssr-recovery.rules -D ${D}${sysconfdir}/udev/rules.d/
+    install -m 0644 ${UNPACKDIR}/99-bt-ssr-recovery.rules -D ${D}${sysconfdir}/udev/rules.d/
 }
 
 do_install:append:sa8255-ivi() {
-    install -m 0644 ${WORKDIR}/bt_module_load_legacy.service -D ${D}${systemd_unitdir}/system/bt_module_load.service
+    install -m 0644 ${UNPACKDIR}/bt_module_load_legacy.service -D ${D}${systemd_unitdir}/system/bt_module_load.service
 }
 
 do_install:append:sa7255-ivi() {
-    install -m 0644 ${WORKDIR}/bt_module_load_legacy.service -D ${D}${systemd_unitdir}/system/bt_module_load.service
+    install -m 0644 ${UNPACKDIR}/bt_module_load_legacy.service -D ${D}${systemd_unitdir}/system/bt_module_load.service
 }
 
 FILES:${PN} += "${bindir}/load_bt_modules.sh \

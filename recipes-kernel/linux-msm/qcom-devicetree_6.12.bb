@@ -17,7 +17,7 @@ SRC_URI = "\
 
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/kernel/kernel-${PV}/kernel_platform/qcom/opensource/devicetree"
+S = "${UNPACKDIR}/kernel/kernel-${PV}/kernel_platform/qcom/opensource/devicetree"
 
 # CONFIG variables passed to make dtbs to select the correct autogvm DTB targets.
 # These are NOT in auto.conf (removed to prevent platformdlkm from picking up

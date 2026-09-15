@@ -26,7 +26,7 @@ NORD_COMMON_OVERLAYS ?= "nord-ride_overlay.dtbo sa8797p-mm-vfio.dtbo sa8797p_aud
 NORD_VARIANT_OVERLAYS ?= "nord-ride-safe.dtbo nord-ride-non-safe-ivi.dtbo nord-ride-pcie-ep.dtbo"
 NORD_DDR_OVERLAYS ?= "nord-ddr-32gb_overlay.dtbo nord-ddr-48gb_overlay.dtbo nord-ddr-64gb_overlay.dtbo"
 do_make_dtb() {
-    local stage="${WORKDIR}/nord-dtb-merge"
+    local stage="${UNPACKDIR}/nord-dtb-merge"
     rm -rf "${stage}"
     install -d "${stage}/base" "${stage}/common" "${stage}/inter" "${stage}/ddr"
     rm -rf ${DEPLOY_DIR_IMAGE}/dtbs

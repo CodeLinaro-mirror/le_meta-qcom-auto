@@ -25,7 +25,6 @@ RDEPENDS:${PN} += "\
     phytool \
     vlan \
     ${@bb.utils.contains_any('LAYERSERIES_CORENAMES', 'scarthgap wrynose blacksail', '', 'netkit-telnet', d)} \
-    tcp-wrappers \
     ${@bb.utils.contains('MACHINE_FEATURES', 'qti-hypervisor', '', 'proftpd', d)} \
     ${@bb.utils.contains_any('MACHINE_FEATURES', 'qti-umd', 'setup-qos', '', d)} \
     ${@bb.utils.contains_any('MACHINE_FEATURES', 'qti-umd', 'early-eth', '', d)} \

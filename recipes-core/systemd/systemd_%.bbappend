@@ -117,7 +117,7 @@ do_install:append () {
     sed -i 's#ENV{ID_PART_ENTRY_SCHEME}=="gpt", ENV{ID_PART_ENTRY_NAME}=="?\*", SYMLINK+="disk/by-partlabel/$env{ID_PART_ENTRY_NAME}"#ENV{ID_PART_ENTRY_SCHEME}=="gpt", ENV{ID_PART_ENTRY_NAME}=="?\*", ENV{ID_PART_ENTRY_NAME}!="la_*", ENV{ID_PART_ENTRY_NAME}!="lv_*", ENV{ID_PART_ENTRY_NAME}!="bluetooth*", ENV{ID_PART_ENTRY_NAME}!="modem*", ENV{ID_PART_ENTRY_NAME}!="dsp*", SYMLINK+="disk/by-partlabel/$env{ID_PART_ENTRY_NAME}"#' ${D}${nonarch_base_libdir}/udev/rules.d/60-persistent-storage.rules
 
     if ${@bb.utils.contains("PREFERRED_VERSION_linux-msm", "6.12", "true", "false", d)}; then
-        install -m 0664 ${WORKDIR}/linux-msm-6.12_modules_load.conf ${D}${sysconfdir}/modules-load.d/
+        install -m 0664 ${UNPACKDIR}/linux-msm-6.12_modules_load.conf ${D}${sysconfdir}/modules-load.d/
     fi
 
     # Mask serial-getty on hvc0 to prevent auto getty on hypervisor console
@@ -129,14 +129,14 @@ do_install:append () {
 }
 
 do_install:append:gvm-gen5() {
-    install -m 0644 ${WORKDIR}/60-vblk.rules ${D}${sysconfdir}/udev/rules.d/
+    install -m 0644 ${UNPACKDIR}/60-vblk.rules ${D}${sysconfdir}/udev/rules.d/
 }
 
 do_install:append:qclinux-gvm-gen5() {
-    install -m 0644 ${WORKDIR}/60-vblk.rules ${D}${sysconfdir}/udev/rules.d/
-    install -m 0664 ${WORKDIR}/linux-qcom-gvm-6.6_modules_load.conf ${D}${sysconfdir}/modules-load.d/
+    install -m 0644 ${UNPACKDIR}/60-vblk.rules ${D}${sysconfdir}/udev/rules.d/
+    install -m 0664 ${UNPACKDIR}/linux-qcom-gvm-6.6_modules_load.conf ${D}${sysconfdir}/modules-load.d/
 }
 
 do_install:append:gvm-gen4-5() {
-    install -m 0644 ${WORKDIR}/60-vblk.rules ${D}${sysconfdir}/udev/rules.d/
+    install -m 0644 ${UNPACKDIR}/60-vblk.rules ${D}${sysconfdir}/udev/rules.d/
 }

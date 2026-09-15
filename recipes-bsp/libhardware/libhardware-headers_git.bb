@@ -18,7 +18,7 @@ do_compile[noexec] = "1"
 
 do_install() {
     install -d ${D}${includedir}/hardware/
-    install -m 0644 ${S}/include/hardware/*.h ${D}${includedir}/hardware/
+    install -m 0644 ${UNPACKDIR}/hardware/libhardware/include/hardware/*.h ${D}${includedir}/hardware/
 }
 
 BBCLASSEXTEND = "native"

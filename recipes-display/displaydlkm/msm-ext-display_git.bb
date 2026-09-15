@@ -9,12 +9,12 @@ SRC_URI = "${PATH_TO_REPO}/${TARGET_DIR}vendor/qcom/opensource/mm-drivers/.git;p
 
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/${TARGET_DIR}vendor/qcom/opensource/mm-drivers/msm_ext_display"
+S = "${UNPACKDIR}/${TARGET_DIR}vendor/qcom/opensource/mm-drivers/msm_ext_display"
 
 EXT_MODULE = "${TARGET_DIR}vendor/qcom/opensource/mm-drivers/msm_ext_display"
-TECHPACK_MODULE_OUT = "${WORKDIR}/mm-drivers/msm_ext_display"
+TECHPACK_MODULE_OUT = "${UNPACKDIR}/mm-drivers/msm_ext_display"
 TECHPACK_MODULES = "msm_ext_display.ko"
-TECHPACK_HEADERS = "${WORKDIR}/${TARGET_DIR}vendor/qcom/opensource/mm-drivers/msm_ext_display/include/uapi"
+TECHPACK_HEADERS = "${UNPACKDIR}/${TARGET_DIR}vendor/qcom/opensource/mm-drivers/msm_ext_display/include/uapi"
 
 inherit qti-techpack
 

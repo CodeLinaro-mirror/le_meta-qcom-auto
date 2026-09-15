@@ -25,8 +25,8 @@ SRCREV_common = "${AUTOREV}"
 SRCREV_socrepo = "${AUTOREV}"
 SRCREV_FORMAT = "common_socrepo"
 
-S = "${WORKDIR}/kernel/kernel-${PV}/kernel_platform/common"
-SOC_REPO_INCLUDE = "${WORKDIR}/kernel/kernel-${PV}/kernel_platform/soc-repo/include"
+S = "${UNPACKDIR}/kernel/kernel-${PV}/kernel_platform/common"
+SOC_REPO_INCLUDE = "${UNPACKDIR}/kernel/kernel-${PV}/kernel_platform/soc-repo/include"
 
 do_configure[noexec] = "1"
 do_compile[noexec] = "1"

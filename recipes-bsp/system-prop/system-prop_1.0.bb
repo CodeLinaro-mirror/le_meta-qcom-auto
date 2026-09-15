@@ -28,9 +28,9 @@ do_compile[noexec] = "1"
 
 do_install() {
     if ${@bb.utils.contains('DISTRO_FEATURES', 'qti-qcvirtio', 'true', 'false', d)}; then
-        install -m 0644 ${WORKDIR}/system_qcvirtio.prop -D ${D}/build.prop
+        install -m 0644 ${UNPACKDIR}/system_qcvirtio.prop -D ${D}/build.prop
     else
-        install -m 0644 ${WORKDIR}/system.prop -D ${D}/build.prop
+        install -m 0644 ${UNPACKDIR}/system.prop -D ${D}/build.prop
     fi
     # Remove empty lines and lines starting with '#'
     sed -i -e 's/#.*$//' -e '/^$/d' ${D}/build.prop

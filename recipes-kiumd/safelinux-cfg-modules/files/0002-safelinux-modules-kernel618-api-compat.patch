@@ -1,0 +1,73 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Venkatakrishnaiah Pari <vpari@qti.qualcomm.com>
+Date: Mon, 28 Sep 2026 00:00:00 +0000
+Subject: [PATCH] safelinux-modules: fix kernel 6.18 API changes
+
+Kernel 6.18 renamed the ARM SMMU context-bank fault-status macros and
+changed platform_driver.remove() callbacks to return void. Apply those
+source changes directly so the compatibility does not depend on
+fix-kernel71.py.
+
+This is the source-tree form of the fix-kernel71.py changes from
+meta-qcom-auto CL 9a63487af.
+
+Upstream-Status: Inappropriate
+Signed-off-by: Venkatakrishnaiah Pari <vpari@qti.qualcomm.com>
+---
+ safelinux-modules/drivers/iommu_faults.c | 10 +++++-----
+ safelinux-modules/drivers/qcom_uscmi.c   |  3 +++---
+ 2 files changed, 8 insertions(+), 8 deletions(-)
+
+diff --git a/safelinux-modules/drivers/iommu_faults.c b/safelinux-modules/drivers/iommu_faults.c
+--- a/safelinux-modules/drivers/iommu_faults.c
++++ b/safelinux-modules/drivers/iommu_faults.c
+@@ -234,16 +234,16 @@
+ 	if (__ratelimit(&iommufault_rs))
+ 		dev_err(dev, "SMMU fault: iova=0x%lx fsr=0x%08x [%s%s%s%s%s%s%s%s%s%s] flags=0x%x\n",
+ 			iova, fsr,
+-			(fsr & ARM_SMMU_FSR_TF)     ? "TF "     : "",
+-			(fsr & ARM_SMMU_FSR_AFF)    ? "AFF "    : "",
+-			(fsr & ARM_SMMU_FSR_PF)     ? "PF "     : "",
+-			(fsr & ARM_SMMU_FSR_EF)     ? "EF "     : "",
+-			(fsr & ARM_SMMU_FSR_TLBMCF) ? "TLBMCF " : "",
+-			(fsr & ARM_SMMU_FSR_TLBLKF) ? "TLBLKF " : "",
+-			(fsr & ARM_SMMU_FSR_ASF)    ? "ASF "    : "",
+-			(fsr & ARM_SMMU_FSR_UUT)    ? "UUT "    : "",
+-			(fsr & ARM_SMMU_FSR_SS)     ? "SS "     : "",
+-			(fsr & ARM_SMMU_FSR_MULTI)  ? "MULTI "  : "",
++			(fsr & ARM_SMMU_CB_FSR_TF)     ? "TF "     : "",
++			(fsr & ARM_SMMU_CB_FSR_AFF)    ? "AFF "    : "",
++			(fsr & ARM_SMMU_CB_FSR_PF)     ? "PF "     : "",
++			(fsr & ARM_SMMU_CB_FSR_EF)     ? "EF "     : "",
++			(fsr & ARM_SMMU_CB_FSR_TLBMCF) ? "TLBMCF " : "",
++			(fsr & ARM_SMMU_CB_FSR_TLBLKF) ? "TLBLKF " : "",
++			(fsr & ARM_SMMU_CB_FSR_ASF)    ? "ASF "    : "",
++			(fsr & ARM_SMMU_CB_FSR_UUT)    ? "UUT "    : "",
++			(fsr & ARM_SMMU_CB_FSR_SS)     ? "SS "     : "",
++			(fsr & ARM_SMMU_CB_FSR_MULTI)  ? "MULTI "  : "",
+ 			flags);
+ 
+ out_unlock:
+
+
+diff --git a/safelinux-modules/drivers/qcom_uscmi.c b/safelinux-modules/drivers/qcom_uscmi.c
+--- a/safelinux-modules/drivers/qcom_uscmi.c
++++ b/safelinux-modules/drivers/qcom_uscmi.c
+@@ -1530,4 +1530,4 @@
+-static int qcom_uscmi_remove(struct platform_device *pdev)
++static void qcom_uscmi_remove(struct platform_device *pdev)
+ {
+	struct qcom_uscmi_dev *uscmi = platform_get_drvdata(pdev);
+	int i;
+@@ -1534,3 +1534,3 @@
+ 
+	if (!uscmi)
+-		return 0;
++		return;
+@@ -1560,5 +1560,5 @@
+ 	}
+ 
+ 	mutex_destroy(&uscmi->dev_lock);
+-	return 0;
++	return;
+ }

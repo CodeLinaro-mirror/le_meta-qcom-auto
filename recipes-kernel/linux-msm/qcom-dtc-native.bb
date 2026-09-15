@@ -14,14 +14,14 @@ SRC_URI = "${BASE_GIT_PATH}/external/qcom-dtc/.git;protocol=${PROTO};destsuffix=
 
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}"
+S = "${UNPACKDIR}"
 
 inherit native
 
 do_configure[noexec] = "1"
 
 do_compile() {
-    QCOM_DTC="${WORKDIR}/${BASE_PATH}/external/qcom-dtc"
+    QCOM_DTC="${UNPACKDIR}/${BASE_PATH}/external/qcom-dtc"
     ${BUILD_CC} ${BUILD_CFLAGS} \
         -I${QCOM_DTC} \
         -I${QCOM_DTC}/libfdt \
@@ -37,10 +37,10 @@ do_compile() {
         ${QCOM_DTC}/libfdt/fdt_empty_tree.c \
         ${QCOM_DTC}/libfdt/fdt_strerror.c \
         -DNO_YAML \
-        -o ${WORKDIR}/fdtoverlaymerge
+        -o ${UNPACKDIR}/fdtoverlaymerge
 }
 
 do_install() {
     install -d ${D}/${bindir}
-    install -m 0755 ${WORKDIR}/fdtoverlaymerge ${D}/${bindir}/fdtoverlaymerge
+    install -m 0755 ${UNPACKDIR}/fdtoverlaymerge ${D}/${bindir}/fdtoverlaymerge
 }

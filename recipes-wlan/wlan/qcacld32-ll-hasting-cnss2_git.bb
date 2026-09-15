@@ -112,8 +112,8 @@ EXTRA_OEMAKE:append:quin-gvm-lemans = " WLAN_CFG_OVERRIDE=${_WLAN_CFG_OVERRIDE_G
 EXTRA_OEMAKE:append:quin-gvm-monaco = " WLAN_CFG_OVERRIDE=${_WLAN_CFG_OVERRIDE_GVM}"
 
 do_configure:append() {
-    sed -i -e 's/^gEnableConcurrentSTA=wlan1/gEnableConcurrentSTA=wlan3/g' ${WORKDIR}/device/qcom/wlan/msm_auto/WCNSS_qcom_cfg_qca6390.ini
-    sed -i '1 i\host_log_custom_nl_proto=1' ${WORKDIR}/device/qcom/wlan/msm_auto/WCNSS_qcom_cfg_qca6390.ini
+    sed -i -e 's/^gEnableConcurrentSTA=wlan1/gEnableConcurrentSTA=wlan3/g' ${UNPACKDIR}/device/qcom/wlan/msm_auto/WCNSS_qcom_cfg_qca6390.ini
+    sed -i '1 i\host_log_custom_nl_proto=1' ${UNPACKDIR}/device/qcom/wlan/msm_auto/WCNSS_qcom_cfg_qca6390.ini
 }
 
 SYSTEMD_SERVICE:${PN} = "qca6390-module-load.service"

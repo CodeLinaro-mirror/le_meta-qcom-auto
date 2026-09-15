@@ -42,8 +42,8 @@ SRC_URI:gvm-gen4-5 = "${PATH_TO_REPO}/${TARGET_DIR}graphics/weston/.git;protocol
 "
 SRCREV:gvm-gen5 = "${AUTOREV}"
 SRCREV:gvm-gen4-5 = "${AUTOREV}"
-S:gvm-gen5 = "${WORKDIR}/${TARGET_DIR}graphics/weston"
-S:gvm-gen4-5 = "${WORKDIR}/${TARGET_DIR}graphics/weston"
+S:gvm-gen5 = "${UNPACKDIR}/${TARGET_DIR}graphics/weston"
+S:gvm-gen4-5 = "${UNPACKDIR}/${TARGET_DIR}graphics/weston"
 
 UPSTREAM_CHECK_URI:remove = "https://wayland.freedesktop.org/releases.html"
 

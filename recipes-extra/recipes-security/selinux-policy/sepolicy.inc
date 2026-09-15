@@ -53,7 +53,7 @@ def copy_policy_file(src_path, dst_path):
     os.renames(src_path, dst_path)
 
 def apply_qcom_policy(d, src_root, sub_dir):
-    src_dir = os.path.join(d.getVar("WORKDIR"), src_root, sub_dir)
+    src_dir = os.path.join(d.getVar("UNPACKDIR"), src_root, sub_dir)
     dst_dir = os.path.join(d.getVar("S"), "policy", "modules", "qti_sepolicy")
     file_extensions = ['.te', '.if', '.fc']
     copy_files_with_extensions(src_dir, dst_dir, file_extensions)
@@ -63,7 +63,7 @@ def apply_qcom_policy(d, src_root, sub_dir):
     normalize_module_format(dst_dir)
 
 def apply_common_policy(d, src_root, sub_dir):
-    src_dir = os.path.join(d.getVar("WORKDIR"), src_root, sub_dir)
+    src_dir = os.path.join(d.getVar("UNPACKDIR"), src_root, sub_dir)
     dst_dir = os.path.join(d.getVar("S"), "policy", "modules")
     file_extensions = ['.te', '.if', '.fc']
     for root, dirs, files in os.walk(src_dir):

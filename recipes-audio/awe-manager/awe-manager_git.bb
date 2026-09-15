@@ -20,7 +20,6 @@ do_unpack[depends] += "git-lfs-native:do_populate_sysroot"
 
 SRCREV = "5faef3ff1e77f4f477ad6beaa65c691b84510c3a"
 
-S = "${WORKDIR}/git"
 
 inherit cmake pkgconfig
 
@@ -30,6 +29,7 @@ EXTRA_OECMAKE += "\
     -DAWEMGR_LOGGING=AWEQ \
     -DAWEMGR_AWECORE_CONNECTION=CSHMEM \
     -DAWEMGR_BUILD_TESTS=OFF \
+    -DAWEMGR_BUILD_EXAMPLES=OFF \
     -DAWE_AWC_BUILD_EXAMPLES=OFF \
     -DAWE_OSAL_BUILD_EXAMPLES=OFF \
     -DAWE_OSAL_BUILD_TESTS=OFF \

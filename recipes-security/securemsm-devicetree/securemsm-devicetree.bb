@@ -12,7 +12,7 @@ DEPENDS += "securemsmdlkm"
 SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/securemsm-devicetree/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/securemsm-devicetree;usehead=1"
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/securemsm-devicetree"
+S = "${UNPACKDIR}/vendor/qcom/opensource/securemsm-devicetree"
 
 EXT_MODULE = "vendor/qcom/opensource/securemsm-devicetree"
 

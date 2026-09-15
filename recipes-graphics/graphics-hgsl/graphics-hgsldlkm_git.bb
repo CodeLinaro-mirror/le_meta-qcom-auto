@@ -9,18 +9,18 @@ SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/graphics-hgsl/.git;protocol=${
 
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/vendor/qcom/opensource/graphics-hgsl"
+S = "${UNPACKDIR}/vendor/qcom/opensource/graphics-hgsl"
 
 EXT_MODULE = "vendor/qcom/opensource/graphics-hgsl"
 
-TECHPACK_MODULE_OUT = "${WORKDIR}/graphics-hgsl"
+TECHPACK_MODULE_OUT = "${UNPACKDIR}/graphics-hgsl"
 TECHPACK_MODULES = "qcom_hgsl.ko"
 TECHPACK_HEADERS = "${S}/include/uapi"
 
 inherit qti-techpack
 
 do_install:append() {
-    install -m 0644 ${WORKDIR}/autogvm_hgsl_load.conf -D ${D}${sysconfdir}/modules-load.d/autogvm_hgsl_load.conf
+    install -m 0644 ${UNPACKDIR}/autogvm_hgsl_load.conf -D ${D}${sysconfdir}/modules-load.d/autogvm_hgsl_load.conf
     install -d ${D}${includedir}/linux
     install -m 0644 ${S}/include/uapi/linux/hgsl.h ${D}${includedir}/linux
 }

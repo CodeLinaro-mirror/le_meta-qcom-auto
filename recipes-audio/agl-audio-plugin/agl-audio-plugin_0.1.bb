@@ -14,7 +14,7 @@ RDEPENDS:${PN} = "pulseaudio-server pulseaudio-module-null-sink pulseaudio-modul
 SRCREV = "952d404e87ca6001e546fe9105bdb6760c468760"
 SRC_URI = "git://gerrit.automotivelinux.org/gerrit/staging/agl-audio-plugin;protocol=https;branch=${AGL_BRANCH}"
 
-S = "${WORKDIR}/git"
+S = "${UNPACKDIR}/git"
 
 inherit cmake pkgconfig
 

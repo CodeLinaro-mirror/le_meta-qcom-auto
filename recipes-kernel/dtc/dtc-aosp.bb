@@ -11,7 +11,7 @@ SRC_URI = "${PATH_TO_REPO}/kernel/kernel-${PREFERRED_VERSION_linux-msm}/kernel_p
 
 SRCREV = "${AUTOREV}"
 
-S = "${WORKDIR}/kernel/kernel-${PREFERRED_VERSION_linux-msm}/kernel_platform/external/dtc"
+S = "${UNPACKDIR}/kernel/kernel-${PREFERRED_VERSION_linux-msm}/kernel_platform/external/dtc"
 
 inherit autotools-brokensep pkgconfig
 

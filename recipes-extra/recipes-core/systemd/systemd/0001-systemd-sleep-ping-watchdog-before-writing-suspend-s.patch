@@ -23,18 +23,18 @@ diff --git a/src/sleep/sleep.c b/src/sleep/sleep.c
 index 21062b24e0..09aba6baf4 100644
 --- a/src/sleep/sleep.c
 +++ b/src/sleep/sleep.c
-@@ -20,6 +20,7 @@
- 
+@@ -21,6 +21,7 @@
  #include "battery-capacity.h"
  #include "battery-util.h"
+ #include "blockdev-util.h"
 +#include "watchdog.h"
  #include "build.h"
  #include "bus-error.h"
  #include "bus-locator.h"
-@@ -280,6 +281,10 @@ static int execute(
+@@ -327,6 +328,10 @@ static int execute(
                     LOG_MESSAGE("Performing sleep operation '%s'...", sleep_operation_to_string(operation)),
-                    "SLEEP=%s", sleep_operation_to_string(arg_operation));
- 
+                    LOG_ITEM("SLEEP=%s", sleep_operation_to_string(arg_operation)));
+
 +        /* Pet the watchdog right before entering the kernel suspend path.
 +         * dpm_suspend() can take >10 s when CPUs are hotplugged offline. */
 +        (void) watchdog_ping();
@@ -42,6 +42,5 @@ index 21062b24e0..09aba6baf4 100644
          r = write_state(state_fd, sleep_config->states[operation]);
          if (r < 0)
                  log_struct_errno(LOG_ERR, r,
--- 
+--
 2.34.1
-

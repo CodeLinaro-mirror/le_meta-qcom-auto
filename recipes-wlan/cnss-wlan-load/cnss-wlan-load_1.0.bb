@@ -35,11 +35,11 @@ do_install() {
 }
 
 do_install:append:sa8255-ivi() {
-    install -m 0644 ${WORKDIR}/init_qti_wlan_auto_legacy.service -D ${D}${systemd_unitdir}/system/init_qti_wlan_auto.service
+    install -m 0644 ${UNPACKDIR}/init_qti_wlan_auto_legacy.service -D ${D}${systemd_unitdir}/system/init_qti_wlan_auto.service
 }
 
 do_install:append:sa7255-ivi() {
-    install -m 0644 ${WORKDIR}/init_qti_wlan_auto_legacy.service -D ${D}${systemd_unitdir}/system/init_qti_wlan_auto.service
+    install -m 0644 ${UNPACKDIR}/init_qti_wlan_auto_legacy.service -D ${D}${systemd_unitdir}/system/init_qti_wlan_auto.service
 }
 
 do_install:append() {

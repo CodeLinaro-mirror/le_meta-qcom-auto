@@ -120,30 +120,3 @@ def fix_scm_camnoc(txt):
         txt)
 
 patch(f'{src}/drivers/scm_user_intf.c', fix_scm_camnoc)
-
-# 9. kernel 7.3: dma_set_max_seg_size() now returns void and fput cleanup
-# is supplied by <linux/file.h>.
-def fix_kiumd_kernel73(txt):
-    txt = re.sub(
-        r"#ifdef CONFIG_SAFELINUX_KERNEL\n#define kiumd_set_dma_max_seg_size\(_dev, _size\).*?#endif\n",
-        "static inline void kiumd_set_dma_max_seg_size(struct device *dev, unsigned int size)\n{\n\tdma_set_max_seg_size(dev, size);\n}\n",
-        txt, flags=re.DOTALL)
-    return txt.replace("DEFINE_FREE(fput, struct file *, if (_T) fput(_T))\n", "")
-
-patch(f"{src}/drivers/kiumd.c", fix_kiumd_kernel73)
-
-def fix_kiumd_common_kernel73(txt):
-    return re.sub(
-        r"\tif \(dma_set_max_seg_size\(dev, \(unsigned int\) DMA_BIT_MASK\(32\)\)\)\n\t\tpr_err\(\"%s:WARNING: max_segment size not set\.\\n\", __func__\);\n",
-        "\tif (dev->dma_parms)\n\t\tdma_set_max_seg_size(dev, (unsigned int) DMA_BIT_MASK(32));\n",
-        txt)
-
-patch(f"{src}/drivers/kiumd_common.c", fix_kiumd_common_kernel73)
-
-# 10. kernel 7.3: thermal OF registration gained a cooling-device ID.
-def fix_vm_cpufreq_kernel73(txt):
-    return txt.replace(
-        "thermal_of_cooling_device_register(np,\n\t\t\t\t\t\t\t     cdev_data->cdev_name,",
-        "thermal_of_cooling_device_register(np, 0,\n\t\t\t\t\t\t\t     cdev_data->cdev_name,")
-
-patch(f"{src}/drivers/qcom_vm_cpufreq.c", fix_vm_cpufreq_kernel73)

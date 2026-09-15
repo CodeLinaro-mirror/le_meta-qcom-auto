@@ -1,0 +1,29 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Venkatakrishnaiah Pari <vpari@qti.qualcomm.com>
+Date: Mon, 28 Sep 2026 00:00:00 +0000
+Subject: [PATCH] safelinux-cfg-modules: fix thermal_of_cooling_device_register API
+
+Kernel updated thermal_of_cooling_device_register signature to take 5 args:
+  (np, u32 cdev_id, const char *type, void *data, ops)
+The old 4-arg call was missing cdev_id. Add 0 as the cdev_id argument.
+
+Upstream-Status: Inappropriate [platform-specific kernel API compat]
+
+Signed-off-by: Venkatakrishnaiah Pari <vpari@qti.qualcomm.com>
+---
+ safelinux-modules/drivers/qcom_vm_cpufreq.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/safelinux-modules/drivers/qcom_vm_cpufreq.c b/safelinux-modules/drivers/qcom_vm_cpufreq.c
+index 1234567..abcdefg 100644
+--- a/safelinux-modules/drivers/qcom_vm_cpufreq.c
++++ b/safelinux-modules/drivers/qcom_vm_cpufreq.c
+@@ -573,7 +573,8 @@ static int vm_cpufreq_create_cooling_device(struct vm_cpufreq_cluster *cluster)
+ 	 */
+ 	np = of_cpu_device_node_get(cpu);
+ 	cdev_data->cdev = thermal_of_cooling_device_register(np,
++							     0,
+ 							     cdev_data->cdev_name,
+ 							     cdev_data,
+ 							     &vm_cpufreq_cdev_ops);
+ 	of_node_put(np);
