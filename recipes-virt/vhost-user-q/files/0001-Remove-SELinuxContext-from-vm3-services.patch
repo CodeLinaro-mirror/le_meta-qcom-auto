@@ -1,0 +1,182 @@
+From 9da80f299b1f0085071b153bde66bab374f99662 Mon Sep 17 00:00:00 2001
+From: Jie Ma <mjie@qti.qualcomm.com>
+Date: Tue, 15 Sep 2026 08:37:00 +0200
+Subject: [PATCH] Remove SELinuxContext from vm3 services
+
+Signed-off-by: Jie Ma <mjie@qti.qualcomm.com>
+Change-Id: I2f3324be53bf605a9c8392063342e80e43887569
+---
+ vhost-user-aud-vm3.service   | 1 -
+ vhost-user-cam-vm3.service   | 1 -
+ vhost-user-disp-vm3.service  | 1 -
+ vhost-user-dprx-vm3.service  | 1 -
+ vhost-user-eva-vm3.service   | 1 -
+ vhost-user-ext-vm3.service   | 1 -
+ vhost-user-gpce-vm3.service  | 1 -
+ vhost-user-gpu-vm3.service   | 1 -
+ vhost-user-hsi2s-vm3.service | 1 -
+ vhost-user-misc-vm3.service  | 1 -
+ vhost-user-soccp-vm3.service | 1 -
+ vhost-user-vid-vm3.service   | 1 -
+ vhost-user-vnw-vm3.service   | 1 -
+ 13 files changed, 13 deletions(-)
+
+diff --git a/vhost-user-aud-vm3.service b/vhost-user-aud-vm3.service
+index 5c4ce93..bcf3a69 100644
+--- a/vhost-user-aud-vm3.service
++++ b/vhost-user-aud-vm3.service
+@@ -11,7 +11,6 @@ DefaultDependencies = no
+ 
+ [Service]
+ Slice=gvm.slice
+-SELinuxContext=system_u:system_r:vhost_user_qti_vm3_t:s0
+ ExecStart = /usr/bin/vhost-user-qti -s /tmp/linux-vm3-aud-skt -d /dev/vhost-vm3-aud -q 8
+ Type=notify
+ NotifyAccess=main
+diff --git a/vhost-user-cam-vm3.service b/vhost-user-cam-vm3.service
+index c356831..e6c4607 100644
+--- a/vhost-user-cam-vm3.service
++++ b/vhost-user-cam-vm3.service
+@@ -11,7 +11,6 @@ DefaultDependencies = no
+ 
+ [Service]
+ Slice=gvm.slice
+-SELinuxContext=system_u:system_r:vhost_user_qti_vm3_t:s0
+ ExecStart = /usr/bin/vhost-user-qti -s /tmp/linux-vm3-cam-skt -d /dev/vhost-vm3-cam -q 4
+ Type=notify
+ NotifyAccess=main
+diff --git a/vhost-user-disp-vm3.service b/vhost-user-disp-vm3.service
+index 71c32d1..871a9a9 100644
+--- a/vhost-user-disp-vm3.service
++++ b/vhost-user-disp-vm3.service
+@@ -11,7 +11,6 @@ DefaultDependencies = no
+ 
+ [Service]
+ Slice=gvm.slice
+-SELinuxContext=system_u:system_r:vhost_user_qti_vm3_t:s0
+ ExecStart = /usr/bin/vhost-user-qti -s /tmp/linux-vm3-disp-skt -d /dev/vhost-vm3-disp -q 10
+ Type=notify
+ NotifyAccess=main
+diff --git a/vhost-user-dprx-vm3.service b/vhost-user-dprx-vm3.service
+index b06b945..c6f09c3 100644
+--- a/vhost-user-dprx-vm3.service
++++ b/vhost-user-dprx-vm3.service
+@@ -7,7 +7,6 @@ Description = launch vhost-user-qti DPRX for vm3
+ After = remote-fs.target
+ 
+ [Service]
+-SELinuxContext=system_u:system_r:vhost_user_qti_vm3_t:s0
+ ExecStart = /usr/bin/vhost-user-qti -s /tmp/linux-vm3-dprx-skt -d /dev/vhost-vm3-dprx -q 4
+ Type=notify
+ NotifyAccess=main
+diff --git a/vhost-user-eva-vm3.service b/vhost-user-eva-vm3.service
+index 84fe1b9..0f7037f 100644
+--- a/vhost-user-eva-vm3.service
++++ b/vhost-user-eva-vm3.service
+@@ -7,7 +7,6 @@ Description = launch vhost-user-qti EVA for vm3
+ After = remote-fs.target
+ 
+ [Service]
+-SELinuxContext=system_u:system_r:vhost_user_qti_vm3_t:s0
+ ExecStart = /usr/bin/vhost-user-qti -s /tmp/linux-vm3-eva-skt -d /dev/vhost-vm3-eva -q 2
+ Type=notify
+ NotifyAccess=main
+diff --git a/vhost-user-ext-vm3.service b/vhost-user-ext-vm3.service
+index 7004128..b5e6975 100644
+--- a/vhost-user-ext-vm3.service
++++ b/vhost-user-ext-vm3.service
+@@ -11,7 +11,6 @@ DefaultDependencies = no
+ 
+ [Service]
+ Slice=gvm.slice
+-SELinuxContext=system_u:system_r:vhost_user_qti_vm3_t:s0
+ ExecStart = /usr/bin/vhost-user-qti -s /tmp/linux-vm3-ext-skt -d /dev/vhost-vm3-ext -q 6
+ Type=notify
+ NotifyAccess=main
+diff --git a/vhost-user-gpce-vm3.service b/vhost-user-gpce-vm3.service
+index 4b7422e..eca6462 100644
+--- a/vhost-user-gpce-vm3.service
++++ b/vhost-user-gpce-vm3.service
+@@ -11,7 +11,6 @@ DefaultDependencies = no
+ 
+ [Service]
+ Slice=gvm.slice
+-SELinuxContext=system_u:system_r:vhost_user_qti_vm3_t:s0
+ ExecStart = /usr/bin/vhost-user-qti -s /tmp/linux-vm3-gpce-skt -d /dev/vhost-vm3-gpce -q 2
+ Type=notify
+ NotifyAccess=main
+diff --git a/vhost-user-gpu-vm3.service b/vhost-user-gpu-vm3.service
+index 43a208c..a8774d9 100644
+--- a/vhost-user-gpu-vm3.service
++++ b/vhost-user-gpu-vm3.service
+@@ -11,7 +11,6 @@ DefaultDependencies = no
+ 
+ [Service]
+ Slice=gvm.slice
+-SELinuxContext=system_u:system_r:vhost_user_qti_vm3_t:s0
+ ExecStart = /usr/bin/vhost-user-qti -s /tmp/linux-vm3-ogles-skt -d /dev/vhost-vm3-ogles -q 2
+ Type=notify
+ NotifyAccess=main
+diff --git a/vhost-user-hsi2s-vm3.service b/vhost-user-hsi2s-vm3.service
+index 860d73a..17938a5 100644
+--- a/vhost-user-hsi2s-vm3.service
++++ b/vhost-user-hsi2s-vm3.service
+@@ -8,7 +8,6 @@ After = remote-fs.target
+ 
+ [Service]
+ Slice=gvm.slice
+-SELinuxContext=system_u:system_r:vhost_user_qti_vm3_t:s0
+ ExecStart = /usr/bin/vhost-user-qti -s /tmp/linux-vm3-hsi2s-skt -d /dev/vhost-vm3-hsi2s -q 2
+ Type=notify
+ NotifyAccess=main
+diff --git a/vhost-user-misc-vm3.service b/vhost-user-misc-vm3.service
+index 691dccd..314578e 100644
+--- a/vhost-user-misc-vm3.service
++++ b/vhost-user-misc-vm3.service
+@@ -11,7 +11,6 @@ DefaultDependencies = no
+ 
+ [Service]
+ Slice=gvm.slice
+-SELinuxContext=system_u:system_r:vhost_user_qti_vm3_t:s0
+ ExecStart = /usr/bin/vhost-user-qti -s /tmp/linux-vm3-misc-skt -d /dev/vhost-vm3-misc -q 2
+ Type=notify
+ NotifyAccess=main
+diff --git a/vhost-user-soccp-vm3.service b/vhost-user-soccp-vm3.service
+index 93cd184..a138b24 100644
+--- a/vhost-user-soccp-vm3.service
++++ b/vhost-user-soccp-vm3.service
+@@ -7,7 +7,6 @@ Description = launch vhost-user-qti SOCCP for vm3
+ After = remote-fs.target
+ 
+ [Service]
+-SELinuxContext=system_u:system_r:vhost_user_qti_vm3_t:s0
+ ExecStart = /usr/bin/vhost-user-qti -s /tmp/linux-vm3-soccp-skt -d /dev/vhost-vm3-soccp -q 2
+ Type=notify
+ NotifyAccess=main
+diff --git a/vhost-user-vid-vm3.service b/vhost-user-vid-vm3.service
+index ff709ce..52f0518 100644
+--- a/vhost-user-vid-vm3.service
++++ b/vhost-user-vid-vm3.service
+@@ -11,7 +11,6 @@ DefaultDependencies = no
+ 
+ [Service]
+ Slice=gvm.slice
+-SELinuxContext=system_u:system_r:vhost_user_qti_vm3_t:s0
+ ExecStart = /usr/bin/vhost-user-qti -s /tmp/linux-vm3-vid-skt -d /dev/vhost-vm3-vid -q 6
+ Type=notify
+ NotifyAccess=main
+diff --git a/vhost-user-vnw-vm3.service b/vhost-user-vnw-vm3.service
+index a70cf56..15d5ca1 100644
+--- a/vhost-user-vnw-vm3.service
++++ b/vhost-user-vnw-vm3.service
+@@ -11,7 +11,6 @@ DefaultDependencies = no
+ 
+ [Service]
+ Slice=gvm.slice
+-SELinuxContext=system_u:system_r:vhost_user_qti_vm3_t:s0
+ ExecStart = /usr/bin/vhost-user-qti -s /tmp/linux-vm3-vnw-skt -d /dev/vhost-vm3-vnw -q 2
+ Type=notify
+ NotifyAccess=main
+-- 
+2.43.0
+

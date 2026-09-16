@@ -1,0 +1,62 @@
+From 8b4bd1cae3e9f76540ac449d9804f5a89f8b2e81 Mon Sep 17 00:00:00 2001
+From: Jie Ma <mjie@qti.qualcomm.com>
+Date: Thu, 10 Sep 2026 10:00:00 +0200
+Subject: [PATCH] refpolicy: label QTI vhost devices as vhost_device_t
+
+QTI platforms expose additional vhost character devices for vhost-user
+backends. These devices follow the same access model as the vhost device
+nodes already handled by refpolicy, such as /dev/vhost-net,
+/dev/vhost-scsi, and /dev/vhost-vsock.
+
+Label the QTI vhost device nodes with the existing upstream
+vhost_device_t type instead of introducing QTI-specific vhost device
+types or daemon domains. Domains that need to access these nodes can use
+the existing dev_rw_vhost() interface.
+
+Upstream-Status: Pending
+
+Signed-off-by: Jie Ma <mjie@qti.qualcomm.com>
+---
+ policy/modules/kernel/devices.fc | 26 ++++++++++++++++++++++++++
+ 1 file changed, 26 insertions(+)
+
+diff --git a/policy/modules/kernel/devices.fc b/policy/modules/kernel/devices.fc
+index 3fa3ecfc9..4db626bb0 100644
+--- a/policy/modules/kernel/devices.fc
++++ b/policy/modules/kernel/devices.fc
+@@ -151,6 +151,32 @@ ifdef(`distro_redhat',`
+ /dev/vhci			-c	gen_context(system_u:object_r:vhost_device_t,s0)
+ /dev/vhost-net		-c	gen_context(system_u:object_r:vhost_device_t,s0)
+ /dev/vhost-scsi		-c	gen_context(system_u:object_r:vhost_device_t,s0)
+ /dev/vhost-vsock        -c      gen_context(system_u:object_r:vhost_device_t,s0)
++/dev/vhost-aud		-c	gen_context(system_u:object_r:vhost_device_t,s0)
++/dev/vhost-cam		-c	gen_context(system_u:object_r:vhost_device_t,s0)
++/dev/vhost-disp		-c	gen_context(system_u:object_r:vhost_device_t,s0)
++/dev/vhost-dprx		-c	gen_context(system_u:object_r:vhost_device_t,s0)
++/dev/vhost-eva		-c	gen_context(system_u:object_r:vhost_device_t,s0)
++/dev/vhost-ext		-c	gen_context(system_u:object_r:vhost_device_t,s0)
++/dev/vhost-gpce		-c	gen_context(system_u:object_r:vhost_device_t,s0)
++/dev/vhost-hsi2s	-c	gen_context(system_u:object_r:vhost_device_t,s0)
++/dev/vhost-misc		-c	gen_context(system_u:object_r:vhost_device_t,s0)
++/dev/vhost-ogles	-c	gen_context(system_u:object_r:vhost_device_t,s0)
++/dev/vhost-soccp	-c	gen_context(system_u:object_r:vhost_device_t,s0)
++/dev/vhost-vid		-c	gen_context(system_u:object_r:vhost_device_t,s0)
++/dev/vhost-vnw		-c	gen_context(system_u:object_r:vhost_device_t,s0)
++/dev/vhost-vm3-aud	-c	gen_context(system_u:object_r:vhost_device_t,s0)
++/dev/vhost-vm3-cam	-c	gen_context(system_u:object_r:vhost_device_t,s0)
++/dev/vhost-vm3-disp	-c	gen_context(system_u:object_r:vhost_device_t,s0)
++/dev/vhost-vm3-dprx	-c	gen_context(system_u:object_r:vhost_device_t,s0)
++/dev/vhost-vm3-eva	-c	gen_context(system_u:object_r:vhost_device_t,s0)
++/dev/vhost-vm3-ext	-c	gen_context(system_u:object_r:vhost_device_t,s0)
++/dev/vhost-vm3-gpce	-c	gen_context(system_u:object_r:vhost_device_t,s0)
++/dev/vhost-vm3-hsi2s	-c	gen_context(system_u:object_r:vhost_device_t,s0)
++/dev/vhost-vm3-misc	-c	gen_context(system_u:object_r:vhost_device_t,s0)
++/dev/vhost-vm3-ogles	-c	gen_context(system_u:object_r:vhost_device_t,s0)
++/dev/vhost-vm3-soccp	-c	gen_context(system_u:object_r:vhost_device_t,s0)
++/dev/vhost-vm3-vid	-c	gen_context(system_u:object_r:vhost_device_t,s0)
++/dev/vhost-vm3-vnw	-c	gen_context(system_u:object_r:vhost_device_t,s0)
+ /dev/video.*		-c	gen_context(system_u:object_r:v4l_device_t,s0)
+ /dev/vmci			-c	gen_context(system_u:object_r:vmware_device_t,s0)
+ /dev/vmmon		-c	gen_context(system_u:object_r:vmware_device_t,s0)
+-- 
+2.34.1
