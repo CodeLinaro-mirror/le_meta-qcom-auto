@@ -1,0 +1,31 @@
+From 026ce712cd6a4c812e9d8095bc1f2f4e78235830 Mon Sep 17 00:00:00 2001
+From: Venkatakrishnaiah Pari <vpari@qti.qualcomm.com>
+Date: Tue, 11 Aug 2026 13:01:45 -0700
+Subject: [PATCH] qcom_vm_cpufreq: fix thermal_of_cooling_device_register()
+ call
+
+Kernel's thermal_of_cooling_device_register() now takes a cdev_id
+argument (u32) as the second parameter. Pass 0 to match the updated
+5-argument signature.
+
+Change-Id: Ic42060fa573141cbd99efedf056b83459674011a
+Signed-off-by: Venkatakrishnaiah Pari <vpari@qti.qualcomm.com>
+---
+ safelinux-modules/drivers/qcom_vm_cpufreq.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/safelinux-modules/drivers/qcom_vm_cpufreq.c b/safelinux-modules/drivers/qcom_vm_cpufreq.c
+index 408b9ba..9016ff9 100644
+--- a/safelinux-modules/drivers/qcom_vm_cpufreq.c
++++ b/safelinux-modules/drivers/qcom_vm_cpufreq.c
+@@ -572,7 +572,7 @@ static int vm_cpufreq_create_cooling_device(struct vm_cpufreq_cluster *cluster)
+ 	 * allowing thermal zones to reference it as <&cpu4 0 15>.
+ 	 */
+ 	np = of_cpu_device_node_get(cpu);
+-	cdev_data->cdev = thermal_of_cooling_device_register(np,
++	cdev_data->cdev = thermal_of_cooling_device_register(np, 0,
+ 							     cdev_data->cdev_name,
+ 							     cdev_data,
+ 							     &vm_cpufreq_cdev_ops);
+--
+2.34.1

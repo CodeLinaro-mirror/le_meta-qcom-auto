@@ -9,6 +9,7 @@ DEPENDS += "${@bb.utils.contains('PREFERRED_PROVIDER_virtual/kernel', 'linux-ark
 SRC_URI = "\
     ${PATH_TO_REPO}/vendor/qcom/opensource/safelinux-cfg-modules/.git;protocol=${PROTO};destsuffix=safelinux-cfg-modules;usehead=1 \
     file://0001-safelinux-cfg-modules-fix-remove-signature-for-6.18-.patch;patchdir=.. \
+    file://0002-qcom_vm_cpufreq-fix-thermal_of_cooling_device_regis.patch;patchdir=.. \
     file://fix-kernel71.py \
 "
 
