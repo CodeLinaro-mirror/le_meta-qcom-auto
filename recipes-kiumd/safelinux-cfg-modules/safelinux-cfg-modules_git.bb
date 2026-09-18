@@ -6,10 +6,18 @@ LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/${LICENSE};md5
 
 DEPENDS += "${@bb.utils.contains('PREFERRED_PROVIDER_virtual/kernel', 'linux-ark', 'safelinux-sec-modules', '', d)}"
 
+# 0002-*.patch carries the secure-buffer stack (qcom_dma_heaps/qcom_secure_buffer/
+# mem_buf, for /dev/dma_heap/qcom,secure-pixel needed by kgsl) until Gerrit
+# CL 7060929 / 7060930 land on ${SRCBRANCH}; drop that patch line then.
+# 0003-*.patch aligns kiumd/qcom_sg_ops with the embedded-sg_table
+# dma_heap_attachment layout, adds GMU/KGSL ctrl-pending fixed-IOVA
+# staging, and fixes smmu_table registration/unmap pairing. Depends
+# on the secure-buffer stack (qcom_sg_ops.c/.h) landing separately.
 SRC_URI = "\
     ${PATH_TO_REPO}/vendor/qcom/opensource/safelinux-cfg-modules/.git;protocol=${PROTO};destsuffix=safelinux-cfg-modules;usehead=1 \
     file://0001-safelinux-cfg-modules-fix-remove-signature-for-6.18-.patch;patchdir=.. \
-    file://0002-qcom_vm_cpufreq-fix-thermal_of_cooling_device_regis.patch;patchdir=.. \
+    file://0002-safelinux-modules-secure-buffer-stack.patch;patchdir=.. \
+    file://0003-kiumd-align-drivers-with-linux-6_18.patch;patchdir=.. \
     file://fix-kernel71.py \
 "
 
@@ -17,7 +25,7 @@ SRC_URI:append = " file://${UMD_LOAD_CONF}"
 
 SRCPROJECT = "git://review-android.quicinc.com:29418/platform/vendor/qcom-opensource/safelinux-cfg-modules"
 SRCBRANCH = "safe-services.lnx.1.0"
-SRCREV = "${AUTOREV}"
+SRCREV = "d90fb5b781b660dd186796486aeba7a7288a620e"
 
 # Yocto 6: avoid double slash, keep S aligned with where patches are applied
 S = "${UNPACKDIR}/safelinux-cfg-modules/safelinux-modules"

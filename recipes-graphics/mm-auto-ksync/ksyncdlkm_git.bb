@@ -4,9 +4,9 @@ HOMEPAGE = "https://www.codelinaro.org"
 LICENSE = "GPLv2.0-with-linux-syscall-note"
 LIC_FILES_CHKSUM = "file://${QTI_LICENSE_DIR}/${LICENSE};md5=8afb6abdac9a14cb18a0d6c9c151e9b4"
 
-SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/mm-auto-ksync/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/mm-auto-ksync;usehead=1"
+SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/mm-auto-ksync/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/mm-auto-ksync;branch=bitbake-base"
 
-SRCREV = "${AUTOREV}"
+SRCREV = "c9c98c4f1b6fae73d56e962844b31005f237c3ff"
 
 DEPENDS += "unifdef-native"
 
@@ -39,4 +39,5 @@ FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
 SRC_URI:append = " file://0001-ksync-add-vmalloc-h.patch \
                    file://0002-ksync-remove-dma-fence-ops-value-str-members.patch \
                    file://0003-ksync-fence-remove-dma-fence-ops-value-str-members.patch \
-                   file://0004-ksync-platform-remove-returns-void.patch"
+                   file://0004-ksync-platform-remove-returns-void.patch \
+                   file://0005-ksync-fence-drop-signal-on-any-arg.patch"

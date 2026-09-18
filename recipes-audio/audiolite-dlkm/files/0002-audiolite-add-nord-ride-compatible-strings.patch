@@ -1,0 +1,26 @@
+diff --git a/devicetree/sa8797p_audiolite_common.dtso b/devicetree/sa8797p_audiolite_common.dtso
+index 77349d5b..f65f0210 100644
+--- a/devicetree/sa8797p_audiolite_common.dtso
++++ b/devicetree/sa8797p_audiolite_common.dtso
+@@ -15,7 +15,7 @@
+ 
+ / {
+ 	model = "Qualcomm SA8797";
+-	compatible = "qcom,sa8797p-rumi", "qcom,sa8797p";
++	compatible = "qcom,sa8797p-rumi", "qcom,sa8797p", "qcom,nord-ride", "qcom,nord";
+ 	qcom,board-id = <0xf 0>;
+ };
+ 
+diff --git a/devicetree/sa8797p_audiolite_overlay.dtso b/devicetree/sa8797p_audiolite_overlay.dtso
+index 35aaae59..9b29ddd3 100644
+--- a/devicetree/sa8797p_audiolite_overlay.dtso
++++ b/devicetree/sa8797p_audiolite_overlay.dtso
+@@ -15,7 +15,7 @@
+ 
+ / {
+ 	model = "Qualcomm SA8797";
+-	compatible = "qcom,sa8797p-rumi", "qcom,sa8797p";
++	compatible = "qcom,sa8797p-rumi", "qcom,sa8797p", "qcom,nord-ride", "qcom,nord";
+ 	qcom,board-id = <0xf 0>;
+ };
+ 
