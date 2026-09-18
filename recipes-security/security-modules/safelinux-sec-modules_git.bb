@@ -8,12 +8,16 @@ FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
 
 SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/safelinux-sec-modules/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/safelinux-sec-modules;usehead=1"
 SRC_URI:append = " file://fix-kernel7-api.py"
+SRC_URI:append = " file://0001-scm-user-intf-sec-find-scm-by-compatible.patch"
+SRC_URI:append = " file://0002-scm-user-intf-sec-handle-legacy-smcinvoke.patch"
+SRC_URI:append = " file://0003-scm-user-intf-sec-sync-dmabuf-for-smcinvoke.patch"
+SRC_URI:append = " file://0004-qtee-shmbridge-build-on-kernel-7.patch"
 
 SRCREV = "${AUTOREV}"
 
 S = "${UNPACKDIR}/vendor/qcom/opensource/safelinux-sec-modules/security-modules"
 
-TECHPACK_MODULES = "${@bb.utils.contains_any('PREFERRED_PROVIDER_virtual/kernel', 'linux-qcom-custom linux-qcom-custom-rt', '', 'tz_log.ko qtee_shmbridge.ko qcom_scm_oot.ko', d)}"
+TECHPACK_MODULES = "${@bb.utils.contains_any('PREFERRED_PROVIDER_virtual/kernel', 'linux-qcom-custom linux-qcom-custom-rt', '', 'tz_log.ko qtee_shmbridge.ko', d)}"
 TECHPACK_MODULES:append = " scm_user_intf_sec.ko tz_ffi.ko dice_vm.ko"
 inherit qti-techpack
 
@@ -46,7 +50,6 @@ do_install:append() {
 
     if ${@bb.utils.contains_any('PREFERRED_PROVIDER_virtual/kernel', 'linux-qcom-custom linux-qcom-custom-rt', 'false', 'true', d)}; then
         install -m 0755 ${S}/modules-load/qtee_shmbridge.conf -D ${D}${sysconfdir}/modules-load.d/qtee_shmbridge.conf
-        install -m 0755 ${S}/modules-load/qcom_scm_oot.conf -D ${D}${sysconfdir}/modules-load.d/qcom_scm_oot.conf
         install -m 0644 ${S}/Module.symvers ${D}${includedir}/safelinux-sec-modules
     fi
 
@@ -58,7 +61,6 @@ do_install:append() {
 
 RPROVIDES:${PN} += "kernel-module-tz-log-${KERNEL_VERSION}"
 RPROVIDES:${PN} += "kernel-module-qtee-shmbridge-${KERNEL_VERSION}"
-RPROVIDES:${PN} += "kernel-module-qcom-scm-oot-${KERNEL_VERSION}"
 RPROVIDES:${PN} += "kernel-module-scm-user-intf-sec-${KERNEL_VERSION}"
 RPROVIDES:${PN} += "kernel-module-tz-ffi-${KERNEL_VERSION}"
 RPROVIDES:${PN} += "kernel-module-dice-vm-${KERNEL_VERSION}"

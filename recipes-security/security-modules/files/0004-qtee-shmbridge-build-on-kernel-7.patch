@@ -1,0 +1,121 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jie Ma <mjie@qti.qualcomm.com>
+Date: Wed, 2 Sep 2026 00:00:00 +0200
+Subject: [PATCH] qtee_shmbridge: build on kernel 7
+
+Kernel 7 already exports the SCM shared-memory bridge helpers used by
+qcom_tzmem. Build qtee_shmbridge.ko on this kernel and route bridge
+create/delete through the exported qcom_tzmem API instead of the legacy
+qcom_scm_oot wrapper, whose implementation depends on the now-static
+qcom_scm_call().
+
+This is a bring-up compatibility patch for the downstream qseecomd /
+smcinvoke stack.
+
+Upstream-Status: Inappropriate [platform bring-up]
+
+Signed-off-by: Jie Ma <mjie@qti.qualcomm.com>
+---
+ Kbuild                   |  5 +++--
+ drivers/qtee_shmbridge.c | 36 +++++++++++++++++++++++++++---------
+ 2 files changed, 30 insertions(+), 11 deletions(-)
+
+diff --git a/Kbuild b/Kbuild
+--- a/Kbuild
++++ b/Kbuild
+@@ -1,10 +1,11 @@
+ LINUXINCLUDE += -I$(SECURITY_MODULES_ROOT)/include
+ ccflags-y += -I$(SECURITY_MODULES_SYSROOT_INC)
++obj-m += qtee_shmbridge.o
++qtee_shmbridge-objs := drivers/qtee_shmbridge.o
++
+ ifneq ($(findstring 5.14.0,$(KERNELRELEASE)),)
+ 	obj-m += tz_log.o
+ 	tz_log-objs := drivers/tz_log.o
+-	obj-m += qtee_shmbridge.o
+-	qtee_shmbridge-objs := drivers/qtee_shmbridge.o
+ 	obj-m += qcom_scm_oot.o
+ 	qcom_scm_oot-objs := drivers/qcom_scm_oot.o
+ 	obj-m += smcinvoke.o
+diff --git a/drivers/qtee_shmbridge.c b/drivers/qtee_shmbridge.c
+--- a/drivers/qtee_shmbridge.c
++++ b/drivers/qtee_shmbridge.c
+@@ -7,6 +7,7 @@
+ */
+ 
+ #include <linux/module.h>
++#include <linux/version.h>
+ #include <linux/device.h>
+ #include <linux/slab.h>
+ #include <linux/genalloc.h>
+@@ -16,9 +17,13 @@
+ #include <linux/of_reserved_mem.h>
+ #include <linux/firmware/qcom/qcom_scm.h>
+ #include <linux/dma-mapping.h>
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 0, 0)
++#include <linux/firmware/qcom/qcom_tzmem.h>
++#else
++#include "qcom_scm_oot.h"
++#endif
+ #include <linux/of_platform.h>
+ #include "qtee_shmbridge.h"
+-#include "qcom_scm_oot.h"
+ 
+ #define VMID_HLOS 0x3
+ 
+@@ -121,7 +126,16 @@ static int32_t qtee_shmbridge_enable(bool enable)
+ 		return ret;
+ 	}
+ 
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 0, 0)
++	/*
++	 * qcom_tzmem enables SHM Bridge from qcom_scm probe on kernel 7.
++	 * Keep the downstream qtee_shmbridge state machine enabled and let
++	 * qcom_tzmem_shm_bridge_create() handle unsupported platforms.
++	 */
++	ret = 0;
++#else
+ 	ret = qcom_scm_enable_shm_bridge();
++#endif
+ 
+ 	if (ret) {
+ 		pr_err("Failed to enable shmbridge, ret = %d\n", ret);
+@@ -244,9 +258,14 @@ int32_t qtee_shmbridge_register(
+ 		__func__, pfn_and_ns_perm_flags, ipfn_and_s_perm_flags,
+ 		size_and_flags, ns_vmids);
+ 
++	*handle = 0;
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 0, 0)
++	ret = qcom_tzmem_shm_bridge_create(paddr, size, handle);
++#else
+ 	ret = qcom_scm_create_shm_bridge(pfn_and_ns_perm_flags,
+ 			ipfn_and_s_perm_flags, size_and_flags, ns_vmids,
+ 			handle, default_bridge.dev);
++#endif
+ 
+ 	if (ret) {
+ 		pr_err("create shmbridge failed, ret = %d\n", ret);
+@@ -271,15 +290,16 @@ int32_t qtee_shmbridge_deregister(uint64_t handle)
+ 
+ 	mutex_lock(&bridge_list_head.lock);
+ 
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 0, 0)
++	qcom_tzmem_shm_bridge_delete(handle);
++#else
+ 	ret = qcom_scm_delete_shm_bridge(handle);
++#endif
++	if (ret)
++		pr_err("Failed to del bridge %llu, ret = %d\n", handle, ret);
++	else
++		qtee_shmbridge_list_del_nolock(handle);
+ 
+-	if (ret) {
+-		pr_err("Failed to del bridge %lld, ret = %d\n", handle, ret);
+-		goto exit;
+-	}
+-	qtee_shmbridge_list_del_nolock(handle);
+-
+-exit:
+ 	mutex_unlock(&bridge_list_head.lock);
+ 	return ret;
+ }
