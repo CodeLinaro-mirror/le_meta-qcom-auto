@@ -5,46 +5,99 @@ LICENSE = "BSD-3-Clause-Clear"
 COMPATIBLE_MACHINE = "sa8797-ride-sx"
 
 # oot-dtbo source (safelinux-system-cfg/devicetree) absent — not in DEPENDS
-DEPENDS += "mkbootimg-native openssl-native  python3-native virtual/kernel early-ramdisk-init"
+DEPENDS += "mkbootimg-native openssl-native  python3-native virtual/kernel early-ramdisk-init dtc-native"
 
 IMAGE_FEATURES:remove = "ssh-server-openssh"
 IMAGE_CLASSES:remove = "qimage"
 EXTRA_IMAGE_FEATURES = ""
 
-inherit image
+inherit image qcom-dtb-merge
 
 # BOOT_RAMDISK_IMG = "initramfs-rootfs-image-${PRODUCT}.cpio.gz"
 # BOOT_RAMDISK_IMG ?= "${@bb.utils.contains('MACHINE_FEATURES', 'early-ramdisk-init', 'early-ramdisk-image-${PRODUCT}.cpio.lz4', '/dev/null', d)}"
 
 BOOT_RAMDISK_IMG = "early-ramdisk-image-${PRODUCT}.rootfs.cpio.gz"
 
-# Use overlay-merged DTB from oot-dtbo (build-artifacts/dtb/) if available,
-# otherwise fall back to base kernel DTBs
+# NORD_COMMON_OVERLAYS : applied to every variant (functional L1 + mm-vfio)
+# NORD_VARIANT_OVERLAYS: one final board per entry ("" token = plain, no variant overlay)
+# NORD_DDR_OVERLAYS    : DDR size overlays (L2), board-id-tagged by update_dtb_ddr_id
+NORD_BASE_DTB ?= "nord-ride.dtb"
+NORD_COMMON_OVERLAYS ?= "nord-ride_overlay.dtbo nord-ride-mm-vfio.dtbo"
+NORD_VARIANT_OVERLAYS ?= "nord-ride-safe.dtbo nord-ride-non-safe-ivi.dtbo nord-ride-pcie-ep.dtbo"
+NORD_DDR_OVERLAYS ?= "nord-ddr-32gb_overlay.dtbo nord-ddr-48gb_overlay.dtbo nord-ddr-64gb_overlay.dtbo"
+
 do_make_dtb() {
+    local stage="${WORKDIR}/nord-dtb-merge"
+    rm -rf "${stage}"
+    install -d "${stage}/base" "${stage}/common" "${stage}/inter" "${stage}/ddr"
+    rm -rf ${DEPLOY_DIR_IMAGE}/dtbs
     install -d ${DEPLOY_DIR_IMAGE}/dtbs
-    if [ -f "${DEPLOY_DIR_IMAGE}/build-artifacts/dtb/dtb.img" ]; then
-        # oot-dtbo:do_deploy wrote build-artifacts/dtb/dtb.img — use it
-        cat ${DEPLOY_DIR_IMAGE}/build-artifacts/dtb/dtb.img \
-            > ${DEPLOY_DIR_IMAGE}/dtbs/dtb.img
-        bbnote "Created dtbs/dtb.img from oot-dtbo overlay (build-artifacts/dtb/dtb.img)"
-    elif ls ${DEPLOY_DIR_IMAGE}/build-artifacts/dtb/*overlay*.dtb 2>/dev/null | grep -q nord-ride; then
-        # fallback: overlay .dtb present but dtb.img not pre-built
-        cat ${DEPLOY_DIR_IMAGE}/build-artifacts/dtb/nord-ride_overlay.dtb \
-            > ${DEPLOY_DIR_IMAGE}/dtbs/dtb.img
-        bbnote "Created dtbs/dtb.img from overlay-merged DTB (oot-dtbo)"
+    tp="${DEPLOY_DIR_IMAGE}/build-artifacts/techpack-dtbs"
+    ddrsrc="${DEPLOY_DIR_IMAGE}/build-artifacts/ddrdtbos"
+
+    if [ -f "${DEPLOY_DIR_IMAGE}/build-artifacts/dtb/${NORD_BASE_DTB}" ]; then
+        install -m 0644 "${DEPLOY_DIR_IMAGE}/build-artifacts/dtb/${NORD_BASE_DTB}" "${stage}/base/"
+    elif [ -f "${DEPLOY_DIR_IMAGE}/${NORD_BASE_DTB}" ]; then
+        install -m 0644 "${DEPLOY_DIR_IMAGE}/${NORD_BASE_DTB}" "${stage}/base/"
     else
-        # Fallback: use only the nord-ride base DTB.
-        # NOTE: do NOT "cat *.dtb" here — the deploy dir also contains
-        # nord-evk.dtb (and versioned copies). Concatenating them all makes
-        # the bootloader pick nord-evk (wrong SCMI topology: single mailbox
-        # pdp_scmi instance vs the SMC scmi-common set), which floods the
-        # console with "Message for <n> type 0 is not expected!" and blocks
-        # login. Match QLI-2.0-AUTO: ship a single nord-ride FDT.
-        cat ${DEPLOY_DIR_IMAGE}/nord-ride.dtb > ${DEPLOY_DIR_IMAGE}/dtbs/dtb.img
-        bbnote "Created dtbs/dtb.img from nord-ride base DTB (no oot-dtbo overlay)"
+        bbfatal "nord base DTB ${NORD_BASE_DTB} not found in build-artifacts/dtb or deploy root"
     fi
+    base_dtb="${stage}/base/${NORD_BASE_DTB}"
+    base_name="nord-ride"
+
+    common=""
+    for o in ${NORD_COMMON_OVERLAYS}; do
+        if [ -f "${tp}/${o}" ]; then
+            common="${common} ${tp}/${o}"
+        else
+            bbnote "nord common overlay ${o} not found in techpack-dtbs (skipping)"
+        fi
+    done
+
+    for v in "" ${NORD_VARIANT_OVERLAYS}; do
+        set=""
+        vlabel="ride"
+        if [ -n "$v" ]; then
+            if [ -f "${tp}/${v}" ]; then
+                set="${tp}/${v}"
+                # nord-ride-safe.dtbo -> vlabel "ride-safe"
+                vlabel=$(basename "$v" .dtbo | sed -e 's/^nord-//')
+            else
+                bbnote "nord variant overlay ${v} not found (skipping variant)"
+                continue
+            fi
+        fi
+        ovls=$(sort_dtbos_by_dep "${base_dtb}" ${common} ${set} | tr '\n' ' ')
+        out="${stage}/inter/nord-${vlabel}.dtb"
+        if [ -n "${ovls## }" ]; then
+            fdtoverlay -i "${base_dtb}" -o "${out}" -v ${ovls}
+            if [ $? -ne 0 ]; then bbfatal "L1 fdtoverlay failed for variant '${vlabel}'"; fi
+        else
+            cp "${base_dtb}" "${out}"
+        fi
+        if [ -z "$v" ]; then
+            fdtput -t x "${out}" / qcom,sku-id 0x100
+            if [ $? -ne 0 ]; then bbfatal "failed to set qcom,sku-id on base QAM ${out}"; fi
+        fi
+    done
+
+    for d in ${NORD_DDR_OVERLAYS}; do
+        if [ -f "${ddrsrc}/${d}" ]; then
+            install -m 0644 "${ddrsrc}/${d}" "${stage}/ddr/"
+        else
+            bbnote "nord DDR overlay ${d} not found in ddrdtbos (skipping)"
+        fi
+    done
+
+    merge_dtbos_single "${stage}/inter" "${stage}/ddr" ${DEPLOY_DIR_IMAGE}/dtbs
+    update_dtb_ddr_id ${DEPLOY_DIR_IMAGE}/dtbs
+
+    cat ${DEPLOY_DIR_IMAGE}/dtbs/*.dtb* > ${DEPLOY_DIR_IMAGE}/dtbs/dtb.img
+    bbnote "Created dtbs/dtb.img via nord variant x DDR two-layer merge"
 }
-do_make_dtb[depends] += "virtual/kernel:do_deploy oot-dtbo:do_deploy"
+do_make_dtb[depends] += "virtual/kernel:do_deploy"
+do_make_dtb[depends] += "kernel-basedevicetree:do_deploy"
+do_make_dtb[depends] += "${@bb.utils.contains_any('MACHINE_FEATURES', 'qti-multimedia qti-display qti-audio qti-graphics qti-camera', 'mm-vfio-devicetree:do_deploy', '', d)}"
 do_make_dtb[dirs] = "${DEPLOY_DIR_IMAGE}"
 addtask do_make_dtb after do_image before do_makeboot
 

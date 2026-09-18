@@ -65,6 +65,15 @@ do_compile:prepend() {
     export DTC_FLAGS="-@"
 }
 
+do_deploy:append() {
+    install -d ${DEPLOYDIR}/build-artifacts/dtb
+    for dtb in ${KERNEL_MACHINE_DTB}; do
+        if [ -f ${B}/$dtb ]; then
+            install -m 0644 ${B}/$dtb ${DEPLOYDIR}/build-artifacts/dtb/
+        fi
+    done
+}
+
 do_configure:prepend() {
     # Use a copy of the 'defconfig' from the actual repo to merge fragments
     cp ${S}/arch/${ARCH}/configs/${KBUILD_DEFCONFIG} ${B}/.config
