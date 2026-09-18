@@ -54,11 +54,11 @@ do_stage_mmvfio_dtbo() {
     :
 }
 do_stage_mmvfio_dtbo:gen5() {
-    local mmvfio_dtbo="${DEPLOY_DIR_IMAGE}/build-artifacts/techpack-dtbs/nord-ride-mm-vfio.dtbo"
+    local mmvfio_dtbo="${DEPLOY_DIR_IMAGE}/build-artifacts/techpack-dtbs/sa8797p-mm-vfio.dtbo"
     if [ -f "$mmvfio_dtbo" ]; then
         install -m 0644 "$mmvfio_dtbo" "${S}/"
     else
-        bbnote "nord-ride-mm-vfio.dtbo not found under ${DEPLOY_DIR_IMAGE}/build-artifacts/techpack-dtbs (skipping)"
+        bbnote "sa8797p-mm-vfio.dtbo not found under ${DEPLOY_DIR_IMAGE}/build-artifacts/techpack-dtbs (skipping)"
     fi
 }
 do_stage_mmvfio_dtbo[depends] += "${@bb.utils.contains('OVERRIDES', 'gen5', 'mm-vfio-devicetree:do_deploy', '', d)}"
