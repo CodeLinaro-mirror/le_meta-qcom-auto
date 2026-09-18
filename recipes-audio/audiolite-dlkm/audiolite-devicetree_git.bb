@@ -16,9 +16,31 @@ S = "${UNPACKDIR}/vendor/qcom/opensource/audiolite/devicetree"
 inherit qti-techpack
 
 EXTRA_OEMAKE += "\
-    AUDIOLITE_DTC_INCLUDE=${STAGING_INCDIR}\ ${STAGING_KERNEL_DIR}/include\ ${S} \
     ${@bb.utils.contains('TARGET_USES_AUDIO_FRAMEWORK', 'audiolite', 'ENABLE_AUDIOLITE_OVERLAY=yes', '', d)} \
 "
+
+do_compile:prepend() {
+    # Kernel 7.x hardcodes DTC_INCLUDE to scripts/dtc/include-prefixes.
+    # Symlink audiolite-dt-bindings there so #includes in the dtso resolve.
+    ln -sf ${S}/audiolite-dt-bindings \
+        ${STAGING_KERNEL_DIR}/scripts/dtc/include-prefixes/audiolite-dt-bindings || true
+    # Makefile.bbbuild passes DTC_INCLUDE="${AUDIOLITE_DTC_INCLUDE}" which
+    # overrides the kernel's hardcoded path with an empty string. Fix it to
+    # use the kernel's own include-prefixes directory.
+    sed -i 's|DTC_INCLUDE="${AUDIOLITE_DTC_INCLUDE}"|DTC_INCLUDE="$(KERNEL_SRC)/scripts/dtc/include-prefixes"|' \
+        ${S}/Makefile.bbbuild || true
+}
+
+do_compile:prepend:gen5() {
+    # For gen5 (sa8797p) only build the sa8797p dtbo — other SoC dtsos
+    # have missing includes that fail on this kernel. Rewrite Kbuild to
+    # only list sa8797p targets.
+    cat > ${S}/Kbuild << 'KBUILD_EOF'
+dtbo-y += sa8797p_audiolite_common.dtbo
+always-y := $(dtbo-y)
+clean-files := *.dtb *.dtbo
+KBUILD_EOF
+}
 
 TECHPACK_DTBS = "\
     sa8775p_audiolite_common.dtbo \
@@ -29,4 +51,9 @@ TECHPACK_DTBS = "\
     ${@bb.utils.contains('TARGET_USES_AUDIO_FRAMEWORK', 'audiolite', 'sa8797p_audiolite_overlay.dtbo', '', d)} \
     sa8787p_audiolite_common.dtbo \
     ${@bb.utils.contains('TARGET_USES_AUDIO_FRAMEWORK', 'audiolite', 'sa8787p_audiolite_overlay.dtbo', '', d)} \
+"
+
+TECHPACK_DTBS:gen5 = "\
+    sa8797p_audiolite_common.dtbo \
+    ${@bb.utils.contains('TARGET_USES_AUDIO_FRAMEWORK', 'audiolite', 'sa8797p_audiolite_overlay.dtbo', '', d)} \
 "
