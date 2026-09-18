@@ -22,10 +22,9 @@ BOOT_RAMDISK_IMG = "early-ramdisk-image-${PRODUCT}.rootfs.cpio.gz"
 # NORD_VARIANT_OVERLAYS: one final board per entry ("" token = plain, no variant overlay)
 # NORD_DDR_OVERLAYS    : DDR size overlays (L2), board-id-tagged by update_dtb_ddr_id
 NORD_BASE_DTB ?= "nord-ride.dtb"
-NORD_COMMON_OVERLAYS ?= "nord-ride_overlay.dtbo nord-ride-mm-vfio.dtbo"
+NORD_COMMON_OVERLAYS ?= "nord-ride_overlay.dtbo sa8797p-mm-vfio.dtbo sa8797p_audiolite_common.dtbo"
 NORD_VARIANT_OVERLAYS ?= "nord-ride-safe.dtbo nord-ride-non-safe-ivi.dtbo nord-ride-pcie-ep.dtbo"
 NORD_DDR_OVERLAYS ?= "nord-ddr-32gb_overlay.dtbo nord-ddr-48gb_overlay.dtbo nord-ddr-64gb_overlay.dtbo"
-
 do_make_dtb() {
     local stage="${WORKDIR}/nord-dtb-merge"
     rm -rf "${stage}"
@@ -98,6 +97,7 @@ do_make_dtb() {
 do_make_dtb[depends] += "virtual/kernel:do_deploy"
 do_make_dtb[depends] += "kernel-basedevicetree:do_deploy"
 do_make_dtb[depends] += "${@bb.utils.contains_any('MACHINE_FEATURES', 'qti-multimedia qti-display qti-audio qti-graphics qti-camera', 'mm-vfio-devicetree:do_deploy', '', d)}"
+do_make_dtb[depends] += "audiolite-devicetree:do_deploy"
 do_make_dtb[dirs] = "${DEPLOY_DIR_IMAGE}"
 addtask do_make_dtb after do_image before do_makeboot
 
