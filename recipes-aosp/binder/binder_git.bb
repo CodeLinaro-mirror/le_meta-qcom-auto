@@ -46,6 +46,7 @@ EXTRA_OECONF:append:arm = " \
 "
 
 CFLAGS += "-I${STAGING_INCDIR}/libselinux"
+CFLAGS:append = " -Wno-implicit-function-declaration -Wno-unused-but-set-variable"
 
 do_install:append() {
     if ${@bb.utils.contains('DISTRO_FEATURES', 'systemd', 'true', 'false', d)}; then
