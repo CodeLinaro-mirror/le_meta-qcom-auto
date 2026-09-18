@@ -1,0 +1,33 @@
+From e86e72ea7154618ee20cfee81c1a4b3352fbdc99 Mon Sep 17 00:00:00 2001
+From: Venkatakrishnaiah Pari <vpari@qti.qualcomm.com>
+Date: Mon, 31 Aug 2026 12:48:40 -0700
+Subject: [PATCH] soc: qcom: socinfo: Report SA8797P as QAM8797P
+
+Use qcom_board_id_named() for SA8797P so socinfo reports the
+board as "QAM8797P" instead of the default SA8797P name.
+
+Upstream-Status: Pending
+---
+ drivers/soc/qcom/socinfo.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/soc/qcom/socinfo.c b/drivers/soc/qcom/socinfo.c
+index 1836e226a294..d0277fff4df5 100644
+--- a/drivers/soc/qcom/socinfo.c
++++ b/drivers/soc/qcom/socinfo.c
+@@ -540,7 +540,6 @@ static const struct soc_id soc_id[] = {
+ 	{ qcom_board_id(QCS8275) },
+ 	{ qcom_board_id(QCS9075) },
+ 	{ qcom_board_id(QCS615) },
+-	{ qcom_board_id(SA8797P) },
+ 	{ qcom_board_id(CQ7790M) },
+ 	{ qcom_board_id(CQ7790S) },
+ 	{ qcom_board_id(CQ2390M) },
+@@ -557,6 +556,7 @@ static const struct soc_id soc_id[] = {
+ 	{ qcom_board_id(IPQ9630) },
+ 	{ qcom_board_id(IPQ9640) },
+ 	{ qcom_board_id(IPQ9670) },
++	{ qcom_board_id_named(SA8797P, "QAM8797P") },
+ };
+ 
+ static const char *socinfo_machine(struct device *dev, unsigned int id)

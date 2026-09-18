@@ -38,6 +38,7 @@ SRC_URI:append = " \
     file://files/0016-arm64-dts-qcom-nord-add-reg-names-to-cpucp-mbox-node.patch \
     file://files/0005-iommu-allow-fault-handler-to-coexist-with-DMA-API-domain-cookie.patch \
     file://files/0006-firmware-arm_scmi-drop-unexpected-message-dev_err-spam.patch \
+    file://files/0019-soc-qcom-socinfo-Report-SA8797P-as-QAM8797P.patch \
 "
 
 # Pin to a specific commit once you know it
