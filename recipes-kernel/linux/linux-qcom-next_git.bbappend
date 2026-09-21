@@ -2,7 +2,7 @@ SECTION = "kernel"
 
 COMPATIBLE_MACHINE .= "|sa8797-ride-sx"
 
-FILESEXTRAPATHS:prepend := "${THISDIR}/${PN}:${THISDIR}/files:"
+FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
 
 DEPENDS += "skales-native xxd-native"
 
@@ -10,9 +10,7 @@ SRC_URI = "git://github.com/qualcomm-linux/kernel-topics.git;branch=refs/tags/no
 # Additional kernel configs.
 SRC_URI:append = " \
     file://configs/bsp-additions.cfg \
-    file://0001-qcom_scm_addon-Enable-qcom-scm-addons.patch \
-    file://0002-qcom_scm-add-legacy-qtee-smcinvoke-helper.patch \
-    file://0003-qcom-scm-allow-qseecom-on-nord.patch \
+    file://files/0001-qcom_scm_addon-Enable-qcom-scm-addons.patch \
     file://files/0002-pmdomain-core-Skip-sync_state-when-pd_ignore_unused-.patch \
     file://files/0001-QCLINUX-iommu-arm-smmu-protect-the-dereference-of-ad.patch \
     file://files/0002-arm-smmu-add-qcom-secure-vmid.patch \
@@ -35,10 +33,16 @@ SRC_URI:append = " \
     file://files/usb/0015-PENDING-usb-Fix-eUSB2-PHY-compliance-issues-CV9-TD-9.patch \
     file://files/usb/0016-PENDING-phy-ptn3222-Add-support-to-parse-the-param-f.patch \
     file://files/usb/0017-PENDING-phy-qcom-snps-femto-v2-Add-minimal-EUD-detec.patch \
+    file://files/0014-mailbox-qcom-cpucp-restructure-the-cpucp-mailbox-dri.patch \
+    file://files/0015-scmi-support-for-scmi-vendor-protocol-and-log-driver.patch \
+    file://files/0016-arm64-dts-qcom-nord-add-reg-names-to-cpucp-mbox-node.patch \
+    file://files/0005-iommu-allow-fault-handler-to-coexist-with-DMA-API-domain-cookie.patch \
+    file://files/0006-firmware-arm_scmi-drop-unexpected-message-dev_err-spam.patch \
 "
 
 # Pin to a specific commit once you know it
-SRCREV = "da28394e5c5b0a590086385484d3ea2453ec825e"
+# tag: early/hwe/nord-next tip as of 2026-08-17 (previous pin fell off history after upstream branch rewrite)
+SRCREV = "c0bd3ab23cd9fe3f6938bf9373572a4d3ada7c19"
 
 KERNEL_CONFIG_FRAGMENTS = "\
     arch/arm64/configs/hardening.config \

@@ -1,0 +1,119 @@
+From c0a50f34453958bf2e0c34225589386b6da058f9 Mon Sep 17 00:00:00 2001
+From: Aravind Vijayakumar <aprasann@qti.qualcomm.com>
+Date: Sat, 29 Aug 2026 19:29:12 -0700
+Subject: [PATCH] iommu: allow fault handler to coexist with DMA-API domain
+ cookie
+
+Split the iommu_domain cookie union into plain struct fields.
+iommu_set_fault_handler()/report_iommu_fault() are the only path this
+kernel uses to surface unrecoverable SMMUv2 context faults to a driver
+(see arm_smmu_context_fault()/qcom_smmu_context_fault()), but the
+union previously forced a domain to be either DMA-API owned
+(IOMMU_COOKIE_DMA_IOVA) or fault-handler owned (IOMMU_COOKIE_FAULT_HANDLER),
+never both. Every device that legitimately wants a custom SMMUv2 fault
+handler installed on a shared/default domain also needs that same
+domain to keep doing normal DMA-API mapping, so this made
+iommu_set_fault_handler() fail (WARN_ON) for all such callers.
+
+handler/handler_token no longer alias iova_cookie/msi_cookie/
+iommufd_hwpt, so installing a fault handler can no longer corrupt an
+active DMA-API cookie. iommu_set_fault_handler() drops the
+cookie_type == IOMMU_COOKIE_NONE requirement (still rejects SVA/
+iommufd domains and double-registration via domain->handler), and
+report_iommu_fault() checks domain->handler directly instead of
+gating on the now-removed IOMMU_COOKIE_FAULT_HANDLER cookie_type.
+
+Signed-off-by: Aravind Vijayakumar <aprasann@qti.qualcomm.com>
+Upstream-Status: Inappropriate
+---
+ drivers/iommu/iommu.c | 14 ++++++++++----
+ include/linux/iommu.h | 39 ++++++++++++++++++++++-----------------
+ 2 files changed, 32 insertions(+), 21 deletions(-)
+
+diff --git a/drivers/iommu/iommu.c b/drivers/iommu/iommu.c
+index ee83850c7060..71ff708c8a01 100644
+--- a/drivers/iommu/iommu.c
++++ b/drivers/iommu/iommu.c
+@@ -2037,10 +2037,17 @@ void iommu_set_fault_handler(struct iommu_domain *domain,
+ 					iommu_fault_handler_t handler,
+ 					void *token)
+ {
+-	if (WARN_ON(!domain || domain->cookie_type != IOMMU_COOKIE_NONE))
++	/*
++	 * cookie_type/iova_cookie/msi_cookie are no longer unioned with
++	 * handler/handler_token, so a domain already in DMA-API use
++	 * (IOMMU_COOKIE_DMA_IOVA/DMA_MSI) can safely also carry a fault
++	 * handler. Still reject SVA/iommufd domains and double-registration.
++	 */
++	if (WARN_ON(!domain || domain->handler ||
++		    domain->cookie_type == IOMMU_COOKIE_SVA ||
++		    domain->cookie_type == IOMMU_COOKIE_IOMMUFD))
+ 		return;
+ 
+-	domain->cookie_type = IOMMU_COOKIE_FAULT_HANDLER;
+ 	domain->handler = handler;
+ 	domain->handler_token = token;
+ }
+@@ -2872,8 +2879,7 @@ int report_iommu_fault(struct iommu_domain *domain, struct device *dev,
+ 	 * if upper layers showed interest and installed a fault handler,
+ 	 * invoke it.
+ 	 */
+-	if (domain->cookie_type == IOMMU_COOKIE_FAULT_HANDLER &&
+-	    domain->handler)
++	if (domain->handler)
+ 		ret = domain->handler(domain, dev, iova, flags,
+ 						domain->handler_token);
+ 
+diff --git a/include/linux/iommu.h b/include/linux/iommu.h
+index 555597b54083..cf1f214a72cd 100644
+--- a/include/linux/iommu.h
++++ b/include/linux/iommu.h
+@@ -230,23 +230,28 @@ struct iommu_domain {
+ 	struct iommu_domain_geometry geometry;
+ 	int (*iopf_handler)(struct iopf_group *group);
+ 
+-	union { /* cookie */
+-		struct iommu_dma_cookie *iova_cookie;
+-		struct iommu_dma_msi_cookie *msi_cookie;
+-		struct iommufd_hw_pagetable *iommufd_hwpt;
+-		struct {
+-			iommu_fault_handler_t handler;
+-			void *handler_token;
+-		};
+-		struct {	/* IOMMU_DOMAIN_SVA */
+-			struct mm_struct *mm;
+-			int users;
+-			/*
+-			 * Next iommu_domain in mm->iommu_mm->sva-domains list
+-			 * protected by iommu_sva_lock.
+-			 */
+-			struct list_head next;
+-		};
++	/*
++	 * These used to be unioned on the assumption that a domain only
++	 * ever needs one cookie type at a time. That does not hold for the
++	 * fault handler: report_iommu_fault() is the only way this kernel
++	 * surfaces unrecoverable SMMUv2 context faults to a driver, and
++	 * domains that need it also carry a live iova_cookie for normal
++	 * DMA-API use. Kept as plain (non-unioned) struct fields so setting
++	 * handler/handler_token can never alias/corrupt iova_cookie.
++	 */
++	struct iommu_dma_cookie *iova_cookie;
++	struct iommu_dma_msi_cookie *msi_cookie;
++	struct iommufd_hw_pagetable *iommufd_hwpt;
++	iommu_fault_handler_t handler;
++	void *handler_token;
++	struct {	/* IOMMU_DOMAIN_SVA */
++		struct mm_struct *mm;
++		int users;
++		/*
++		 * Next iommu_domain in mm->iommu_mm->sva-domains list
++		 * protected by iommu_sva_lock.
++		 */
++		struct list_head next;
+ 	};
+ };
+ 
+-- 
+2.34.1
+
