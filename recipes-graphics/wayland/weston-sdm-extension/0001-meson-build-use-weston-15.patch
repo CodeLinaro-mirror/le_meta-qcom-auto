@@ -1,0 +1,27 @@
+From e0a923dd1e37abf8c66d02e967d3e24ae0374a28 Mon Sep 17 00:00:00 2001
+From: Jim Wang <jimwan@qti.qualcomm.com>
+Date: Thu, 13 Aug 2026 16:04:00 -0400
+Subject: [PATCH] meson.build: use weston 15
+
+QLI 2.0 builds against the oe-core Weston 15 recipe, which provides
+libweston-15.pc and installs modules under libweston-15.
+
+Upstream-Status: Pending
+
+Signed-off-by: Jim Wang <jimwan@qti.qualcomm.com>
+---
+ meson.build | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/meson.build b/meson.build
+index e2a04e7..8ad5360 100644
+--- a/meson.build
++++ b/meson.build
+@@ -14 +14 @@
+-libweston_major = 13
++libweston_major = 15
+@@ -111 +111 @@
+-dep_libweston = dependency('libweston-13')
++dep_libweston = dependency('libweston-15')
+-- 
+2.34.1

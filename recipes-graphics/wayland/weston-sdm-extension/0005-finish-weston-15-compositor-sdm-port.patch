@@ -1,0 +1,114 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jim Wang <jimwan@qti.qualcomm.com>
+Date: Tue, 18 Aug 2026 14:05:00 -0400
+Subject: [PATCH] sdm-backend: finish Weston 15 compositor port
+
+Finish the compositor-side Weston 15 API updates left after the first core
+port patch.
+
+Upstream-Status: Pending
+
+Signed-off-by: Jim Wang <jimwan@qti.qualcomm.com>
+---
+ sdm-backend/compositor-sdm.c | 31 +++++++++++++------------------
+ 1 file changed, 13 insertions(+), 18 deletions(-)
+
+diff --git a/sdm-backend/compositor-sdm.c b/sdm-backend/compositor-sdm.c
+index 30f8d3a..f4b7773 100644
+--- a/sdm-backend/compositor-sdm.c
++++ b/sdm-backend/compositor-sdm.c
+@@ -1019,11 +1019,9 @@ drm_repaint_begin(struct weston_backend *backend)
+  * state will be freed.
+  */
+-static int
++static void
+ drm_repaint_flush(struct weston_backend *backend)
+ {
+ 	struct drm_backend *b = container_of(backend, struct drm_backend, base);
+ 
+ 	drm_debug(b, "[repaint] flushed\n");
+-
+-	return 0;
+ }
+@@ -1646,7 +1644,7 @@ drm_assign_planes(struct weston_output *output_base)
+ 			prepare_virtual_output(virtual_output, output_base);
+ 
+ 			/* TODO: Update output buffer */
+-			screen_cap->fallback_gpu = assign_planes(virtual_output, true);
++			screen_cap->fallback_gpu = assign_planes(&virtual_output->base, true);
+ 		} else {
+ 			screen_cap->fallback_gpu = true;
+ 		}
+@@ -2207,8 +2205,9 @@ drm_output_init_pixman(struct drm_output *output, struct drm_backend *b)
+ 
+ 		output->renderbuffer[i] =
+-			pixman->create_image_from_ptr(&output->base,
+-						      options.format, w, h,
+-						      output->dumb[i]->map,
+-						      output->dumb[i]->stride);
++			renderer->create_renderbuffer(&output->base,
++						      options.format,
++						      output->dumb[i]->map,
++						      output->dumb[i]->stride,
++						      NULL, NULL);
+ 		if (!output->renderbuffer[i])
+ 			goto err;
+@@ -2212,9 +2211,3 @@ drm_output_init_pixman(struct drm_output *output, struct drm_backend *b)
+ 		if (!output->renderbuffer[i])
+ 			goto err;
+-
+-		pixman_region32_init_rect(&output->renderbuffer[i]->damage,
+-					output->base.pos.c.x,
+-					output->base.pos.c.y,
+-					output->base.width,
+-					output->base.height);
+ 	}
+ 
+ 	weston_log("DRM: output %s %s shadow framebuffer.\n", output->base.name,
+@@ -2230,7 +2223,7 @@ err:
+ 		if (output->dumb[i])
+ 			drm_fb_unref(output->dumb[i]);
+ 		if (output->renderbuffer[i])
+-			weston_renderbuffer_unref(output->renderbuffer[i]);
++			renderer->destroy_renderbuffer(output->renderbuffer[i]);
+ 
+ 		output->dumb[i] = NULL;
+ 		output->renderbuffer[i] = NULL;
+@@ -2248,8 +2241,10 @@ drm_output_fini_pixman(struct drm_output *output)
+ 	unsigned int i;
+ 
+ 	for (i = 0; i < ARRAY_LENGTH(output->dumb); i++) {
+-		weston_renderbuffer_unref(output->renderbuffer[i]);
+-		drm_fb_unref(output->dumb[i]);
++		if (output->renderbuffer[i])
++			renderer->destroy_renderbuffer(output->renderbuffer[i]);
++		if (output->dumb[i])
++			drm_fb_unref(output->dumb[i]);
+ 		output->dumb[i] = NULL;
+ 		output->renderbuffer[i] = NULL;
+ 	}
+@@ -3134,7 +3129,7 @@ static int create_sdm_display(struct drm_backend *backend, int idx)
+ 		goto err_stat;
+ 	}
+ 
+-	sdm_cbs.hotplug_cb = hotplug_handler,
++	sdm_cbs.hotplug_cb = (hotplug_cb_t)hotplug_handler,
+ 	sdm_cbs.pageflip_cb = (pageflip_cb_t)pageflip_handler;
+ 	sdm_service->RegisterCbs(idx, &sdm_cbs);
+ 	connector_id = sdm_service->GetConnectorId(idx);
+@@ -3153,11 +3148,12 @@ static int create_sdm_display(struct drm_backend *backend, int idx)
+ 		goto err_stat;
+ 	}
+ 
+-	sdm_service->SetHead(idx, head);
++	sdm_service->SetHead(idx, (struct drm_head *)head);
+ 	return 0;
+@@ -3160,6 +3156,7 @@ err_stat:
+ 	return -1;
+ }
++static int
+ udev_drm_event(int fd, uint32_t mask, void *data)
+ {
+ 	struct drm_backend *b = data;
+-- 
+2.34.1

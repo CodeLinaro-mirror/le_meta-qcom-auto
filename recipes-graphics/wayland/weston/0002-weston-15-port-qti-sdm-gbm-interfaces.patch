@@ -1,0 +1,203 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jim Wang <jimwan@qti.qualcomm.com>
+Date: Tue, 18 Aug 2026 13:05:00 -0400
+Subject: [PATCH] weston-15: port QTI SDM GBM interfaces
+
+The out-of-tree QTI SDM backend still consumes a small set of downstream
+Weston 13 private interfaces for GBM-buffer import and SDM repaint state.
+Reintroduce those interfaces on Weston 15 so the backend can be forward-ported
+incrementally without pulling the whole old downstream Weston patch stack.
+
+Also make the installed private color header consumable from C sources. Weston
+15's upstream C++-style static_assert initializer is valid for Weston itself
+but breaks the C-compiled SDM early renderer once color.h is exported as a
+private helper header.
+
+Upstream-Status: Inappropriate [qti specific]
+
+Signed-off-by: Jim Wang <jimwan@qti.qualcomm.com>
+---
+ include/libweston/libweston.h | 24 ++++++++++++++++++++++++
+ libweston/color.h             |  8 +++++++-
+ libweston/compositor.c        | 33 +++++++++++++++++++++++++++++++++
+ libweston/libweston-internal.h| 13 +++++++++++++
+ 4 files changed, 77 insertions(+), 1 deletion(-)
+
+diff --git a/include/libweston/libweston.h b/include/libweston/libweston.h
+index c7af70d..a8bcf25 100644
+--- a/include/libweston/libweston.h
++++ b/include/libweston/libweston.h
+@@ -94,5 +94,6 @@ struct weston_output_color_outcome;
+ struct weston_tearing_control;
+ struct di_info;
++struct gbm_buffer;
+ 
+ enum weston_keyboard_modifier {
+ 	MODIFIER_CTRL = (1 << 0),
+@@ -513,8 +514,18 @@ struct weston_output {
+ 	void (*set_backlight)(struct weston_output *output, uint32_t value);
+ 	void (*set_dpms)(struct weston_output *output, enum dpms_enum level);
+ 
++	uint32_t gamma_size;
++	int (*set_gamma)(struct weston_output *output,
++			 uint16_t size,
++			 uint16_t *r,
++			 uint16_t *g,
++			 uint16_t *b);
++	void (*enable_ppm)(struct weston_output *output, int32_t enable);
++	void (*set_ppm)(struct weston_output *output, int32_t ppm);
+ 	bool enabled; /**< is in the output_list, not pending list */
+ 
++	bool need_gpu_composition;
++
+ 	struct weston_color_profile *color_profile;
+ 	bool from_blend_to_output_by_backend;
+ 	enum weston_eotf_mode eotf_mode;
+@@ -1567,6 +1578,7 @@ struct weston_buffer {
+ 	enum {
+ 		WESTON_BUFFER_SHM,
+ 		WESTON_BUFFER_DMABUF,
++		WESTON_BUFFER_GBMBUF,
+ 		WESTON_BUFFER_RENDERER_OPAQUE,
+ 		WESTON_BUFFER_SOLID,
+ 	} type;
+@@ -1574,6 +1586,7 @@ struct weston_buffer {
+ 	union {
+ 		struct wl_shm_buffer *shm_buffer;
+ 		void *dmabuf;
++		void *gbmbuf;
+ 		void *legacy_buffer;
+ 		struct weston_solid_buffer_values solid;
+ 	};
+@@ -1776,5 +1793,8 @@ struct weston_view {
+ 
+ 	bool is_mapped;
+ 	struct weston_log_pacer subsurface_parent_log_pacer;
++	bool is_capture_view;
++	bool is_completely_covered;
++	uint32_t psf_flags;
+ };
+ 
+ struct weston_surface_state {
+@@ -2448,6 +2468,12 @@ weston_compositor_load_backend(struct weston_compositor *compositor,
+ 			       enum weston_compositor_backend backend,
+ 			       struct weston_backend_config *config_base);
+ enum weston_compositor_backend
++int
++weston_compositor_load_gbm_buffer_backend(void);
++bool
++weston_compositor_import_gbm_buffer(struct weston_compositor *compositor,
++				    struct gbm_buffer *buffer);
+ weston_get_backend_type(struct weston_backend *backend);
+ void
+ weston_compositor_exit(struct weston_compositor *ec);
+diff --git a/libweston/color.h b/libweston/color.h
+index 5388a50..43b609a 100644
+--- a/libweston/color.h
++++ b/libweston/color.h
+@@ -288,9 +288,15 @@ union weston_color_curve_parametric_data {
+ 	float array[15];
+ };
+ 
++#ifdef __cplusplus
+ static_assert(sizeof (union weston_color_curve_parametric_data){}.array ==
+ 	      sizeof (union weston_color_curve_parametric_data){}.chan,
+ 	      "union size error");
++#else
++_Static_assert(sizeof (((union weston_color_curve_parametric_data *)0)->array) ==
++	       sizeof (((union weston_color_curve_parametric_data *)0)->chan),
++	       "union size error");
++#endif
+ 
+ /** Parametric color curve parameters */
+ struct weston_color_curve_parametric {
+diff --git a/libweston/compositor.c b/libweston/compositor.c
+index 12f8e19..f7e083a 100644
+--- a/libweston/compositor.c
++++ b/libweston/compositor.c
+@@ -10315,6 +10315,25 @@ weston_compositor_import_dmabuf(struct weston_compositor *compositor,
+ 	return renderer->import_dmabuf(compositor, buffer);
+ }
+ 
++/** Import a QTI GBM buffer into the active renderer.
++ *
++ * This is a downstream compatibility hook for the detached SDM backend's
++ * gbm-buffer-backend protocol.
++ */
++WL_EXPORT bool
++weston_compositor_import_gbm_buffer(struct weston_compositor *compositor,
++				    struct gbm_buffer *buffer)
++{
++	struct weston_renderer *renderer;
++
++	renderer = compositor->renderer;
++
++	if (renderer->import_gbm_buffer == NULL)
++		return false;
++
++	return renderer->import_gbm_buffer(compositor, buffer);
++}
++
+ WL_EXPORT bool
+ weston_compositor_dmabuf_can_scanout(struct weston_compositor *compositor,
+ 		struct linux_dmabuf_buffer *buffer)
+@@ -10642,6 +10661,20 @@ weston_compositor_load_backend(struct weston_compositor *compositor,
+ 	return b;
+ }
+ 
++WL_EXPORT int
++weston_compositor_load_gbm_buffer_backend(void)
++{
++	void *gbm_buffer_backend;
++
++	gbm_buffer_backend = weston_load_module("gbm-buffer-backend.so",
++						"gbm_buffer_backend_c_interface",
++						LIBWESTON_MODULEDIR);
++	if (!gbm_buffer_backend)
++		return -1;
++
++	return 0;
++}
++
+ WL_EXPORT int
+ weston_compositor_init_renderer(struct weston_compositor *compositor,
+ 				enum weston_renderer_type renderer_type,
+diff --git a/libweston/libweston-internal.h b/libweston/libweston-internal.h
+index 63743b2..6b9242f 100644
+--- a/libweston/libweston-internal.h
++++ b/libweston/libweston-internal.h
+@@ -73,6 +73,8 @@ struct linux_dmabuf_memory {
+ 	void (*destroy)(struct linux_dmabuf_memory *dmabuf);
+ };
+ 
++struct gbm_buffer;
++
+ enum weston_renderer_border_side {
+ 	WESTON_RENDERER_BORDER_TOP = 0,
+ 	WESTON_RENDERER_BORDER_LEFT = 1,
+@@ -113,6 +115,11 @@ struct weston_renderer {
+ 	/** See weston_compositor_import_dmabuf() */
+ 	bool (*import_dmabuf)(struct weston_compositor *ec,
+ 			      struct linux_dmabuf_buffer *buffer);
++	/** See weston_compositor_import_gbm_buffer() */
++	bool (*import_gbm_buffer)(struct weston_compositor *ec,
++				  struct gbm_buffer *buffer);
++	void (*capture_screen)(struct weston_output *output, struct weston_buffer *buffer,
++			       pixman_region32_t *output_damage);
+ 
+ 	const struct weston_drm_format_array *
+ 			(*get_supported_dmabuf_formats)(struct weston_compositor *ec);
+@@ -314,6 +321,11 @@ weston_compositor_import_dmabuf(struct weston_compositor *compositor,
+ bool
+ weston_compositor_dmabuf_can_scanout(struct weston_compositor *compositor,
+ 					struct linux_dmabuf_buffer *buffer);
++bool
++weston_compositor_import_gbm_buffer(struct weston_compositor *compositor,
++				    struct gbm_buffer *buffer);
++int
++weston_compositor_load_gbm_buffer_backend(void);
+ void
+ weston_compositor_offscreen(struct weston_compositor *compositor);
+ 
+-- 
+2.34.1
