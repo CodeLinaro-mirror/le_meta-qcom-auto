@@ -35,6 +35,11 @@ SRC_URI:append = " \
     file://files/usb/0015-PENDING-usb-Fix-eUSB2-PHY-compliance-issues-CV9-TD-9.patch \
     file://files/usb/0016-PENDING-phy-ptn3222-Add-support-to-parse-the-param-f.patch \
     file://files/usb/0017-PENDING-phy-qcom-snps-femto-v2-Add-minimal-EUD-detec.patch \
+    file://files/0014-mailbox-qcom-cpucp-restructure-the-cpucp-mailbox-dri.patch \
+    file://files/0015-scmi-support-for-scmi-vendor-protocol-and-log-driver.patch \
+    file://files/0016-arm64-dts-qcom-nord-add-reg-names-to-cpucp-mbox-node.patch \
+    file://files/0005-iommu-allow-fault-handler-to-coexist-with-DMA-API-domain-cookie.patch \
+    file://files/0006-firmware-arm_scmi-drop-unexpected-message-dev_err-spam.patch \
 "
 
 # Pin to a specific commit once you know it
