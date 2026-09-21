@@ -1,0 +1,38 @@
+From be7221fd93695c614e7e87f953f6073d87908f7f Mon Sep 17 00:00:00 2001
+From: Aravind Vijayakumar <aprasann@qti.qualcomm.com>
+Date: Sun, 30 Aug 2026 00:28:58 -0700
+Subject: [PATCH] firmware: arm_scmi: drop unexpected-message dev_err spam
+
+scmi_xfer_command_acquire() logs "Message for %d type %d is not
+expected!" via dev_err() whenever an SCMI response arrives for an
+xfer_id no longer tracked (e.g. after a stale/duplicate response).
+On this platform a virtqueue-descriptor leak in vhost-user-scmi
+(fixed separately, see vendor/qcom/opensource/vhost-user-scmi) caused
+the guest to keep re-sending tokens whose response was never
+delivered, flooding dmesg with this line. Drop the print; the
+scmi_bad_message_trace()/scmi_inc_count() accounting and the early
+return are unchanged.
+
+Signed-off-by: Venkatakrishnaiah Pari <vpari@qti.qualcomm.com>
+Upstream-Status: Inappropriate
+---
+ drivers/firmware/arm_scmi/driver.c | 3 ---
+ 1 file changed, 3 deletions(-)
+
+diff --git a/drivers/firmware/arm_scmi/driver.c b/drivers/firmware/arm_scmi/driver.c
+index 3e76a3204ba4..02fc3b62a4aa 100644
+--- a/drivers/firmware/arm_scmi/driver.c
++++ b/drivers/firmware/arm_scmi/driver.c
+@@ -1011,9 +1011,6 @@ scmi_xfer_command_acquire(struct scmi_chan_info *cinfo, u32 msg_hdr)
+ 	spin_lock_irqsave(&minfo->xfer_lock, flags);
+ 	xfer = scmi_xfer_lookup_unlocked(minfo, xfer_id);
+ 	if (IS_ERR(xfer)) {
+-		dev_err(cinfo->dev,
+-			"Message for %d type %d is not expected!\n",
+-			xfer_id, msg_type);
+ 		spin_unlock_irqrestore(&minfo->xfer_lock, flags);
+ 
+ 		scmi_bad_message_trace(cinfo, msg_hdr, MSG_UNEXPECTED);
+-- 
+2.34.1
+
