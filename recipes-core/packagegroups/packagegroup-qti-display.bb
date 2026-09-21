@@ -33,8 +33,8 @@ RDEPENDS:${PN}:remove:qti-dpk = "weston-sdm-extension"
 # LY.AU.0.3.0 wrynose porting exclusions
 # NOTE: This section will be removed once the blocked recipes are unblocked.
 # =============================================================================
-# display-hal-linux/weston-sdm-extension: kernel display drivers not in linux-qcom-next
-# wayland-ivi-extension: RPROVIDES conflict / not needed on gen5
-# weston-examples: not in wrynose layer set
-RDEPENDS:${PN}:remove:gen5 += "display-hal-linux weston-sdm-extension wayland-ivi-extension weston-examples"
-RDEPENDS:${PN}:remove = "display-hal-linux display-hal-linux-dev"
+# display-hal-linux: kernel display drivers not in linux-qcom-next. Team
+# decision: unblock regardless of runtime driver availability 
+# so the package gets compiled;
+# weston-sdm-extension: required for the SDM-backed Weston backend on gen5.
+# Weston 15 porting patches are applied in weston-sdm-extension_1.0.0.bb.
