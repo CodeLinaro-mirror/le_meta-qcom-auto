@@ -1,0 +1,363 @@
+From 1cac2b6d8959e27af33412e05d3be326944d18f1 Mon Sep 17 00:00:00 2001
+From: Deepti Jaggi <quic_djaggi@quicinc.com>
+Date: Mon, 16 Dec 2024 17:16:39 -0800
+Subject: [PATCH] scmi: support for scmi vendor protocol and log driver
+
+Support for scmi vendor protocol and cpucp and pdp log
+driver
+
+Change-Id: Ida2eaa250af8cc6fd9061dfb70d66fb8af684d2d
+Signed-off-by: Deepti Jaggi <quic_djaggi@quicinc.com>
+---
+ drivers/firmware/arm_scmi/transports/Kconfig  |  11 +
+ drivers/firmware/arm_scmi/transports/Makefile |   1 +
+ .../arm_scmi/transports/qcom_scmi_vendor.c    | 156 ++++
+ drivers/soc/qcom/Kconfig                      |  11 +
+ drivers/soc/qcom/Makefile                     |   1 +
+ drivers/soc/qcom/qcom_scmi_client.c           |  59 ++
+ include/linux/qcom_scmi_vendor.h              |  41 +
+ 7 files changed, 279 insertions(+)
+ create mode 100644 drivers/firmware/arm_scmi/transports/qcom_scmi_vendor.c
+ create mode 100644 drivers/soc/qcom/qcom_scmi_client.c
+ create mode 100644 drivers/soc/qcom/trace_cpucp.h
+ create mode 100644 include/linux/qcom_scmi_vendor.h
+
+diff --git a/drivers/firmware/arm_scmi/transports/Kconfig b/drivers/firmware/arm_scmi/transports/Kconfig
+index 57eccf316e26..010703f77dde 100644
+--- a/drivers/firmware/arm_scmi/transports/Kconfig
++++ b/drivers/firmware/arm_scmi/transports/Kconfig
+@@ -120,4 +120,15 @@ config ARM_SCMI_TRANSPORT_VIRTIO_ATOMIC_ENABLE
+ 	  in atomic context too, at the price of using a number of busy-waiting
+ 	  primitives all over instead. If unsure say N.
+ 
++config QTI_SCMI_VENDOR_PROTOCOL
++	tristate "Qualcomm Technologies, Inc. Qcom SCMI vendor Protocol"
++	depends on ARM || ARM64 || COMPILE_TEST
++	depends on ARM_SCMI_PROTOCOL && QCOM_CPUCP_MBOX
++	help
++	  System Control and Management Interface (SCMI) Qcom vendor protocol.
++	  This protocol provides interface to communicate with micro controller.
++
++	  This driver defines the commands or message ID's used for this
++	  communication and also exposes the ops used by clients.
++
+ endmenu
+diff --git a/drivers/firmware/arm_scmi/transports/Makefile b/drivers/firmware/arm_scmi/transports/Makefile
+index b08686571712..4cceb72ef623 100644
+--- a/drivers/firmware/arm_scmi/transports/Makefile
++++ b/drivers/firmware/arm_scmi/transports/Makefile
+@@ -7,3 +7,4 @@ scmi_transport_optee-objs := optee.o
+ obj-$(CONFIG_ARM_SCMI_TRANSPORT_OPTEE) += scmi_transport_optee.o
+ scmi_transport_virtio-objs := virtio.o
+ obj-$(CONFIG_ARM_SCMI_TRANSPORT_VIRTIO) += scmi_transport_virtio.o
++obj-$(CONFIG_QTI_SCMI_VENDOR_PROTOCOL) += qcom_scmi_vendor.o
+diff --git a/drivers/firmware/arm_scmi/transports/qcom_scmi_vendor.c b/drivers/firmware/arm_scmi/transports/qcom_scmi_vendor.c
+new file mode 100644
+index 000000000000..620f748953a9
+--- /dev/null
++++ b/drivers/firmware/arm_scmi/transports/qcom_scmi_vendor.c
+@@ -0,0 +1,156 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
++ */
++
++#include "../common.h"
++#include <linux/qcom_scmi_vendor.h>
++
++#define	EXTENDED_MSG_ID			0
++#define	SCMI_MAX_TX_RX_SIZE		128
++#define	PROTOCOL_PAYLOAD_SIZE		16
++#define	SET_PARAM			0x10
++#define	GET_PARAM			0x11
++#define	START_ACTIVITY			0x12
++#define	STOP_ACTIVITY			0x13
++
++static int qcom_scmi_set_param(const struct scmi_protocol_handle *ph, void *buf, u64 algo_str,
++	u32 param_id, size_t size)
++{
++	int ret = -EINVAL;
++	struct scmi_xfer *t;
++	uint32_t *msg;
++
++	if (!ph || !ph->xops)
++		return ret;
++	ret = ph->xops->xfer_get_init(ph, SET_PARAM, size + PROTOCOL_PAYLOAD_SIZE,
++			SCMI_MAX_TX_RX_SIZE, &t);
++	if (ret)
++		return ret;
++	msg = t->tx.buf;
++	*msg++ = cpu_to_le32(EXTENDED_MSG_ID);
++	*msg++ = cpu_to_le32(algo_str & GENMASK(31, 0));
++	*msg++ = cpu_to_le32((algo_str & GENMASK(63, 32)) >> 32);
++	*msg++ = cpu_to_le32(param_id);
++	memcpy(msg, buf, size);
++	ret = ph->xops->do_xfer(ph, t);
++	ph->xops->xfer_put(ph, t);
++	return ret;
++}
++
++static int qcom_scmi_get_param(const struct scmi_protocol_handle *ph, void *buf, u64 algo_str,
++	u32 param_id, size_t tx_size, size_t rx_size)
++{
++
++	int ret = -EINVAL;
++	struct scmi_xfer *t;
++	uint32_t *msg;
++
++	if (!ph || !ph->xops || !buf)
++		return ret;
++	ret = ph->xops->xfer_get_init(ph, GET_PARAM, tx_size + PROTOCOL_PAYLOAD_SIZE,
++			SCMI_MAX_TX_RX_SIZE, &t);
++	if (ret)
++		return ret;
++	msg = t->tx.buf;
++	*msg++ = cpu_to_le32(EXTENDED_MSG_ID);
++	*msg++ = cpu_to_le32(algo_str & GENMASK(31, 0));
++	*msg++ = cpu_to_le32((algo_str & GENMASK(63, 32)) >> 32);
++	*msg++ = cpu_to_le32(param_id);
++	memcpy(msg, buf, tx_size);
++	ret = ph->xops->do_xfer(ph, t);
++	if (!ret) {
++		if (t->rx.len > rx_size) {
++			pr_err("SCMI received buffer size %lu is more than expected size %lu\n",
++				t->rx.len, rx_size);
++			return -EMSGSIZE;
++		}
++		memcpy(buf, t->rx.buf, t->rx.len);
++	}
++	ph->xops->xfer_put(ph, t);
++
++	return ret;
++}
++
++static int qcom_scmi_start_activity(const struct scmi_protocol_handle *ph,
++	void *buf, u64 algo_str, u32 param_id, size_t size)
++{
++	int ret = -EINVAL;
++	struct scmi_xfer *t;
++	uint32_t *msg;
++
++	if (!ph || !ph->xops)
++		return ret;
++	ret = ph->xops->xfer_get_init(ph, START_ACTIVITY, size + PROTOCOL_PAYLOAD_SIZE,
++			SCMI_MAX_TX_RX_SIZE, &t);
++	if (ret)
++		return ret;
++	msg = t->tx.buf;
++	*msg++ = cpu_to_le32(EXTENDED_MSG_ID);
++	*msg++ = cpu_to_le32(algo_str & GENMASK(31, 0));
++	*msg++ = cpu_to_le32((algo_str & GENMASK(63, 32)) >> 32);
++	*msg++ = cpu_to_le32(param_id);
++	memcpy(msg, buf, size);
++	ret = ph->xops->do_xfer(ph, t);
++	ph->xops->xfer_put(ph, t);
++
++	return ret;
++}
++
++static int qcom_scmi_stop_activity(const struct scmi_protocol_handle *ph, void *buf, u64 algo_str,
++	u32 param_id, size_t size)
++{
++	int ret = -EINVAL;
++	struct scmi_xfer *t;
++	uint32_t *msg;
++
++	if (!ph || !ph->xops)
++		return ret;
++	ret = ph->xops->xfer_get_init(ph, STOP_ACTIVITY, size + PROTOCOL_PAYLOAD_SIZE,
++			SCMI_MAX_TX_RX_SIZE, &t);
++	if (ret)
++		return ret;
++	msg = t->tx.buf;
++	*msg++ = cpu_to_le32(EXTENDED_MSG_ID);
++	*msg++ = cpu_to_le32(algo_str & GENMASK(31, 0));
++	*msg++ = cpu_to_le32((algo_str & GENMASK(63, 32)) >> 32);
++	*msg++ = cpu_to_le32(param_id);
++	memcpy(msg, buf, size);
++	ret = ph->xops->do_xfer(ph, t);
++	ph->xops->xfer_put(ph, t);
++	return ret;
++}
++static struct qcom_scmi_vendor_ops qcom_proto_ops = {
++	.set_param = qcom_scmi_set_param,
++	.get_param = qcom_scmi_get_param,
++	.start_activity = qcom_scmi_start_activity,
++	.stop_activity = qcom_scmi_stop_activity,
++};
++
++static int qcom_scmi_vendor_protocol_init(const struct scmi_protocol_handle *ph)
++{
++	u32 version;
++	int ret;
++
++	pr_err("qcom scmi vendor protocol init\n");
++	ret = ph->xops->version_get(ph, &version);
++	if (ret == -ETIMEDOUT)
++		ret = -EPROBE_DEFER;
++	if (ret)
++		dev_err(ph->dev, " scmi Unable to get vendor version\n");
++
++	dev_err(ph->dev, "qcom scmi version %d.%d\n",
++		PROTOCOL_REV_MAJOR(version), PROTOCOL_REV_MINOR(version));
++	return 0;
++}
++
++static const struct scmi_protocol qcom_scmi_vendor = {
++	.id = QCOM_SCMI_VENDOR_PROTOCOL,
++	.owner = THIS_MODULE,
++	.instance_init = &qcom_scmi_vendor_protocol_init,
++	.ops = &qcom_proto_ops,
++};
++module_scmi_protocol(qcom_scmi_vendor);
++
++MODULE_DESCRIPTION("qcom scmi vendor Protocol");
++MODULE_LICENSE("GPL");
+diff --git a/drivers/soc/qcom/Kconfig b/drivers/soc/qcom/Kconfig
+index 672db9f265ca..4ff9b03372e8 100644
+--- a/drivers/soc/qcom/Kconfig
++++ b/drivers/soc/qcom/Kconfig
+@@ -417,6 +428,17 @@ config QCOM_KVM_ENABLED
+ 	 To address this, the QCOM_KVM_ENABLED config is introduced since the
+ 	 device tree cannot detect Kbuild configurations.
+
++config QTI_QCOM_SCMI_CLIENT
++	tristate "Qualcomm Technologies Inc. SCMI client driver"
++	depends on QTI_SCMI_VENDOR_PROTOCOL
++	default n
++	help
++	  SCMI client driver registers for Qcom vendor protocol.
++
++	  This driver delivers the qcom vendor protocol handle to interface
++	  driver, and interface driver will use this handle to communicate with
++	  cpucp.
++
+ source "drivers/soc/qcom/mem_buf/Kconfig"
+ source "drivers/soc/qcom/smcinvoke/Kconfig"
+
+diff --git a/drivers/soc/qcom/Makefile b/drivers/soc/qcom/Makefile
+index 8aa4935cee98..d1eebd9b3bf8 100644
+--- a/drivers/soc/qcom/Makefile
++++ b/drivers/soc/qcom/Makefile
+@@ -45,5 +45,6 @@ obj-$(CONFIG_QCOM_SOC_DEBUG) += qcom_soc_debug.o
+ obj-$(CONFIG_QCOM_SECURE_BUFFER) += secure_buffer.o
+ usb_f_qdss-y			:= f_qdss.o
+ obj-$(CONFIG_USB_F_QDSS)	+= usb_f_qdss.o
++obj-$(CONFIG_QTI_QCOM_SCMI_CLIENT) += qcom_scmi_client.o
+ obj-$(CONFIG_QCOM_RPROC_MINIDUMP)	+= qcom_rproc_minidump.o
+ obj-$(CONFIG_QCOM_MINIDUMP)	  += qcom_minidump.o
+diff --git a/drivers/soc/qcom/qcom_scmi_client.c b/drivers/soc/qcom/qcom_scmi_client.c
+new file mode 100644
+index 000000000000..c9dd34674c38
+--- /dev/null
++++ b/drivers/soc/qcom/qcom_scmi_client.c
+@@ -0,0 +1,59 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
++ */
++
++#include <linux/scmi_protocol.h>
++#include <linux/qcom_scmi_vendor.h>
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/init.h>
++#include <linux/err.h>
++#include <linux/errno.h>
++#include <linux/platform_device.h>
++
++struct scmi_device *scmi_dev;
++static int scmi_client_inited;
++
++
++struct scmi_device *get_qcom_scmi_device(void)
++{
++	if (!scmi_client_inited)
++		return ERR_PTR(-EPROBE_DEFER);
++
++	if (!scmi_dev || !scmi_dev->handle)
++		return ERR_PTR(-ENODEV);
++	return scmi_dev;
++}
++EXPORT_SYMBOL_GPL(get_qcom_scmi_device);
++
++static int scmi_client_probe(struct scmi_device *sdev)
++{
++	int ret = 0;
++	struct device *dev = &sdev->dev;
++
++	dev_set_drvdata(dev, sdev);
++	scmi_dev = sdev;
++	if (!sdev)
++		ret = -ENODEV;
++
++	scmi_client_inited = 1;
++	return ret;
++}
++
++static const struct scmi_device_id scmi_id_table[] = {
++	{ .protocol_id = QCOM_SCMI_VENDOR_PROTOCOL, .name = "qcom_scmi_vendor_protocol" },
++	{ },
++};
++MODULE_DEVICE_TABLE(scmi, scmi_id_table);
++
++static struct scmi_driver qcom_scmi_client_drv = {
++	.name		= "qcom-scmi-driver",
++	.probe		= scmi_client_probe,
++	.id_table	= scmi_id_table,
++};
++module_scmi_driver(qcom_scmi_client_drv);
++
++MODULE_SOFTDEP("pre: qcom_scmi_vendor");
++MODULE_DESCRIPTION("QCOM SCMI client driver");
++MODULE_LICENSE("GPL");
+diff --git a/include/linux/qcom_scmi_vendor.h b/include/linux/qcom_scmi_vendor.h
+new file mode 100644
+index 000000000000..ef3b6419fdbc
+--- /dev/null
++++ b/include/linux/qcom_scmi_vendor.h
+@@ -0,0 +1,41 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++/*
++ * Qcom scmi vendor protocol's header
++ *
++ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
++ */
++
++#ifndef _QCOM_SCMI_VENDOR_H
++#define _QCOM_SCMI_VENDOR_H
++
++#include <linux/bitfield.h>
++#include <linux/device.h>
++#include <linux/types.h>
++
++#define QCOM_SCMI_VENDOR_PROTOCOL    0x80
++
++struct scmi_protocol_handle;
++extern struct scmi_device *get_qcom_scmi_device(void);
++
++
++/**
++ * struct qcom_scmi_vendor_ops - represents the various operations provided
++ *      by qcom scmi vendor protocol
++ *
++ * @set_param: set scmi vendor protocol parameter specified by param_id
++ * @get_param: retrieve parameter specified by param_id
++ * @start_activity: Intiate a specific activity defined by algo_str
++ * @stop_activity: Halt previously iniated activity specified by algo_str
++ */
++struct qcom_scmi_vendor_ops {
++	int (*set_param)(const struct scmi_protocol_handle *ph, void *buf, u64 algo_str,
++		u32 param_id, size_t size);
++	int (*get_param)(const struct scmi_protocol_handle *ph, void *buf, u64 algo_str,
++		u32 param_id, size_t tx_size, size_t rx_size);
++	int (*start_activity)(const struct scmi_protocol_handle *ph, void *buf, u64 algo_str,
++		u32 param_id, size_t size);
++	int (*stop_activity)(const struct scmi_protocol_handle *ph, void *buf, u64 algo_str,
++		u32 param_id, size_t size);
++};
++
++#endif /* _QCOM_SCMI_VENDOR_H */
+-- 
+2.25.1
+
