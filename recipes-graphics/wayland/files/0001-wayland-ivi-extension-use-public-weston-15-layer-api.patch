@@ -1,0 +1,37 @@
+From e104d46da11ea75da67c4a1fca00a04f400b4db7 Mon Sep 17 00:00:00 2001
+From: Jim Wang <jimwan@qti.qualcomm.com>
+Date: Thu, 17 Sep 2026 17:15:44 -0400
+Subject: [PATCH] wayland-ivi-extension: use public Weston 15 layer API
+
+Signed-off-by: Jim Wang <jimwan@qti.qualcomm.com>
+---
+ weston-ivi-shell/src/ivi-controller.c | 6 ++----
+ 1 file changed, 2 insertions(+), 4 deletions(-)
+
+diff --git a/weston-ivi-shell/src/ivi-controller.c b/weston-ivi-shell/src/ivi-controller.c
+index 2b51c7c..b3436b1 100644
+--- a/weston-ivi-shell/src/ivi-controller.c
++++ b/weston-ivi-shell/src/ivi-controller.c
+@@ -1730,7 +1730,6 @@ static void
+ remove_bkgnd_surface(struct ivishell *shell, struct ivisurface *ivisurf)
+ {
+     if (shell->bkgnd_view) {
+-        weston_layer_entry_remove(&shell->bkgnd_view->layer_link);
+         weston_view_destroy(shell->bkgnd_view);
+         shell->bkgnd_view = NULL;
+     }
+@@ -1805,10 +1804,9 @@ surface_event_configure(struct wl_listener *listener, void *data)
+         if (!shell->bkgnd_view) {
+             wl_list_init(&shell->bkgnd_transform.link);
+             shell->bkgnd_view = weston_view_create(w_surface);
+-            weston_layer_entry_insert(&shell->bkgnd_layer.view_list,
+-                                      &shell->bkgnd_view->layer_link);
+             weston_surface_map(w_surface);
+-            shell->bkgnd_view->is_mapped = true;
++            weston_view_move_to_layer(shell->bkgnd_view,
++                                      &shell->bkgnd_layer.view_list);
+         }
+ 
+         set_bkgnd_surface_prop(shell);
+-- 
+2.53.0
