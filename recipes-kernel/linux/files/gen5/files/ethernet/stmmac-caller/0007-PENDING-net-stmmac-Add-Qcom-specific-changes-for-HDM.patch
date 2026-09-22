@@ -1,0 +1,653 @@
+From db0da0ec897df96d0e333a4f1a37d0b4297e3f4e Mon Sep 17 00:00:00 2001
+From: Sagar Cheluvegowda <quic_scheluve@quicinc.com>
+Date: Thu, 24 Oct 2024 16:54:37 -0700
+Subject: [PATCH 07/28] PENDING: net: stmmac: Add Qcom specific changes for
+ HDMA
+
+Add Qualcomm specific programming changes like
+VDMA->TC->PDMA mapping, descriptor cache programming,
+AXI programming and some missing HDMA programming which
+are not part of the upstream changes needed for the
+HDMA to be functional.
+
+We are following a custom map based on Qualcomm's platform
+requirement for VDMA->TC->PDMA mapping, we have also came up
+with a design to map offline channels as well, in order to
+avoid any unanticipated PDMA's from getting accessed during
+VDMA transactions.
+
+Change-Id: I87d6f2dd04a12ea601772a3d342c907594d03d1e
+Signed-off-by: Sagar Cheluvegowda <quic_scheluve@quicinc.com>
+---
+ .../net/ethernet/stmicro/stmmac/dw25gmac.c    | 115 +++++++++++++++---
+ .../net/ethernet/stmicro/stmmac/dw25gmac.h    |  30 ++---
+ .../stmicro/stmmac/dwmac-qcom-ethqos.c        |  43 +++++++
+ .../net/ethernet/stmicro/stmmac/dwmac-sun8i.c |   2 +-
+ .../ethernet/stmicro/stmmac/dwmac1000_dma.c   |   5 +-
+ .../ethernet/stmicro/stmmac/dwmac100_dma.c    |   2 +-
+ .../net/ethernet/stmicro/stmmac/dwmac4_dma.c  |   2 +-
+ .../net/ethernet/stmicro/stmmac/dwxgmac2.h    |   6 +-
+ .../ethernet/stmicro/stmmac/dwxgmac2_dma.c    |   8 +-
+ drivers/net/ethernet/stmicro/stmmac/hwif.h    |  17 ++-
+ .../net/ethernet/stmicro/stmmac/stmmac_main.c |  25 +++-
+ include/linux/stmmac.h                        |  14 +++
+ 12 files changed, 215 insertions(+), 54 deletions(-)
+
+diff --git a/drivers/net/ethernet/stmicro/stmmac/dw25gmac.c b/drivers/net/ethernet/stmicro/stmmac/dw25gmac.c
+index 924edc0e71ec5..e6ead78cade9e 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/dw25gmac.c
++++ b/drivers/net/ethernet/stmicro/stmmac/dw25gmac.c
+@@ -21,6 +21,17 @@ u32 dw25gmac_decode_vdma_count(u32 regval)
+ 		return 0;
+ }
+ 
++static int dw25gmac_dma_ops_wait(void __iomem *ioaddr)
++{
++	u32 value;
++
++	if (readl_poll_timeout(ioaddr + XXVGMAC_DMA_CH_IND_CONTROL, value,
++			       !(value & XGMAC_OB), 10, 200))
++		return -EBUSY;
++
++	return 0;
++}
++
+ static int rd_dma_ch_ind(void __iomem *ioaddr, u8 mode, u32 channel)
+ {
+ 	u32 reg_val = 0;
+@@ -29,6 +40,7 @@ static int rd_dma_ch_ind(void __iomem *ioaddr, u8 mode, u32 channel)
+ 	reg_val |= FIELD_PREP(XXVGMAC_ADDR_OFFSET, channel);
+ 	reg_val |= XXVGMAC_CMD_TYPE | XXVGMAC_OB;
+ 	writel(reg_val, ioaddr + XXVGMAC_DMA_CH_IND_CONTROL);
++	dw25gmac_dma_ops_wait(ioaddr);
+ 	return readl(ioaddr + XXVGMAC_DMA_CH_IND_DATA);
+ }
+ 
+@@ -41,15 +53,20 @@ static void wr_dma_ch_ind(void __iomem *ioaddr, u8 mode, u32 channel, u32 val)
+ 	reg_val |= FIELD_PREP(XXVGMAC_ADDR_OFFSET, channel);
+ 	reg_val |= XGMAC_OB;
+ 	writel(reg_val, ioaddr + XXVGMAC_DMA_CH_IND_CONTROL);
++	dw25gmac_dma_ops_wait(ioaddr);
+ }
+ 
+-void dw25gmac_dma_init(void __iomem *ioaddr,
++void dw25gmac_dma_init(struct stmmac_priv *priv, void __iomem *ioaddr,
+ 		       struct stmmac_dma_cfg *dma_cfg)
+ {
+ 	u32 tx_pdmas, rx_pdmas;
+ 	u32 hw_cap;
+ 	u32 value;
+ 	u32 i;
++	int ret;
++
++	ret = readl_poll_timeout(ioaddr + XGMAC_DMA_MODE, value,
++				 (value & XGMAC_HMIC), 10, 200);
+ 
+ 	value = readl(ioaddr + XGMAC_DMA_SYSBUS_MODE);
+ 	value &= ~(XGMAC_AAL | XGMAC_EAME);
+@@ -59,10 +76,12 @@ void dw25gmac_dma_init(void __iomem *ioaddr,
+ 		value |= XGMAC_EAME;
+ 	writel(value, ioaddr + XGMAC_DMA_SYSBUS_MODE);
+ 
+-	/* Get PDMA counts from HW */
++	/* Get PDMA counts etither from the device-tree or the HW */
+ 	hw_cap = readl(ioaddr + XGMAC_HW_FEATURE2);
+-	tx_pdmas = FIELD_GET(XGMAC_HWFEAT_TXQCNT, hw_cap) + 1;
+-	rx_pdmas = FIELD_GET(XGMAC_HWFEAT_RXQCNT, hw_cap) + 1;
++	tx_pdmas = (priv->plat->tx_queues_to_use ? priv->plat->tx_queues_to_use :
++		   FIELD_GET(XGMAC_HWFEAT_TXQCNT, hw_cap) + 1);
++	rx_pdmas = (priv->plat->rx_queues_to_use ? priv->plat->rx_queues_to_use :
++		   FIELD_GET(XGMAC_HWFEAT_RXQCNT, hw_cap) + 1);
+ 
+ 	/* Initialize all PDMAs with burst length fields */
+ 	for (i = 0; i < tx_pdmas; i++) {
+@@ -90,28 +109,27 @@ void dw25gmac_dma_init_tx_chan(struct stmmac_priv *priv,
+ 			       dma_addr_t dma_addr, u32 chan)
+ {
+ 	const struct dwxgmac_addrs *dwxgmac_addrs = priv->plat->dwxgmac_addrs;
++	u32 tc = (dma_cfg->tx_pdma_custom_map ? dma_cfg->tx_pdma_map[chan] : chan);
+ 	u32 value;
+-	u32 tc;
+ 
+ 	/* Descriptor cache size and prefetch threshold size */
+ 	value = rd_dma_ch_ind(ioaddr, MODE_TXDESCCTRL, chan);
+ 	value &= ~XXVGMAC_TXDCSZ;
+ 	value |= FIELD_PREP(XXVGMAC_TXDCSZ,
+-			    XXVGMAC_TXDCSZ_256BYTES);
++			    dma_cfg->txdcsz);
+ 	value &= ~XXVGMAC_TDPS;
+-	value |= FIELD_PREP(XXVGMAC_TDPS, XXVGMAC_TDPS_HALF);
++	value |= FIELD_PREP(XXVGMAC_TDPS, dma_cfg->tdps);
+ 	wr_dma_ch_ind(ioaddr, MODE_TXDESCCTRL, chan, value);
+ 
+-	/* Use one-to-one mapping between VDMA, TC, and PDMA. */
+-	tc = chan;
+-
+-	/* 1-to-1 PDMA to TC mapping */
++	/* PDMA to TC mapping */
+ 	value = rd_dma_ch_ind(ioaddr, MODE_TXEXTCFG, chan);
+ 	value &= ~XXVGMAC_TP2TCMP;
+ 	value |= FIELD_PREP(XXVGMAC_TP2TCMP, tc);
++	if (dma_cfg->orrq)
++		value |= FIELD_PREP(XXVGMAC_ORRQ, dma_cfg->orrq);
+ 	wr_dma_ch_ind(ioaddr, MODE_TXEXTCFG, chan, value);
+ 
+-	/* 1-to-1 VDMA to TC mapping */
++	/* VDMA to TC mapping */
+ 	value = readl(ioaddr + XGMAC_DMA_CH_TX_CONTROL(dwxgmac_addrs, chan));
+ 	value &= ~XXVGMAC_TVDMA2TCMP;
+ 	value |= FIELD_PREP(XXVGMAC_TVDMA2TCMP, tc);
+@@ -129,28 +147,28 @@ void dw25gmac_dma_init_rx_chan(struct stmmac_priv *priv,
+ 			       dma_addr_t dma_addr, u32 chan)
+ {
+ 	const struct dwxgmac_addrs *dwxgmac_addrs = priv->plat->dwxgmac_addrs;
++	u32 tc = (dma_cfg->rx_pdma_custom_map ? dma_cfg->rx_pdma_map[chan] : chan);
+ 	u32 value;
+-	u32 tc;
+ 
+ 	/* Descriptor cache size and prefetch threshold size */
+ 	value = rd_dma_ch_ind(ioaddr, MODE_RXDESCCTRL, chan);
+ 	value &= ~XXVGMAC_RXDCSZ;
+ 	value |= FIELD_PREP(XXVGMAC_RXDCSZ,
+-			    XXVGMAC_RXDCSZ_256BYTES);
++			    dma_cfg->rxdcsz);
+ 	value &= ~XXVGMAC_RDPS;
+-	value |= FIELD_PREP(XXVGMAC_RDPS, XXVGMAC_RDPS_HALF);
++	value |= FIELD_PREP(XXVGMAC_RDPS, dma_cfg->rdps);
+ 	wr_dma_ch_ind(ioaddr, MODE_RXDESCCTRL, chan, value);
+ 
+-	/* Use one-to-one mapping between VDMA, TC, and PDMA. */
+-	tc = chan;
+-
+-	/* 1-to-1 PDMA to TC mapping */
++	/* PDMA to TC mapping */
+ 	value = rd_dma_ch_ind(ioaddr, MODE_RXEXTCFG, chan);
+ 	value &= ~XXVGMAC_RP2TCMP;
+ 	value |= FIELD_PREP(XXVGMAC_RP2TCMP, tc);
++	if (dma_cfg->owrq)
++		value |= FIELD_PREP(XXVGMAC_OWRQ, dma_cfg->owrq);
++	value |= XXVGMAC_RXPEN;
+ 	wr_dma_ch_ind(ioaddr, MODE_RXEXTCFG, chan, value);
+ 
+-	/* 1-to-1 VDMA to TC mapping */
++	/* VDMA to TC mapping */
+ 	value = readl(ioaddr + XGMAC_DMA_CH_RX_CONTROL(dwxgmac_addrs, chan));
+ 	value &= ~XXVGMAC_RVDMA2TCMP;
+ 	value |= FIELD_PREP(XXVGMAC_RVDMA2TCMP, tc);
+@@ -161,3 +179,60 @@ void dw25gmac_dma_init_rx_chan(struct stmmac_priv *priv,
+ 	writel(lower_32_bits(dma_addr),
+ 	       ioaddr + XGMAC_DMA_CH_RxDESC_LADDR(dwxgmac_addrs, chan));
+ }
++
++void dw25gmac_dma_map_tx_offline_chan(struct stmmac_priv *priv,
++				      void __iomem *ioaddr,
++				      struct stmmac_dma_cfg *dma_cfg,
++				      u32 chan)
++{
++	const struct dwxgmac_addrs *dwxgmac_addrs = priv->plat->dwxgmac_addrs;
++	u32 tc = (dma_cfg->tx_pdma_custom_map ? dma_cfg->tx_pdma_map[chan] : chan);
++	u32 value;
++
++	/* PDMA to TC mapping for channels that are offline */
++	value = rd_dma_ch_ind(ioaddr, MODE_TXEXTCFG, chan);
++	value &= ~XXVGMAC_TP2TCMP;
++	value |= FIELD_PREP(XXVGMAC_TP2TCMP, tc);
++	wr_dma_ch_ind(ioaddr, MODE_TXEXTCFG, chan, value);
++
++	/* VDMA to TC mapping for channels that are offline */
++	value = readl(ioaddr + XGMAC_DMA_CH_TX_CONTROL(dwxgmac_addrs, chan));
++	value &= ~XXVGMAC_TVDMA2TCMP;
++	value |= FIELD_PREP(XXVGMAC_TVDMA2TCMP, tc);
++	writel(value, ioaddr + XGMAC_DMA_CH_TX_CONTROL(dwxgmac_addrs, chan));
++}
++
++void dw25gmac_dma_map_rx_offline_chan(struct stmmac_priv *priv,
++				      void __iomem *ioaddr,
++				      struct stmmac_dma_cfg *dma_cfg,
++				      u32 chan)
++{
++	const struct dwxgmac_addrs *dwxgmac_addrs = priv->plat->dwxgmac_addrs;
++	u32 tc = (dma_cfg->rx_pdma_custom_map ? dma_cfg->rx_pdma_map[chan] : chan);
++	u32 value;
++
++	/* PDMA to TC mapping for channels that are offline */
++	value = rd_dma_ch_ind(ioaddr, MODE_RXEXTCFG, chan);
++	value &= ~XXVGMAC_RP2TCMP;
++	value |= FIELD_PREP(XXVGMAC_RP2TCMP, tc);
++	wr_dma_ch_ind(ioaddr, MODE_RXEXTCFG, chan, value);
++
++	/* VDMA to TC mapping for channels that are offline */
++	value = readl(ioaddr + XGMAC_DMA_CH_RX_CONTROL(dwxgmac_addrs, chan));
++	value &= ~XXVGMAC_RVDMA2TCMP;
++	value |= FIELD_PREP(XXVGMAC_RVDMA2TCMP, tc);
++	writel(value, ioaddr + XGMAC_DMA_CH_RX_CONTROL(dwxgmac_addrs, chan));
++}
++
++void dw25gmac_desc_cache_compute(void __iomem *ioaddr)
++{
++	u32 value;
++	int ret;
++
++	value = readl(ioaddr + XGMAC_DMA_MODE);
++	value |= XGMAC_DSCB;
++	writel(value, ioaddr + XGMAC_DMA_MODE);
++
++	ret = readl_poll_timeout(ioaddr + XGMAC_DMA_MODE, value,
++				 !(value & XGMAC_DSCB), 10, 200);
++}
+diff --git a/drivers/net/ethernet/stmicro/stmmac/dw25gmac.h b/drivers/net/ethernet/stmicro/stmmac/dw25gmac.h
+index 44f9601331d5f..32468fa33253c 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/dw25gmac.h
++++ b/drivers/net/ethernet/stmicro/stmmac/dw25gmac.h
+@@ -34,6 +34,7 @@ enum dma_ch_ind_modes {
+ #define XXVGMAC_ORRQ			GENMASK(13, 8)
+ 
+ /* RX Config definitions */
++#define XXVGMAC_RXPEN			BIT(31)
+ #define XXVGMAC_RXPBL			GENMASK(29, 24)
+ #define XXVGMAC_RPBLX8_MODE		BIT(19)
+ #define XXVGMAC_RP2TCMP			GENMASK(18, 16)
+@@ -41,29 +42,11 @@ enum dma_ch_ind_modes {
+ 
+ /* Tx Descriptor control */
+ #define XXVGMAC_TXDCSZ			GENMASK(2, 0)
+-#define XXVGMAC_TXDCSZ_0BYTES		0
+-#define XXVGMAC_TXDCSZ_64BYTES		1
+-#define XXVGMAC_TXDCSZ_128BYTES		2
+-#define XXVGMAC_TXDCSZ_256BYTES		3
+ #define XXVGMAC_TDPS			GENMASK(5, 3)
+-#define XXVGMAC_TDPS_ZERO		0
+-#define XXVGMAC_TDPS_1_8TH		1
+-#define XXVGMAC_TDPS_1_4TH		2
+-#define XXVGMAC_TDPS_HALF		3
+-#define XXVGMAC_TDPS_3_4TH		4
+ 
+ /* Rx Descriptor control */
+ #define XXVGMAC_RXDCSZ			GENMASK(2, 0)
+-#define XXVGMAC_RXDCSZ_0BYTES		0
+-#define XXVGMAC_RXDCSZ_64BYTES		1
+-#define XXVGMAC_RXDCSZ_128BYTES		2
+-#define XXVGMAC_RXDCSZ_256BYTES		3
+ #define XXVGMAC_RDPS			GENMASK(5, 3)
+-#define XXVGMAC_RDPS_ZERO		0
+-#define XXVGMAC_RDPS_1_8TH		1
+-#define XXVGMAC_RDPS_1_4TH		2
+-#define XXVGMAC_RDPS_HALF		3
+-#define XXVGMAC_RDPS_3_4TH		4
+ 
+ /* DWCXG_DMA_CH(#i) Registers*/
+ #define XXVGMAC_DSL			GENMASK(20, 18)
+@@ -78,7 +61,7 @@ enum dma_ch_ind_modes {
+ 
+ u32 dw25gmac_decode_vdma_count(u32 regval);
+ 
+-void dw25gmac_dma_init(void __iomem *ioaddr,
++void dw25gmac_dma_init(struct stmmac_priv *priv, void __iomem *ioaddr,
+ 		       struct stmmac_dma_cfg *dma_cfg);
+ 
+ void dw25gmac_dma_init_tx_chan(struct stmmac_priv *priv,
+@@ -89,4 +72,13 @@ void dw25gmac_dma_init_rx_chan(struct stmmac_priv *priv,
+ 			       void __iomem *ioaddr,
+ 			       struct stmmac_dma_cfg *dma_cfg,
+ 			       dma_addr_t dma_addr, u32 chan);
++void dw25gmac_dma_map_tx_offline_chan(struct stmmac_priv *priv,
++				      void __iomem *ioaddr,
++				      struct stmmac_dma_cfg *dma_cfg,
++				      u32 chan);
++void dw25gmac_dma_map_rx_offline_chan(struct stmmac_priv *priv,
++				      void __iomem *ioaddr,
++				      struct stmmac_dma_cfg *dma_cfg,
++				      u32 chan);
++void dw25gmac_desc_cache_compute(void __iomem *ioaddr);
+ #endif /* __STMMAC_DW25GMAC_H__ */
+diff --git a/drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c b/drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c
+index 111e3391e27d5..bfa9824c329a4 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c
++++ b/drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c
+@@ -121,6 +121,7 @@ struct ethqos_emac_driver_data {
+ 	struct dwmac4_addrs dwmac4_addrs;
+ 	bool needs_sgmii_loopback;
+ 	bool has_xgmac;
++	bool has_hdma;
+ };
+ 
+ struct qcom_ethqos {
+@@ -346,6 +347,7 @@ static const struct ethqos_emac_driver_data emac_v6_6_0_data = {
+ 	.dma_addr_width = 32,
+ 	.link_clk_name = "phyaux",
+ 	.has_xgmac = true,
++	.has_hdma = true,
+ 	.dwxgmac_addrs = {
+ 		.dma_even_chan_base  = 0x00008500,
+ 		.dma_odd_chan_base = 0x00008580,
+@@ -819,6 +821,44 @@ static void ethqos_ptp_clk_freq_config(struct stmmac_priv *priv)
+ 	netdev_dbg(priv->dev, "PTP rate %lu\n", plat_dat->clk_ptp_rate);
+ }
+ 
++static void qcom_ethqos_hdma_cfg(struct plat_stmmacenet_data *plat)
++{
++	plat->dma_cfg->orrq = 15;
++	plat->dma_cfg->owrq = 15;
++	plat->dma_cfg->txdcsz = 4;
++	plat->dma_cfg->tdps = 1;
++	plat->dma_cfg->rxdcsz = 4;
++	plat->dma_cfg->rdps = 1;
++
++	plat->dma_cfg->tx_pdma_custom_map = true;
++	plat->dma_cfg->tx_pdma_map[0] = 0;
++	plat->dma_cfg->tx_pdma_map[1] = 0;
++	plat->dma_cfg->tx_pdma_map[2] = 0;
++	plat->dma_cfg->tx_pdma_map[3] = 0;
++	plat->dma_cfg->tx_pdma_map[4] = 5;
++	plat->dma_cfg->tx_pdma_map[5] = 5;
++	plat->dma_cfg->tx_pdma_map[6] = 5;
++	plat->dma_cfg->tx_pdma_map[7] = 2;
++	plat->dma_cfg->tx_pdma_map[8] = 3;
++	plat->dma_cfg->tx_pdma_map[9] = 4;
++	plat->dma_cfg->tx_pdma_map[10] = 6;
++	plat->dma_cfg->tx_pdma_map[11] = 7;
++
++	plat->dma_cfg->rx_pdma_custom_map = true;
++	plat->dma_cfg->rx_pdma_map[0] = 0;
++	plat->dma_cfg->rx_pdma_map[1] = 0;
++	plat->dma_cfg->rx_pdma_map[2] = 0;
++	plat->dma_cfg->rx_pdma_map[3] = 0;
++	plat->dma_cfg->rx_pdma_map[4] = 5;
++	plat->dma_cfg->rx_pdma_map[5] = 5;
++	plat->dma_cfg->rx_pdma_map[6] = 5;
++	plat->dma_cfg->rx_pdma_map[7] = 2;
++	plat->dma_cfg->rx_pdma_map[8] = 3;
++	plat->dma_cfg->rx_pdma_map[9] = 4;
++	plat->dma_cfg->rx_pdma_map[10] = 6;
++	plat->dma_cfg->rx_pdma_map[11] = 7;
++}
++
+ static int qcom_ethqos_probe(struct platform_device *pdev)
+ {
+ 	struct device_node *np = pdev->dev.of_node;
+@@ -922,6 +962,9 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
+ 	if (data->has_xgmac) {
+ 		plat_dat->core_type = DWMAC_CORE_XGMAC;
+ 		plat_dat->dwxgmac_addrs = &data->dwxgmac_addrs;
++		plat_dat->has_hdma = data->has_hdma;
++		if (plat_dat->has_hdma)
++			qcom_ethqos_hdma_cfg(plat_dat);
+ 	}
+ 	if (of_property_read_bool(np, "snps,tso"))
+ 		plat_dat->flags |= STMMAC_FLAG_TSO_EN;
+diff --git a/drivers/net/ethernet/stmicro/stmmac/dwmac-sun8i.c b/drivers/net/ethernet/stmicro/stmmac/dwmac-sun8i.c
+index 1f52d69a11e1e..174f51825b089 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/dwmac-sun8i.c
++++ b/drivers/net/ethernet/stmicro/stmmac/dwmac-sun8i.c
+@@ -287,7 +287,7 @@ static int sun8i_dwmac_dma_reset(void __iomem *ioaddr)
+ /* sun8i_dwmac_dma_init() - initialize the EMAC
+  * Called from stmmac via stmmac_dma_ops->init
+  */
+-static void sun8i_dwmac_dma_init(void __iomem *ioaddr,
++static void sun8i_dwmac_dma_init(struct stmmac_priv *priv, void __iomem *ioaddr,
+ 				 struct stmmac_dma_cfg *dma_cfg)
+ {
+ 	writel(EMAC_RX_INT | EMAC_TX_INT, ioaddr + EMAC_INT_EN);
+diff --git a/drivers/net/ethernet/stmicro/stmmac/dwmac1000_dma.c b/drivers/net/ethernet/stmicro/stmmac/dwmac1000_dma.c
+index 3ac7a7949529c..7325c27f1c68f 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/dwmac1000_dma.c
++++ b/drivers/net/ethernet/stmicro/stmmac/dwmac1000_dma.c
+@@ -43,9 +43,8 @@ static void dwmac1000_dma_axi(void __iomem *ioaddr, struct stmmac_axi *axi)
+ 	writel(value, ioaddr + DMA_AXI_BUS_MODE);
+ }
+ 
+-static void dwmac1000_dma_init_channel(struct stmmac_priv *priv,
+-				       void __iomem *ioaddr,
+-				       struct stmmac_dma_cfg *dma_cfg, u32 chan)
++static void dwmac1000_dma_init(struct stmmac_priv *priv, void __iomem *ioaddr,
++			       struct stmmac_dma_cfg *dma_cfg)
+ {
+ 	int txpbl = dma_cfg->txpbl ?: dma_cfg->pbl;
+ 	int rxpbl = dma_cfg->rxpbl ?: dma_cfg->pbl;
+diff --git a/drivers/net/ethernet/stmicro/stmmac/dwmac100_dma.c b/drivers/net/ethernet/stmicro/stmmac/dwmac100_dma.c
+index 12b2bf2d739ab..34a0bdc8d11c0 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/dwmac100_dma.c
++++ b/drivers/net/ethernet/stmicro/stmmac/dwmac100_dma.c
+@@ -18,7 +18,7 @@
+ #include "dwmac100.h"
+ #include "dwmac_dma.h"
+ 
+-static void dwmac100_dma_init(void __iomem *ioaddr,
++static void dwmac100_dma_init(struct stmmac_priv *priv, void __iomem *ioaddr,
+ 			      struct stmmac_dma_cfg *dma_cfg)
+ {
+ 	/* Enable Application Access by writing to DMA CSR0 */
+diff --git a/drivers/net/ethernet/stmicro/stmmac/dwmac4_dma.c b/drivers/net/ethernet/stmicro/stmmac/dwmac4_dma.c
+index 23ffe1adcd0d3..6d3c0770a7aef 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/dwmac4_dma.c
++++ b/drivers/net/ethernet/stmicro/stmmac/dwmac4_dma.c
+@@ -147,7 +147,7 @@ static void dwmac410_dma_deinit_channel(struct stmmac_priv *priv,
+ 	writel(value, ioaddr + DMA_CHAN_INTR_ENA(dwmac4_addrs, chan));
+ }
+ 
+-static void dwmac4_dma_init(void __iomem *ioaddr,
++static void dwmac4_dma_init(struct stmmac_priv *priv, void __iomem *ioaddr,
+ 			    struct stmmac_dma_cfg *dma_cfg)
+ {
+ 	u32 value = readl(ioaddr + DMA_SYS_BUS_MODE);
+diff --git a/drivers/net/ethernet/stmicro/stmmac/dwxgmac2.h b/drivers/net/ethernet/stmicro/stmmac/dwxgmac2.h
+index 7f9961d0fdbec..e612d3dfbcc2a 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/dwxgmac2.h
++++ b/drivers/net/ethernet/stmicro/stmmac/dwxgmac2.h
+@@ -369,12 +369,15 @@ static inline u32 xgmac_mtl_chanx_base_addr(const struct dwxgmac_addrs *addrs,
+ #define XGMAC_SWR			BIT(0)
+ #define XGMAC_INTM_MASK			GENMASK(13, 12)
+ #define XGMAC_INTM_MODE1		0x1
++#define XGMAC_DSCB		BIT(16)
++#define XGMAC_HMIC		BIT(17)
+ #define XGMAC_DMA_SYSBUS_MODE		0x00003004
+ #define XGMAC_WR_OSR_LMT		GENMASK(29, 24)
+ #define XGMAC_RD_OSR_LMT		GENMASK(21, 16)
+ #define XGMAC_EN_LPI			BIT(15)
+ #define XGMAC_LPI_XIT_PKT		BIT(14)
+-#define XGMAC_AAL			DMA_AXI_AAL
++#define XGMAC_ONEKBBE		BIT(13)
++#define XGMAC_AAL			BIT(12)
+ #define XGMAC_EAME			BIT(11)
+ /* XGMAC_BLEN* are now defined as DMA_AXI_BLEN* in common.h */
+ #define XGMAC_UNDEF			BIT(0)
+@@ -440,6 +443,7 @@ static inline u32 xgmac_dma_chanx_base_addr(const struct dwxgmac_addrs *addrs,
+ #define XGMAC_DMA_CH_INT_EN(addr, x)		(xgmac_dma_chanx_base_addr(addr, x) + 0x38)
+ #define XGMAC_NIE			BIT(15)
+ #define XGMAC_AIE			BIT(14)
++#define XGMAC_FBEE			BIT(12)
+ #define XGMAC_RBUE			BIT(7)
+ #define XGMAC_RIE			BIT(6)
+ #define XGMAC_TBUE			BIT(2)
+diff --git a/drivers/net/ethernet/stmicro/stmmac/dwxgmac2_dma.c b/drivers/net/ethernet/stmicro/stmmac/dwxgmac2_dma.c
+index 9a49fc1558fcf..ab652fcbb4d94 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/dwxgmac2_dma.c
++++ b/drivers/net/ethernet/stmicro/stmmac/dwxgmac2_dma.c
+@@ -20,7 +20,7 @@ static int dwxgmac2_dma_reset(void __iomem *ioaddr)
+ 				  !(value & XGMAC_SWR), 0, 100000);
+ }
+ 
+-static void dwxgmac2_dma_init(void __iomem *ioaddr,
++static void dwxgmac2_dma_init(struct stmmac_priv *priv, void __iomem *ioaddr,
+ 			      struct stmmac_dma_cfg *dma_cfg)
+ {
+ 	u32 value = readl(ioaddr + XGMAC_DMA_SYSBUS_MODE);
+@@ -114,6 +114,9 @@ static void dwxgmac2_dma_axi(void __iomem *ioaddr, struct stmmac_axi *axi)
+ 	 */
+ 	value = (value & ~DMA_AXI_BLEN_MASK) | axi->axi_blen_regval;
+ 
++	if (axi->axi_kbbe)
++		value |= XGMAC_ONEKBBE;
++
+ 	writel(value, ioaddr + XGMAC_DMA_SYSBUS_MODE);
+ 	writel(XGMAC_TDPS, ioaddr + XGMAC_TX_EDMA_CTRL);
+ 	writel(XGMAC_RDPS, ioaddr + XGMAC_RX_EDMA_CTRL);
+@@ -685,6 +688,9 @@ const struct stmmac_dma_ops dw25gmac400_dma_ops = {
+ 	.init_chan = dwxgmac2_dma_init_chan,
+ 	.init_rx_chan = dw25gmac_dma_init_rx_chan,
+ 	.init_tx_chan = dw25gmac_dma_init_tx_chan,
++	.map_tx_offline_chan = dw25gmac_dma_map_tx_offline_chan,
++	.map_rx_offline_chan = dw25gmac_dma_map_rx_offline_chan,
++	.desc_cache_compute = dw25gmac_desc_cache_compute,
+ 	.axi = dwxgmac2_dma_axi,
+ 	.dump_regs = dwxgmac2_dma_dump_regs,
+ 	.dma_rx_mode = dwxgmac2_dma_rx_mode,
+diff --git a/drivers/net/ethernet/stmicro/stmmac/hwif.h b/drivers/net/ethernet/stmicro/stmmac/hwif.h
+index ddfeca09dc3ec..f72adc64a8839 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/hwif.h
++++ b/drivers/net/ethernet/stmicro/stmmac/hwif.h
+@@ -167,7 +167,7 @@ struct dma_features;
+ struct stmmac_dma_ops {
+ 	/* DMA core initialization */
+ 	int (*reset)(void __iomem *ioaddr);
+-	void (*init)(void __iomem *ioaddr, struct stmmac_dma_cfg *dma_cfg);
++	void (*init)(struct stmmac_priv *priv, void __iomem *ioaddr, struct stmmac_dma_cfg *dma_cfg);
+ 	void (*init_chan)(struct stmmac_priv *priv, void __iomem *ioaddr,
+ 			  struct stmmac_dma_cfg *dma_cfg, u32 chan);
+ 	void (*deinit_chan)(struct stmmac_priv *priv, void __iomem *ioaddr,
+@@ -178,6 +178,13 @@ struct stmmac_dma_ops {
+ 	void (*init_tx_chan)(struct stmmac_priv *priv, void __iomem *ioaddr,
+ 			     struct stmmac_dma_cfg *dma_cfg,
+ 			     dma_addr_t phy, u32 chan);
++	void (*map_rx_offline_chan)(struct stmmac_priv *priv, void __iomem *ioaddr,
++				    struct stmmac_dma_cfg *dma_cfg,
++				    u32 chan);
++	void (*map_tx_offline_chan)(struct stmmac_priv *priv, void __iomem *ioaddr,
++				    struct stmmac_dma_cfg *dma_cfg,
++				    u32 chan);
++	void (*desc_cache_compute)(void __iomem *ioaddr);
+ 	/* Configure the AXI Bus Mode Register */
+ 	void (*axi)(void __iomem *ioaddr, struct stmmac_axi *axi);
+ 	/* Dump DMA registers */
+@@ -234,7 +241,7 @@ struct stmmac_dma_ops {
+ };
+ 
+ #define stmmac_dma_init(__priv, __args...) \
+-	stmmac_do_void_callback(__priv, dma, init, __args)
++	stmmac_do_void_callback(__priv, dma, init, __priv, __args)
+ #define stmmac_init_chan(__priv, __args...) \
+ 	stmmac_do_void_callback(__priv, dma, init_chan, __priv, __args)
+ #define stmmac_deinit_chan(__priv, __args...) \
+@@ -243,6 +250,12 @@ struct stmmac_dma_ops {
+ 	stmmac_do_void_callback(__priv, dma, init_rx_chan, __priv, __args)
+ #define stmmac_init_tx_chan(__priv, __args...) \
+ 	stmmac_do_void_callback(__priv, dma, init_tx_chan, __priv, __args)
++#define stmmac_map_rx_offline_chan(__priv, __args...) \
++	stmmac_do_void_callback(__priv, dma, map_rx_offline_chan, __priv, __args)
++#define stmmac_map_tx_offline_chan(__priv, __args...) \
++	stmmac_do_void_callback(__priv, dma, map_tx_offline_chan, __priv, __args)
++#define stmmac_desc_cache_compute(__priv, __args...) \
++	stmmac_do_void_callback(__priv, dma, desc_cache_compute, __args)
+ #define stmmac_axi(__priv, __args...) \
+ 	stmmac_do_void_callback(__priv, dma, axi, __args)
+ #define stmmac_dump_dma_regs(__priv, __args...) \
+diff --git a/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c b/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
+index b2b7d0242dd3c..f112251be2933 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
++++ b/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
+@@ -3261,9 +3261,12 @@ static int stmmac_prereset_configure(struct stmmac_priv *priv)
+  */
+ static int stmmac_init_dma_engine(struct stmmac_priv *priv)
+ {
+-	u8 rx_channels_count = priv->plat->rx_queues_to_use;
+-	u8 tx_channels_count = priv->plat->tx_queues_to_use;
+-	u8 dma_csr_ch = max(rx_channels_count, tx_channels_count);
++	u32 rx_channels_enabled = priv->plat->rx_queues_to_use;
++	u32 tx_channels_enabled = priv->plat->tx_queues_to_use;
++	u32 rx_channels_supported = priv->dma_cap.number_rx_channel;
++	u32 tx_channels_supported = priv->dma_cap.number_tx_channel;
++	u32 dma_csr_ch = max(rx_channels_enabled, tx_channels_enabled);
++
+ 	struct stmmac_rx_queue *rx_q;
+ 	struct stmmac_tx_queue *tx_q;
+ 	int ret = 0;
+@@ -3292,7 +3295,7 @@ static int stmmac_init_dma_engine(struct stmmac_priv *priv)
+ 	}
+ 
+ 	/* DMA RX Channel Configuration */
+-	for (chan = 0; chan < rx_channels_count; chan++) {
++	for (chan = 0; chan < rx_channels_enabled; chan++) {
+ 		rx_q = &priv->dma_conf.rx_queue[chan];
+ 
+ 		stmmac_init_rx_chan(priv, priv->ioaddr, priv->plat->dma_cfg,
+@@ -3303,7 +3306,7 @@ static int stmmac_init_dma_engine(struct stmmac_priv *priv)
+ 	}
+ 
+ 	/* DMA TX Channel Configuration */
+-	for (chan = 0; chan < tx_channels_count; chan++) {
++	for (chan = 0; chan < tx_channels_enabled ; chan++) {
+ 		tx_q = &priv->dma_conf.tx_queue[chan];
+ 
+ 		stmmac_init_tx_chan(priv, priv->ioaddr, priv->plat->dma_cfg,
+@@ -3312,6 +3315,18 @@ static int stmmac_init_dma_engine(struct stmmac_priv *priv)
+ 		stmmac_set_queue_tx_tail_ptr(priv, tx_q, chan, 0);
+ 	}
+ 
++	if (priv->plat->has_hdma) {
++		/* DMA RX Mapping Configuration for offline channels */
++		for (chan = rx_channels_enabled; chan < rx_channels_supported; chan++)
++			stmmac_map_rx_offline_chan(priv, priv->ioaddr, priv->plat->dma_cfg, chan);
++
++		/* DMA TX Mapping Configuration for offline channels */
++		for (chan = tx_channels_enabled; chan < tx_channels_supported; chan++)
++			stmmac_map_tx_offline_chan(priv, priv->ioaddr, priv->plat->dma_cfg, chan);
++	}
++
++	stmmac_desc_cache_compute(priv, priv->ioaddr);
++
+ 	return ret;
+ }
+ 
+diff --git a/include/linux/stmmac.h b/include/linux/stmmac.h
+index f7c7ba2028ac3..485faecae0d0e 100644
+--- a/include/linux/stmmac.h
++++ b/include/linux/stmmac.h
+@@ -105,6 +105,7 @@ struct stmmac_dma_cfg {
+ 	 * 3.50a, or a factor of 4 for previous versions.
+ 	 */
+ 	bool pblx8;
++
+ 	/* fixed_burst:
+ 	 *  when set, AXI bursts defined by axi_blen_regval are permitted.
+ 	 *   AHB uses SINGLE, INCR4, INCR8 or INCR16 during burst transfers.
+@@ -117,6 +118,13 @@ struct stmmac_dma_cfg {
+ 	 */
+ 	bool mixed_burst;
+ 	/* aal: address aligned bursts for AHB and AXI master interface */
++
++	int owrq;
++	int orrq;
++	u32 tdps;
++	u32 rdps;
++	u32 txdcsz;
++	u32 rxdcsz;
+ 	bool aal;
+ 	bool dche;
+ 	bool eame;
+@@ -124,6 +132,10 @@ struct stmmac_dma_cfg {
+ 	bool multi_msi_en;
+ 	/* atds: stmmac core internal */
+ 	bool atds;
++	bool tx_pdma_custom_map;
++	bool rx_pdma_custom_map;
++	u8 tx_pdma_map[MTL_MAX_TX_QUEUES];
++	u8 rx_pdma_map[MTL_MAX_RX_QUEUES];
+ };
+ 
+ #define AXI_BLEN	7
+@@ -134,6 +146,7 @@ struct stmmac_axi {
+ 	bool axi_lpi_en;
+ 	bool axi_xit_frm;
+ 	bool axi_fb;
++	bool axi_kbbe;
+ };
+ 
+ struct stmmac_rxq_cfg {
+@@ -281,6 +294,7 @@ struct plat_stmmacenet_data {
+ 	u8 host_dma_width;
+ 	u8 rx_queues_to_use;
+ 	u8 tx_queues_to_use;
++	bool has_hdma;
+ 	u8 rx_sched_algorithm;
+ 	u8 tx_sched_algorithm;
+ 	struct stmmac_rxq_cfg rx_queues_cfg[MTL_MAX_RX_QUEUES];

@@ -1,0 +1,1106 @@
+From 120209e6b31f39c3342dbfe17dbcf7ac77bce7a3 Mon Sep 17 00:00:00 2001
+From: Sagar Cheluvegowda <quic_scheluve@quicinc.com>
+Date: Wed, 14 Aug 2024 17:46:35 -0700
+Subject: [PATCH 01/16] PENDING: net: PCS: Add Qualcomm XPCS driver
+
+Add a new Qualcomm driver for XPCS block adding
+below support
+1. Qualcomm XPCS adds support for XPCS IP-core from synopsys.
+2. Qualcomm XPCS supports Clause37 auto negotiation for
+USXGMII interface.
+3. Qualcomm XPCS uses direct read/writes via APB3 bus.
+4. Qualcomm Xpcs has auto negotiation interrupt support.
+5. Qualcomm Xpcs is made a platform driver exposing callbacks
+to phylink layer for performing actions like validate,
+link up, etc.
+
+Change-Id: If1273d737643332239cf439d7593fc9562826136
+Signed-off-by: Sagar Cheluvegowda <quic_scheluve@quicinc.com>
+(cherry picked from commit 7aefec96c50281df049c5ea3bfd3c65e509974bb)
+---
+ drivers/net/pcs/Makefile        |   2 +-
+ drivers/net/pcs/pcs-xpcs-qcom.c | 789 ++++++++++++++++++++++++++++++++
+ drivers/net/pcs/pcs-xpcs-qcom.h | 225 +++++++++
+ include/linux/pcs-xpcs-qcom.h   |  32 ++
+ 4 files changed, 1047 insertions(+), 1 deletion(-)
+ create mode 100644 drivers/net/pcs/pcs-xpcs-qcom.c
+ create mode 100644 drivers/net/pcs/pcs-xpcs-qcom.h
+ create mode 100644 include/linux/pcs-xpcs-qcom.h
+
+diff --git a/drivers/net/pcs/Makefile b/drivers/net/pcs/Makefile
+index 4f7920618b90..14d61bc99c84 100644
+--- a/drivers/net/pcs/Makefile
++++ b/drivers/net/pcs/Makefile
+@@ -2,7 +2,7 @@
+ # Makefile for Linux PCS drivers
+ 
+ pcs_xpcs-$(CONFIG_PCS_XPCS)	:= pcs-xpcs.o pcs-xpcs-plat.o \
+-				   pcs-xpcs-nxp.o pcs-xpcs-wx.o
++				   pcs-xpcs-nxp.o pcs-xpcs-wx.o pcs-xpcs-qcom.o
+ 
+ obj-$(CONFIG_PCS_XPCS)		+= pcs_xpcs.o
+ obj-$(CONFIG_PCS_LYNX)		+= pcs-lynx.o
+diff --git a/drivers/net/pcs/pcs-xpcs-qcom.c b/drivers/net/pcs/pcs-xpcs-qcom.c
+new file mode 100644
+index 000000000000..159e01348237
+--- /dev/null
++++ b/drivers/net/pcs/pcs-xpcs-qcom.c
+@@ -0,0 +1,789 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++/*
++ * Synopsys DesignWare XPCS platform device driver
++ *
++ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
++ */
++
++#include <linux/delay.h>
++#include <linux/of.h>
++#include <linux/of_platform.h>
++#include <linux/pcs-xpcs-qcom.h>
++#include <linux/platform_device.h>
++#include <linux/mdio.h>
++#include <linux/phylink.h>
++#include <linux/workqueue.h>
++#include "pcs-xpcs-qcom.h"
++
++#define phylink_pcs_to_xpcs(pl_pcs) \
++	container_of((pl_pcs), struct dw_xpcs_qcom, pcs)
++
++#define DRV_NAME "qcom-xpcs"
++
++#define XPCSINFO(fmt, args...) \
++	pr_info(DRV_NAME " %s:%d " fmt, __func__, __LINE__, ## args)
++
++#define XPCSERR(fmt, args...) \
++	pr_err(DRV_NAME " %s:%d " fmt, __func__, __LINE__, ## args)
++
++phy_interface_t g_interface;
++static const int xpcs_usxgmii_features[] = {
++	ETHTOOL_LINK_MODE_Pause_BIT,
++	ETHTOOL_LINK_MODE_Asym_Pause_BIT,
++	ETHTOOL_LINK_MODE_Autoneg_BIT,
++	ETHTOOL_LINK_MODE_10baseT_Full_BIT,
++	ETHTOOL_LINK_MODE_100baseT_Full_BIT,
++	ETHTOOL_LINK_MODE_1000baseKX_Full_BIT,
++	ETHTOOL_LINK_MODE_1000baseT_Full_BIT,
++	ETHTOOL_LINK_MODE_2500baseX_Full_BIT,
++	ETHTOOL_LINK_MODE_2500baseT_Full_BIT,
++	ETHTOOL_LINK_MODE_5000baseT_Full_BIT,
++	ETHTOOL_LINK_MODE_10000baseKX4_Full_BIT,
++	ETHTOOL_LINK_MODE_10000baseKR_Full_BIT,
++	ETHTOOL_LINK_MODE_10000baseT_Full_BIT,
++	__ETHTOOL_LINK_MODE_MASK_NBITS,
++};
++
++static const phy_interface_t xpcs_usxgmii_interfaces[] = {
++	PHY_INTERFACE_MODE_USXGMII,
++};
++
++enum {
++	DW_XPCS_USXGMII,
++	DW_XPCS_INTERFACE_MAX,
++};
++
++struct xpcs_id {
++	u32 id;
++	u32 mask;
++	const struct xpcs_compat *compat;
++};
++
++const struct xpcs_compat *xpcs_find_compat(const struct xpcs_id *id,
++					   phy_interface_t interface)
++{
++	int i, j;
++
++	for (i = 0; i < DW_XPCS_INTERFACE_MAX; i++) {
++		const struct xpcs_compat *compat = &id->compat[i];
++
++		for (j = 0; j < compat->num_interfaces; j++)
++			if (compat->interface[j] == interface)
++				return compat;
++	}
++
++	return NULL;
++}
++
++int qcom_xpcs_get_an_mode(struct dw_xpcs_qcom *qxpcs, phy_interface_t interface)
++{
++	const struct xpcs_compat *compat;
++
++	compat = xpcs_find_compat(qxpcs->id, interface);
++	if (!compat)
++		return -ENODEV;
++
++	return compat->an_mode;
++}
++
++static int qcom_xpcs_read(struct dw_xpcs_qcom *qxpcs, u32 reg)
++{
++	return readl(qxpcs->addr + reg);
++}
++
++static void qcom_xpcs_write(struct dw_xpcs_qcom *qxpcs, u32 reg, u16 val)
++{
++	writel(val, qxpcs->addr + reg);
++}
++
++static int qcom_xpcs_poll_reset(struct dw_xpcs_qcom *qxpcs, unsigned int offset,
++				unsigned int field)
++{
++	unsigned int retries = 32;
++	int ret;
++
++	do {
++		usleep_range(1, 20);
++		ret = qcom_xpcs_read(qxpcs, offset);
++		if (ret < 0)
++			return ret;
++	} while (ret & field && --retries);
++
++	return (ret & field) ? -ETIMEDOUT : 0;
++}
++
++static int xpcs_soft_reset(struct dw_xpcs_qcom *qxpcs,
++			   const struct xpcs_compat *compat)
++{
++	int ret;
++
++	ret = qcom_xpcs_read(qxpcs, DW_SR_MII_PCS_CTRL1);
++	if (ret < 0)
++		return ret;
++
++	qcom_xpcs_write(qxpcs, DW_SR_MII_PCS_CTRL1, ret | SOFT_RST);
++
++	ret = qcom_xpcs_poll_reset(qxpcs, DW_SR_MII_PCS_CTRL1, SW_RST_BIT_STATUS);
++
++	ret = qcom_xpcs_read(qxpcs, DW_VR_MII_DIG_CTRL1);
++	if (ret < 0)
++		return ret;
++
++	qcom_xpcs_write(qxpcs, DW_VR_MII_DIG_CTRL1, ret | SOFT_RST);
++
++	return qcom_xpcs_poll_reset(qxpcs, DW_VR_MII_DIG_CTRL1, SW_RST_BIT_STATUS);
++}
++
++static int qcom_xpcs_validate(struct phylink_pcs *pcs, unsigned long *supported,
++			      const struct phylink_link_state *state)
++{
++	__ETHTOOL_DECLARE_LINK_MODE_MASK(xpcs_supported);
++	struct dw_xpcs_qcom *qxpcs = phylink_pcs_to_xpcs(pcs);
++	const struct xpcs_compat *compat;
++	int i;
++
++	/* phylink expects us to report all supported modes with
++	 * PHY_INTERFACE_MODE_NA, just don't limit the supported and
++	 * advertising masks and exit.
++	 */
++	if (state->interface == PHY_INTERFACE_MODE_NA)
++		return -EINVAL;
++
++	bitmap_zero(xpcs_supported, __ETHTOOL_LINK_MODE_MASK_NBITS);
++
++	compat = xpcs_find_compat(qxpcs->id, state->interface);
++
++	/* Populate the supported link modes for this
++	 * PHY interface type
++	 */
++	if (compat)
++		for (i = 0; compat->supported[i] != __ETHTOOL_LINK_MODE_MASK_NBITS; i++)
++			set_bit(compat->supported[i], xpcs_supported);
++
++	linkmode_and(supported, supported, xpcs_supported);
++	linkmode_and(state->advertising, state->advertising, xpcs_supported);
++
++	return 0;
++}
++
++/* Cannot sleep in interrupt-context, increase retries and remove usleep call. */
++static int qcom_xpcs_poll_reset_usxgmii(struct dw_xpcs_qcom *qxpcs, unsigned int offset,
++					unsigned int field)
++{
++	unsigned int retries = 1000;
++	int ret;
++
++	do {
++		ret = qcom_xpcs_read(qxpcs, offset);
++		if (ret < 0)
++			return ret;
++	} while (ret & field && --retries);
++
++	return (ret & field) ? -ETIMEDOUT : 0;
++}
++
++/* Reset PCS and USXGMII Rate Adaptor Logic*/
++static int qcom_xpcs_reset_usxgmii(struct dw_xpcs_qcom *qxpcs)
++{
++	int ret;
++
++	ret = qcom_xpcs_read(qxpcs, DW_VR_MII_DIG_CTRL1);
++	if (ret < 0)
++		return ret;
++
++	qcom_xpcs_write(qxpcs, DW_VR_MII_DIG_CTRL1, ret | SOFT_RST);
++
++	if (!qxpcs->intr_en)
++		ret = qcom_xpcs_poll_reset(qxpcs, DW_VR_MII_DIG_CTRL1, SW_RST_BIT_STATUS);
++	else
++		ret = qcom_xpcs_poll_reset_usxgmii(qxpcs, DW_VR_MII_DIG_CTRL1, SW_RST_BIT_STATUS);
++
++	if (ret < 0)
++		return ret;
++
++	ret = qcom_xpcs_read(qxpcs, DW_VR_MII_PCS_DIG_CTRL1);
++	if (ret < 0)
++		return ret;
++
++	qcom_xpcs_write(qxpcs, DW_VR_MII_PCS_DIG_CTRL1, ret | DW_USXGMII_RST);
++
++	if (!qxpcs->intr_en)
++		return qcom_xpcs_poll_reset(qxpcs, DW_VR_MII_DIG_CTRL1, SW_RST_BIT_STATUS);
++
++	return qcom_xpcs_poll_reset_usxgmii(qxpcs, DW_VR_MII_PCS_DIG_CTRL1, USXG_RST_BIT_STATUS);
++}
++
++static int qcom_xpcs_usxgmii_read_intr_status(struct dw_xpcs_qcom *qxpcs)
++{
++	int intr_stat;
++
++	intr_stat = qcom_xpcs_read(qxpcs, DW_VR_MII_AN_INTR_STS);
++	if (intr_stat < 0)
++		return intr_stat;
++
++	if (intr_stat & DW_VR_MII_USXG_ANSGM_SP_LNKSTS) {
++		int mmd_ctrl, speed;
++
++		mmd_ctrl = qcom_xpcs_read(qxpcs, DW_SR_MII_MMD_CTRL);
++		if (mmd_ctrl < 0)
++			return mmd_ctrl;
++
++		mmd_ctrl &= ~DW_USXGMII_SS_MASK;
++		speed = (intr_stat & DW_VR_MII_USXG_ANSGM_SP) >> DW_VR_MII_USXG_ANSGM_SP_SHIFT;
++
++		switch (speed) {
++		case DW_VR_MII_USXG_ANSGM_SP_10G:
++			mmd_ctrl |= DW_USXGMII_10000;
++			XPCSINFO("10Gbps-USXGMII enabled\n");
++			break;
++		case DW_VR_MII_USXG_ANSGM_SP_5G:
++			mmd_ctrl |= DW_USXGMII_5000;
++			XPCSINFO("5Gbps-USXGMII enabled\n");
++			break;
++		case DW_VR_MII_USXG_ANSGM_SP_2P5G:
++			mmd_ctrl |= DW_GMII_2500;
++			XPCSINFO("2.5Gbps-USXGMII enabled\n");
++			break;
++		case DW_VR_MII_USXG_ANSGM_SP_1000:
++			mmd_ctrl |= DW_GMII_1000;
++			XPCSINFO("1Gbps-USXGMII enabled\n");
++			break;
++		case DW_VR_MII_USXG_ANSGM_SP_100:
++			mmd_ctrl |= DW_GMII_100;
++			XPCSINFO("100Mbps-USXGMII enabled\n");
++			break;
++		case DW_VR_MII_USXG_ANSGM_SP_10:
++			XPCSINFO("10Mbps-USXGMII enabled\n");
++			break;
++		default:
++			XPCSERR("Invalid speed mode: %d\n", speed);
++			return -EINVAL;
++		}
++
++		qcom_xpcs_write(qxpcs, DW_SR_MII_MMD_CTRL, mmd_ctrl);
++
++		mmd_ctrl = qcom_xpcs_reset_usxgmii(qxpcs);
++		if (mmd_ctrl < 0)
++			XPCSERR("Failed to reset USXGMII\n");
++
++		return mmd_ctrl;
++	}
++		XPCSERR("Link is down, aborting\n");
++		return 0;
++}
++
++static void qcom_xpcs_handle_an_intr(struct dw_xpcs_qcom *qxpcs,
++				     phy_interface_t interface)
++{
++	int ret = 0;
++
++	switch (interface) {
++	case PHY_INTERFACE_MODE_USXGMII:
++		ret = qcom_xpcs_usxgmii_read_intr_status(qxpcs);
++		if (ret < 0)
++			goto out;
++
++		XPCSINFO("Finished Autonegotiation for USXGMII\n");
++		return;
++	default:
++		XPCSERR("Invalid MII mode for Autonegotiation\n");
++		goto out;
++	}
++
++out:
++	XPCSERR("Failed to handle Autonegotiation interrupt\n");
++}
++
++int qcom_xpcs_check_aneg_ioc(struct dw_xpcs_qcom *qxpcs, phy_interface_t interface)
++{
++	int ret;
++
++	/* Check if interrupt was set */
++	ret = qcom_xpcs_read(qxpcs, DW_VR_MII_AN_INTR_STS);
++	if (ret < 0)
++		return -EINVAL;
++
++	if (!(ret & DW_VR_MII_ANCMPLT_INTR)) {
++		XPCSERR("Autonegotiation is still not finished\n");
++		return -ENODEV;
++	}
++
++	/* Clear the IOC status */
++	ret &= ~DW_VR_MII_ANCMPLT_INTR;
++	qcom_xpcs_write(qxpcs, DW_VR_MII_AN_INTR_STS, ret);
++
++	qcom_xpcs_handle_an_intr(qxpcs, interface);
++	return 0;
++}
++
++/* By default, enable Clause 37 autonegotiation */
++static int xpcs_config_aneg_c37(struct dw_xpcs_qcom *qxpcs)
++{
++	int ret;
++
++	ret = qcom_xpcs_read(qxpcs, DW_SR_MII_MMD_CTRL);
++	if (ret < 0)
++		return -EINVAL;
++
++	ret |= AN_CL37_EN;
++	qcom_xpcs_write(qxpcs, DW_SR_MII_MMD_CTRL, ret);
++
++	ret = qcom_xpcs_read(qxpcs, DW_VR_MII_AN_CTRL);
++	if (ret < 0)
++		return -EINVAL;
++
++	ret |= DW_VR_MII_TX_CONFIG_MASK;
++	ret |= DW_VR_MII_SGMII_LINK_STS;
++
++	qcom_xpcs_write(qxpcs, DW_VR_MII_AN_CTRL, ret);
++
++	return 0;
++}
++
++static int qcom_xpcs_do_config(struct dw_xpcs_qcom *qxpcs, phy_interface_t interface)
++{
++	const struct xpcs_compat *compat;
++	int ret;
++
++	compat = xpcs_find_compat(qxpcs->id, interface);
++	if (!compat)
++		return -ENODEV;
++
++	switch (compat->an_mode) {
++	case DW_AN_C37_USXGMII:
++		ret = xpcs_config_aneg_c37(qxpcs);
++		if (ret < 0)
++			return ret;
++		break;
++	default:
++		XPCSERR("Incompatible Autonegotiation mode\n");
++		return -EINVAL;
++	}
++
++	return 0;
++}
++
++static int qcom_xpcs_config(struct phylink_pcs *pcs, unsigned int mode, phy_interface_t interface,
++			    const unsigned long *advertising,
++			    bool permit_pause_to_mac)
++{
++	struct dw_xpcs_qcom *qxpcs = phylink_pcs_to_xpcs(pcs);
++
++	return qcom_xpcs_do_config(qxpcs, interface);
++}
++
++static int xpcs_get_state_c37_usxgmii(struct dw_xpcs_qcom *qxpcs,
++				      struct phylink_link_state *state)
++{
++	int ret;
++
++	ret = qcom_xpcs_read(qxpcs, DW_VR_MII_AN_INTR_STS);
++	if (ret < 0)
++		return -ENODEV;
++
++	if (ret & DW_VR_MII_USXG_ANSGM_SP_LNKSTS)
++		state->link = true;
++	else
++		state->link = false;
++
++	return 0;
++}
++
++static void qcom_xpcs_get_state(struct phylink_pcs *pcs,
++				struct phylink_link_state *state)
++{
++	struct dw_xpcs_qcom *qxpcs = phylink_pcs_to_xpcs(pcs);
++	const struct xpcs_compat *compat;
++	int ret;
++
++	compat = xpcs_find_compat(qxpcs->id, state->interface);
++	if (!compat)
++		return;
++
++	switch (compat->an_mode) {
++	case DW_AN_C37_USXGMII:
++		ret = xpcs_get_state_c37_usxgmii(qxpcs, state);
++		if (ret < 0)
++			XPCSERR("Failed to get USXGMII state\n");
++		break;
++	default:
++		return;
++	}
++}
++
++void qcom_xpcs_link_up_usxgmii(struct dw_xpcs_qcom *qxpcs, int speed)
++{
++	int mmd_ctrl;
++
++	mmd_ctrl = qcom_xpcs_read(qxpcs, DW_SR_MII_MMD_CTRL);
++	if (mmd_ctrl < 0)
++		goto out;
++
++	mmd_ctrl &= ~DW_USXGMII_SS_MASK;
++
++	switch (speed) {
++	case SPEED_10000:
++		mmd_ctrl |= DW_USXGMII_10000;
++		XPCSINFO("10Gbps-USXGMII enabled\n");
++		break;
++	case SPEED_5000:
++		mmd_ctrl |= DW_USXGMII_5000;
++		XPCSINFO("5Gbps-USXGMII enabled\n");
++		break;
++	case SPEED_2500:
++		mmd_ctrl |= DW_GMII_2500;
++		XPCSINFO("2.5Gbps-USXGMII enabled\n");
++		break;
++	case SPEED_1000:
++		mmd_ctrl |= DW_GMII_1000;
++		XPCSINFO("1Gbps-USXGMII enabled\n");
++		break;
++	case SPEED_100:
++		mmd_ctrl |= DW_GMII_100;
++		XPCSINFO("100Mbps-USXGMII enabled\n");
++		break;
++	case SPEED_10:
++		XPCSINFO("10Mbps-USXGMII enabled\n");
++		break;
++	default:
++		XPCSERR("Invalid speed mode selected\n");
++		return;
++	}
++
++	qcom_xpcs_write(qxpcs, DW_SR_MII_MMD_CTRL, mmd_ctrl);
++
++	mmd_ctrl = qcom_xpcs_reset_usxgmii(qxpcs);
++	if (mmd_ctrl < 0)
++		goto out;
++
++	XPCSINFO("USXGMII link is up\n");
++	return;
++out:
++	XPCSERR("Failed to bring up USXGMII link\n");
++}
++
++static int qcom_xpcs_select_mode(struct dw_xpcs_qcom *qxpcs, phy_interface_t interface)
++{
++	int ret;
++
++	g_interface = interface;
++
++	if (interface == PHY_INTERFACE_MODE_USXGMII) {
++		ret = qcom_xpcs_read(qxpcs, DW_SR_MII_PCS_CTRL2);
++		if (ret < 0)
++			goto out;
++
++		ret &= ~PCS_TYPE_SEL_10GBR;
++		qcom_xpcs_write(qxpcs, DW_SR_MII_PCS_CTRL2, ret);
++
++		ret = qcom_xpcs_read(qxpcs, DW_SR_MII_PCS_CTRL1);
++		if (ret < 0)
++			goto out;
++
++		qcom_xpcs_write(qxpcs, DW_SR_MII_PCS_CTRL1, ret | LPM_EN);
++
++		usleep_range(1, 20);
++
++		ret = qcom_xpcs_read(qxpcs, DW_SR_MII_PCS_CTRL1);
++		if (ret < 0)
++			goto out;
++
++		ret &= ~LPM_EN;
++		qcom_xpcs_write(qxpcs, DW_SR_MII_PCS_CTRL1, ret);
++
++		ret = qcom_xpcs_read(qxpcs, DW_VR_MII_PCS_DIG_CTRL1);
++		if (ret < 0)
++			goto out;
++
++		qcom_xpcs_write(qxpcs, DW_VR_MII_PCS_DIG_CTRL1, ret | DW_USXGMII_EN);
++
++		return 0;
++	}
++
++	XPCSERR("Incompatible MII interface: %d\n", interface);
++	return -EINVAL;
++
++out:
++	XPCSERR("Register read failed\n");
++	return -EINVAL;
++}
++
++/* USXGMII: Return early if interrupt was enabled.
++ * Autonegotiation ISR will set speed and duplex instead.
++ * SGMII: For 2.5Gbps, let ISR do NOP since SGMII+ not supported in
++ * registers for CL37. qcom_xpcs_link_up_sgmii will take care of
++ * setting 2.5Gbps.
++ */
++void qcom_xpcs_link_up(struct phylink_pcs *pcs, unsigned int mode,
++		       phy_interface_t interface, int speed, int duplex)
++{
++	struct dw_xpcs_qcom *qxpcs = phylink_pcs_to_xpcs(pcs);
++
++	if (qxpcs->intr_en)
++		return;
++
++	switch (interface) {
++	case PHY_INTERFACE_MODE_USXGMII:
++		qcom_xpcs_link_up_usxgmii(qxpcs, speed);
++		break;
++	default:
++		XPCSERR("Invalid MII mode: %s\n", phy_modes(interface));
++		return;
++	}
++}
++EXPORT_SYMBOL_GPL(qcom_xpcs_link_up);
++
++static u32 xpcs_get_id(struct dw_xpcs_qcom *qxpcs)
++{
++	int ret;
++	u32 id;
++
++	/* Next, search C37 PCS using Vendor-Specific MII MMD */
++	ret = qcom_xpcs_read(qxpcs, DW_SR_MII_PCS_DEV_ID1);
++	if (ret < 0)
++		return 0xffffffff;
++
++	id = ret << 16;
++
++	ret = qcom_xpcs_read(qxpcs, DW_SR_MII_PCS_DEV_ID2);
++	if (ret < 0)
++		return 0xffffffff;
++
++	/* If Device IDs are not all zeros, we found C37 AN-type device */
++	if (id | ret)
++		return id | ret;
++
++	return 0xffffffff;
++}
++
++static const struct xpcs_compat synopsys_xpcs_compat[DW_XPCS_INTERFACE_MAX] = {
++	[DW_XPCS_USXGMII] = {
++		.supported = xpcs_usxgmii_features,
++		.interface = xpcs_usxgmii_interfaces,
++		.num_interfaces = ARRAY_SIZE(xpcs_usxgmii_interfaces),
++		.an_mode = DW_AN_C37_USXGMII,
++	},
++};
++
++static const struct xpcs_id xpcs_id_list[] = {
++	{
++		.id = SYNOPSYS_XPCS_ID,
++		.mask = SYNOPSYS_XPCS_MASK,
++		.compat = synopsys_xpcs_compat,
++	},
++};
++
++static const struct phylink_pcs_ops qcom_xpcs_phylink_ops = {
++	.pcs_validate = qcom_xpcs_validate,
++	.pcs_config = qcom_xpcs_config,
++	.pcs_get_state = qcom_xpcs_get_state,
++};
++
++struct phylink_pcs *qcom_xpcs_create(struct device_node *np, phy_interface_t interface)
++{
++	const struct xpcs_compat *compat;
++	struct platform_device *pdev;
++	struct dw_xpcs_qcom *qxpcs;
++	u32 xpcs_id;
++	int i, ret = 0;
++
++	pdev = of_find_device_by_node(np);
++	of_node_put(np);
++
++	if (!pdev || !platform_get_drvdata(pdev)) {
++		if (pdev)
++			put_device(&pdev->dev);
++
++		return ERR_PTR(-EPROBE_DEFER);
++	}
++
++	qxpcs = platform_get_drvdata(pdev);
++
++	qxpcs->phy_interface = interface;
++
++	xpcs_id = xpcs_get_id(qxpcs);
++	if (xpcs_id == 0xffffffff) {
++		XPCSERR("Invalid qxpcs Device ID\n");
++		ret = -ENODEV;
++		goto out;
++	}
++
++	for (i = 0; i < ARRAY_SIZE(xpcs_id_list); i++) {
++		const struct xpcs_id *entry = &xpcs_id_list[i];
++
++		if ((xpcs_id & entry->mask) != entry->id)
++			continue;
++
++		qxpcs->id = entry;
++		compat = xpcs_find_compat(entry, interface);
++		if (!compat) {
++			XPCSERR("Incompatible MII interface: %d\n", interface);
++			ret = -ENODEV;
++			goto out;
++		}
++
++		qxpcs->pcs.ops = &qcom_xpcs_phylink_ops;
++		qxpcs->pcs.poll = true;
++
++		ret = xpcs_soft_reset(qxpcs, compat);
++		if (ret) {
++			XPCSERR("Soft reset of XPCS block failed\n");
++			goto out;
++		}
++
++		/* Select PCS mode before further configuration */
++		ret = qcom_xpcs_select_mode(qxpcs, interface);
++		if (ret < 0)
++			goto out;
++
++		return &qxpcs->pcs;
++	}
++
++out:
++	XPCSERR("qxpcs creation failed\n");
++	kfree(qxpcs);
++	return ret;
++}
++EXPORT_SYMBOL_GPL(qcom_xpcs_create);
++
++/* Power off the DWC_xpcs controller */
++void qcom_xpcs_destroy(struct dw_xpcs_qcom *qxpcs)
++{
++	int i, ret;
++	u32 xpcs_id;
++	const struct xpcs_compat *compat;
++
++	xpcs_id = xpcs_get_id(qxpcs);
++	if (xpcs_id == 0xffffffff) {
++		XPCSERR("Invalid XPCS Device ID\n");
++		ret = -ENODEV;
++		goto out;
++	}
++
++	for (i = 0; i < ARRAY_SIZE(xpcs_id_list); i++) {
++		const struct xpcs_id *entry = &xpcs_id_list[i];
++
++		if ((xpcs_id & entry->mask) != entry->id)
++			continue;
++
++		qxpcs->id = entry;
++		compat = xpcs_find_compat(entry, g_interface);
++		if (!compat) {
++			XPCSERR("Incompatible MII interface: %d\n", g_interface);
++			ret = -ENODEV;
++			goto out;
++		}
++
++		ret = xpcs_soft_reset(qxpcs, compat);
++		if (ret) {
++			XPCSERR("Soft reset of XPCS block failed\n");
++			ret = -ENODEV;
++		}
++		goto done;
++	}
++
++	/* Enable xpc_spdown_o signal assertion on xpcs power down, then
++	 * intiate the power down sequence
++	 */
++	ret = qcom_xpcs_read(qxpcs, DW_SR_MII_VSMMD_CTRL);
++	if (ret < 0)
++		goto out;
++
++	qcom_xpcs_write(qxpcs, DW_SR_MII_VSMMD_CTRL, ret & ~PD_CTRL);
++
++	ret = qcom_xpcs_read(qxpcs, DW_SR_MII_PCS_CTRL1);
++	if (ret < 0)
++		goto out;
++
++	qcom_xpcs_write(qxpcs, DW_SR_MII_PCS_CTRL1, ret | LPM_EN);
++	goto done;
++
++out:
++	XPCSERR("Could not power down the XPCS\n");
++done:
++	kfree(qxpcs);
++}
++EXPORT_SYMBOL_GPL(qcom_xpcs_destroy);
++
++irqreturn_t qcom_xpcs_isr(int irq, void *dev_data)
++{
++	int ret;
++	struct dw_xpcs_qcom *qxpcs = (struct dw_xpcs_qcom *)dev_data;
++
++	ret = qcom_xpcs_check_aneg_ioc(qxpcs, qxpcs->phy_interface);
++	if (ret < 0)
++		return IRQ_HANDLED;
++
++	return IRQ_HANDLED;
++}
++
++int qcom_xpcs_intr_enable(struct dw_xpcs_qcom *qxpcs)
++{
++	int ret = 0;
++
++	ret = qcom_xpcs_read(qxpcs, DW_VR_MII_AN_CTRL);
++	if (ret < 0) {
++		XPCSERR("Failed to enable CL37 interrupts\n");
++		return ret;
++	}
++
++	ret |= DW_VR_MII_AN_INTR_EN;
++
++	qcom_xpcs_write(qxpcs, DW_VR_MII_AN_CTRL, ret);
++
++	ret = request_irq(qxpcs->pcs_intr, qcom_xpcs_isr,
++			  IRQF_SHARED, "qcom-xpcs", qxpcs);
++	if (ret)
++		pr_err("Unable to register XPCS IRQ %d\n",
++		       qxpcs->pcs_intr);
++
++	return ret;
++}
++
++static int qcom_xpcs_probe(struct platform_device *pdev)
++{
++	int ret;
++	struct dw_xpcs_qcom *qxpcs;
++
++	qxpcs = kzalloc(sizeof(*qxpcs), GFP_KERNEL);
++	if (!qxpcs)
++		return ERR_PTR(-ENOMEM);
++
++	qxpcs->addr = devm_platform_ioremap_resource_byname(pdev, "qxpcs");
++	if (IS_ERR_OR_NULL(qxpcs->addr)) {
++		pr_err("XPCS not supported from device tree!\n");
++		kfree(qxpcs);
++		return -ENODEV;
++	}
++
++	qxpcs->pcs_intr = platform_get_irq_byname_optional(pdev, "pcs_intr");
++	if (qxpcs->pcs_intr < 0) {
++		pr_info("XPCS IRQ is not enabled\n");
++	} else {
++		ret = qcom_xpcs_intr_enable(qxpcs);
++		if (ret)
++			qxpcs->intr_en = false;
++		else
++			qxpcs->intr_en = true;
++	}
++
++	platform_set_drvdata(pdev, qxpcs);
++
++	return 0;
++}
++
++static const struct of_device_id qcom_xpcs_match[] = {
++	{ .compatible = "qcom,xpcs"},
++	{}
++};
++
++static struct platform_driver pcs_xpcs_qcom_driver = {
++	.probe = qcom_xpcs_probe,
++	.driver = {
++		.name = "dwxpcs",
++		.of_match_table = of_match_ptr(qcom_xpcs_match),
++	},
++};
++module_platform_driver(pcs_xpcs_qcom_driver);
++
++MODULE_LICENSE("GPL");
+diff --git a/drivers/net/pcs/pcs-xpcs-qcom.h b/drivers/net/pcs/pcs-xpcs-qcom.h
+new file mode 100644
+index 000000000000..5d3d3cf44c52
+--- /dev/null
++++ b/drivers/net/pcs/pcs-xpcs-qcom.h
+@@ -0,0 +1,225 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++/*
++ * Synopsys DesignWare XPCS platform device driver
++ *
++ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
++ */
++
++#include <linux/pcs-xpcs-qcom.h>
++
++#define LINK_STS_RETRY_COUNT		50
++#define SYNOPSYS_XPCS_ID		0x7996ced0
++#define SYNOPSYS_XPCS_MASK		0xffffffff // Reset mask for Dev IDs
++
++/* Vendor regs access */
++#define DW_VENDOR			BIT(15)
++
++/* VR_XS_PCS */
++#define DW_USXGMII_RST			BIT(10)
++#define DW_USXGMII_EN			BIT(9)
++#define DW_VR_XS_PCS_DIG_STS		0x2040 /* SWI name: EMAC0_VR_XS_PCS_DIG_STS */
++#define DW_RXFIFO_ERR			GENMASK(6, 5)
++#define DW_R2TLBE				BIT(14)
++
++/* SR_MII */
++#define DW_FULL_DUPLEX			BIT(8)
++#define DW_USXGMII_SS_MASK		(BIT(13) | BIT(6) | BIT(5))
++#define DW_USXGMII_10000		(BIT(13) | BIT(6))
++#define DW_USXGMII_5000			(BIT(13) | BIT(5))
++#define DW_GMII_2500			(BIT(5))
++#define DW_GMII_1000			(BIT(6))
++#define DW_GMII_100				(BIT(13))
++#define DW_SGMII_SS_MASK		(BIT(13) | BIT(6))
++
++/* SR_AN */
++#define DW_SR_AN_ADV1			0x10
++#define DW_SR_AN_ADV2			0x11
++#define DW_SR_AN_ADV3			0x12
++#define DW_SR_AN_LP_ABL1		0x13
++#define DW_SR_AN_LP_ABL2		0x14
++#define DW_SR_AN_LP_ABL3		0x15
++
++/* Clause 37 Defines */
++/* VR MII MMD registers offsets */
++#define DW_SR_MII_MMD_CTRL		0x4000 /* SWI name: EMAC0_SR_MII_CTRL */
++#define DW_VR_MII_DIG_CTRL1		0x5000 /* SWI name: EMAC0_VR_MII_DIG_CTRL1 */
++#define DW_VR_MII_AN_CTRL		0x5004 /* SWI name: EMAC0_VR_MII_AN_CTRL */
++#define DW_VR_MII_AN_INTR_STS		0x5008 /* SWI name: EMAC0_VR_MII_AN_INTR_STS */
++/* Enable 2.5G Mode */
++#define DW_VR_MII_DIG_CTRL1_2G5_EN	BIT(2)
++/* EEE Mode Control Register */
++#define DW_VR_XS_PCS_EEE_MCTRL0		0x2018 /* SWI name: EMAC0_VR_XS_PCS_EEE_MCTRL0 */
++#define DW_VR_XS_PCS_EEE_MCTRL1		0x202c /* SWI name: EMAC0_VR_XS_PCS_EEE_MCTRL1 */
++#define DW_VR_MII_DIG_CTRL2		0x2004 /* SWI name: EMAC0_VR_XS_PCS_DIG_CTRL2 */
++
++#define DW_SR_MII_PCS_CTRL1		0x0000 /* SWI name: EMAC0_SR_XS_PCS_CTRL1 */
++#define DW_SR_MII_PCS_STS1		0x0004 /* SWI name: EMAC0_SR_XS_PCS_STS1 */
++#define DW_SR_MII_PCS_DEV_ID1		0x0008
++#define DW_SR_MII_PCS_DEV_ID2		0x000c
++#define DW_SR_MII_PCS_SPD_ABL		0x0010
++#define DW_SR_MII_PCS_DEV_PKG1		0x0014
++#define DW_SR_MII_PCS_DEV_PKG2		0x0018
++#define DW_SR_MII_PCS_CTRL2		0x001c
++#define DW_SR_MII_PCS_STS2		0x0020
++#define DW_SR_MII_PCS_STS3		0x0024
++#define DW_SR_MII_PCS_PKG1		0x0038
++#define DW_SR_MII_PCS_PKG2		0x003c
++#define DW_SR_MII_PCS_EEE_ABL		0x0050
++#define DW_SR_MII_PCS_EEE_ABL2		0x0054
++#define DW_SR_MII_PCS_EEE_WKERR		0x0058
++#define DW_SR_MII_PCS_LSTS		0x0060
++#define DW_SR_MII_PCS_TCTRL		0x0064
++#define DW_SR_MII_PCS_KR_STS1		0x0080
++#define DW_SR_MII_PCS_KR_STS2		0x0084
++#define DW_SR_MII_PCS_TP_A0		0x0088
++#define DW_SR_MII_PCS_TP_A1		0x008c
++#define DW_SR_MII_PCS_TP_A2		0x0090
++#define DW_SR_MII_PCS_TP_A3		0x0094
++#define DW_SR_MII_PCS_TP_B0		0x0098
++#define DW_SR_MII_PCS_TP_B1		0x009c
++#define DW_SR_MII_PCS_TP_B2		0x00a0
++#define DW_SR_MII_PCS_TP_B3		0x00a4
++#define DW_SR_MII_PCS_TP_CTRL		0x00a8
++#define DW_SR_MII_PCS_TP_ERRCTR		0x00ac
++#define DW_SR_MII_PCS_ABL		0x1c20
++#define DW_SR_MII_PCS_TIME_SYNC_TX_MAX_DLY_LWR		0x1c24
++#define DW_SR_MII_PCS_TIME_SYNC_TX_MAX_DLY_UPR		0x1c28
++#define DW_SR_MII_PCS_TIME_SYNC_TX_MIN_DLY_LWR		0x1c2c
++#define DW_SR_MII_PCS_TIME_SYNC_TX_MIN_DLY_UPR		0x1c30
++#define DW_SR_MII_PCS_TIME_SYNC_RX_MAX_DLY_LWR		0x1c34
++#define DW_SR_MII_PCS_TIME_SYNC_RX_MAX_DLY_UPR		0x1c38
++#define DW_SR_MII_PCS_TIME_SYNC_RX_MIN_DLY_LWR		0x1c3c
++#define DW_SR_MII_PCS_TIME_SYNC_RX_MIN_DLY_UPR		0x1c40
++#define DW_VR_MII_PCS_DIG_CTRL1		0x2000
++#define DW_VR_MII_PCS_DIG_ERRCNT_SEL	0x2008
++#define DW_VR_MII_PCS_XAUI_CTRL		0x2010
++#define DW_VR_MII_PCS_DEBUG_CTRL	0x2014
++#define DW_VR_MII_PCS_KR_CTRL		0x201c
++#define DW_VR_MII_PCS_EEE_TXTIMER	0x2020
++#define DW_VR_MII_PCS_EEE_RXTIMER	0x2024
++#define DW_VR_MII_PCS_ICG_ERRCNT1	0x2044
++#define DW_VR_MII_PCS_GPIO		0x2054
++#define DW_SR_MII_VSMMD_PMA_ID1		0x3000
++#define DW_SR_MII_VSMMD_PMA_ID2		0x3004
++#define DW_SR_MII_VSMMD_DEV_ID1		0x3008
++#define DW_SR_MII_VSMMD_DEV_ID2		0x300c
++#define DW_SR_MII_VSMMD_PCS_ID1		0x3010
++#define DW_SR_MII_VSMMD_PCS_ID2		0x3014
++#define DW_SR_MII_VSMMD_AN_ID1		0x3018
++#define DW_SR_MII_VSMMD_AN_ID2		0x301c
++#define DW_SR_MII_VSMMD_MMD_STS		0x3020
++#define DW_SR_MII_VSMMD_CTRL		0x3024
++#define DW_SR_MII_VSMMD_PKGID1		0x3038
++#define DW_SR_MII_VSMMD_PKGID2		0x303c
++#define DW_SR_MII_MMD_STS		0x4004
++#define DW_SR_MII_MMD_DEV_ID1		0x4008
++#define DW_SR_MII_MMD_DEV_ID2		0x400c
++#define DW_SR_MII_AN_ADV		0x4010
++#define DW_SR_MII_LP_BABL		0x4014
++#define DW_SR_MII_AN_EXPN		0x4018
++#define DW_SR_MII_EXT_STS		0x403c
++#define DW_VR_MII_LINK_TIMER_CTRL	0x5028
++
++/* XPCS power-down configuration registers */
++#define PD_CTRL					BIT(5)
++#define LPM_EN					BIT(11)
++
++/* VR_MII_DIG_CTRL1 */
++#define DW_VR_MII_DIG_CTRL1_MAC_AUTO_SW		BIT(9)
++#define DW_VR_MII_DIG_CTRL1_PHY_MODE_CTRL	BIT(0)
++
++/* VR_MII_DIG_CTRL2 */
++#define DW_VR_MII_DIG_CTRL2_TX_POL_INV		BIT(4)
++#define DW_VR_MII_DIG_CTRL2_RX_POL_INV		BIT(0)
++
++/* VR_MII_AN_CTRL */
++#define DW_VR_MII_AN_CTRL_TX_CONFIG_SHIFT	3
++#define DW_VR_MII_TX_CONFIG_MASK		BIT(3)
++#define DW_VR_MII_TX_CONFIG_PHY_SIDE		0x1
++#define DW_VR_MII_TX_CONFIG_MAC_SIDE		0x0
++#define DW_VR_MII_AN_CTRL_PCS_MODE_SHIFT	1
++#define DW_VR_MII_PCS_MODE_MASK			GENMASK(2, 1)
++#define DW_VR_MII_PCS_MODE_C37_1000BASEX	0x0
++#define DW_VR_MII_PCS_MODE_C37_SGMII		BIT(2)
++#define DW_VR_MII_PCS_MODE_C37_QSGMII		0x3
++#define DW_VR_MII_AN_INTR_EN			BIT(0)
++#define DW_VR_MII_SGMII_LINK_STS		BIT(4)
++#define DW_VR_MII_CTRL					BIT(8)
++
++/* VR_MII_AN_INTR_STS */
++#define DW_VR_MII_AN_STS_C37_ANSGM_FD		BIT(1)
++#define DW_VR_MII_AN_STS_C37_ANSGM_SP_SHIFT	2
++#define DW_VR_MII_AN_STS_C37_ANSGM_SP		GENMASK(3, 2)
++#define DW_VR_MII_C37_ANSGM_SP_10		0x0
++#define DW_VR_MII_C37_ANSGM_SP_100		0x1
++#define DW_VR_MII_C37_ANSGM_SP_1000		0x2
++#define DW_VR_MII_C37_ANSGM_SP_LNKSTS		BIT(4)
++#define DW_VR_MII_USXG_ANSGM_FD			BIT(13)
++#define DW_VR_MII_USXG_ANSGM_SP_SHIFT		10
++#define DW_VR_MII_USXG_ANSGM_SP			GENMASK(12, 10)
++#define DW_VR_MII_USXG_ANSGM_SP_10		0x0
++#define DW_VR_MII_USXG_ANSGM_SP_100		0x1
++#define DW_VR_MII_USXG_ANSGM_SP_1000		0x2
++#define DW_VR_MII_USXG_ANSGM_SP_10G		0x3
++#define DW_VR_MII_USXG_ANSGM_SP_2P5G		0x4
++#define DW_VR_MII_USXG_ANSGM_SP_5G		0x5
++#define DW_VR_MII_USXG_ANSGM_SP_LNKSTS		BIT(14)
++#define DW_VR_MII_ANCMPLT_INTR			BIT(0)
++
++/* Bit 15 is the Soft Reset field for various registers */
++#define SOFT_RST				BIT(15)
++#define SW_RST_BIT_STATUS			0x8000
++#define USXG_RST_BIT_STATUS			0x0400
++
++/* SR MII MMD Control defines */
++#define AN_CL37_EN			BIT(12)	/* Enable Clause 37 auto-nego */
++
++/* VR MII EEE Control 0 defines */
++#define DW_VR_MII_EEE_LTX_EN			BIT(0)  /* LPI Tx Enable */
++#define DW_VR_MII_EEE_LRX_EN			BIT(1)  /* LPI Rx Enable */
++#define DW_VR_MII_EEE_TX_QUIET_EN		BIT(2)  /* Tx Quiet Enable */
++#define DW_VR_MII_EEE_RX_QUIET_EN		BIT(3)  /* Rx Quiet Enable */
++#define DW_VR_MII_EEE_TX_EN_CTRL		BIT(4)  /* Tx Control Enable */
++#define DW_VR_MII_EEE_RX_EN_CTRL		BIT(7)  /* Rx Control Enable */
++
++#define DW_VR_MII_EEE_MULT_FACT_100NS_SHIFT	8
++#define DW_VR_MII_EEE_MULT_FACT_100NS		GENMASK(11, 8)
++
++/* VR MII EEE Control 1 defines */
++#define DW_VR_MII_EEE_TRN_LPI		BIT(0)	/* Transparent Mode Enable */
++
++/* SR MII PCS Control 2 defines */
++#define PCS_TYPE_SEL_10GBR			GENMASK(3, 0)
++#define PCS_TYPE_SEL_10GBX			BIT(0)
++
++/* SR MII PCS Control 2 defines */
++#define PCS_TYPE_SEL_2500BASEX			GENMASK(3, 1)
++
++/* SR MII PCS KR Control defines */
++#define USXG_MODE_SEL				GENMASK(12, 10)
++#define USXGMII_5G				BIT(10)
++#define USXGMII_2P5G				BIT(11)
++
++/* SR_MII_AN_ADV */
++#define DW_SR_MII_AN_ADV_FD			BIT(5)
++#define DW_SR_MII_AN_ADV_HD			BIT(6)
++#define DW_SR_MII_STS_LINK_STS			BIT(2)
++
++/* Required settings to enable 2.5G SGMII mode */
++#define LINK_TIMER_1P6MS			0x07a1
++#define CL37_TMR_OVR_RIDE			BIT(3)
++
++/* EEE Ability register defines */
++#define KREEE_SUPPORT				BIT(6)
++#define KX4EEE_SUPPORT				BIT(5)
++#define KXEEE_SUPPORT				BIT(4)
++
++/* Tx Preemable Control for Debug Register */
++#define TX_PMBL_CTRL				BIT(8)
++
++struct xpcs_compat {
++	const int *supported;
++	const phy_interface_t *interface;
++	int num_interfaces;
++	int an_mode;
++};
+diff --git a/include/linux/pcs-xpcs-qcom.h b/include/linux/pcs-xpcs-qcom.h
+new file mode 100644
+index 000000000000..d9eb927d70be
+--- /dev/null
++++ b/include/linux/pcs-xpcs-qcom.h
+@@ -0,0 +1,32 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++/*
++ * Synopsys DesignWare XPCS platform device driver
++ *
++ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
++ */
++
++#ifndef __LINUX_PCS_XPCS_QCOM_H
++#define __LINUX_PCS_XPCS_QCOM_H
++
++#include <linux/phy.h>
++#include <linux/phylink.h>
++
++/* AN mode */
++#define DW_AN_C37_USXGMII		1
++
++struct xpcs_id;
++
++struct dw_xpcs_qcom {
++	const struct xpcs_id *id;
++	struct phylink_pcs pcs;
++	void __iomem *addr;
++	int pcs_intr;
++	bool intr_en;
++	int phy_interface;
++};
++
++struct phylink_pcs *qcom_xpcs_create(struct device_node *np,
++				      phy_interface_t interface);
++void qcom_xpcs_link_up(struct phylink_pcs *pcs, unsigned int mode,
++		  phy_interface_t interface, int speed, int duplex);
++#endif /* __LINUX_PCS_XPCS_QCOM_H */

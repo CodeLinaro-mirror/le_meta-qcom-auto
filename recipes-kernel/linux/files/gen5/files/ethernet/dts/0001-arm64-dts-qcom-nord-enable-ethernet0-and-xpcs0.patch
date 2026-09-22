@@ -1,0 +1,220 @@
+From 818a7739465b6fa95c4f74d33e66184857270db7 Mon Sep 17 00:00:00 2001
+From: Sagar Cheluvegowda <quic_scheluve@quicinc.com>
+Date: Fri, 11 Sep 2026 13:43:14 -0700
+Subject: [PATCH] dtsi.change
+
+---
+ arch/arm64/boot/dts/qcom/nord-ride.dts |   4 +
+ arch/arm64/boot/dts/qcom/nord.dtsi     | 186 +++++++++++++++++++++++++
+ 2 files changed, 190 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/qcom/nord-ride.dts b/arch/arm64/boot/dts/qcom/nord-ride.dts
+index 1af4117d24d7..de8ffb8fb8bc 100644
+--- a/arch/arm64/boot/dts/qcom/nord-ride.dts
++++ b/arch/arm64/boot/dts/qcom/nord-ride.dts
+@@ -45,6 +45,10 @@ &scmi3 {
+ 	status = "okay";
+ };
+ 
++&scmi7 {
++	status = "okay";
++};
++
+ &scmi9 {
+ 	status = "okay";
+ };
+diff --git a/arch/arm64/boot/dts/qcom/nord.dtsi b/arch/arm64/boot/dts/qcom/nord.dtsi
+index fafa7f2845d0..75f67fd4fcff 100644
+--- a/arch/arm64/boot/dts/qcom/nord.dtsi
++++ b/arch/arm64/boot/dts/qcom/nord.dtsi
+@@ -5681,6 +5686,187 @@ compute-cb@13 {
+ 			};
+ 		};
+ 
++	xpcs0: xpcs@0x1A14000 {
++		compatible = "qcom,xpcs";
++		reg = <0x0 0x1A14000 0x0 0x5100>;
++		reg-names = "qxpcs";
++	};
++
++	ethernet0: ethernet@0x1A00000 {
++		compatible = "qcom,sa8797p-ethqos", "snps,dwxgmac";
++		reg = <0x0 0x1A00000 0x0 0x14000>,
++		      <0x0 0x1A7F000 0x0 0x1000>;
++		reg-names = "stmmaceth", "rgmii";
++		phy-mode = "10gbase-r";
++		interrupts = <GIC_SPI 821 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 689 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 524 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 525 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 522 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 526 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 519 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 520 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 462 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 521 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 158 IRQ_TYPE_LEVEL_HIGH>;
++		interrupt-names = "macirq", "dma_tx_rx0", "dma_tx_rx1", "dma_tx_rx2",
++				 "dma_tx_rx3", "dma_tx_rx4", "dma_tx_rx5", "dma_tx_rx6",
++				 "dma_tx_rx7", "dma_tx_rx8", "dma_tx_rx9";
++
++		iommus = <&apps_smmu_2 0x1201 0x2>,
++			 <&apps_smmu_2 0x1202 0x0>,
++			 <&apps_smmu_2 0x1203 0x2>,
++			 <&apps_smmu_2 0x1204 0x0>,
++			 <&apps_smmu_2 0x1205 0x2>,
++			 <&apps_smmu_2 0x1206 0x0>,
++			 <&apps_smmu_2 0x1207 0x2>,
++			 <&apps_smmu_2 0x1208 0x0>,
++			 <&apps_smmu_2 0x1209 0x0>,
++			 <&apps_smmu_2 0x120a 0x0>;
++
++		power-domains = <&scmi7_pd 0>, <&scmi7_pd 1>, <&scmi7_dvfs 0>, <&scmi7_dvfs 1>;
++		power-domain-names = "power_core", "power_mdio", "perf_serdes", "perf_5g_serdes";
++
++
++		snps,tso;
++
++		snps,pbl = <0x10>;
++		dma-coherent;
++
++		rx-fifo-depth = <98304>;
++		tx-fifo-depth = <98304>;
++
++		snps,axi-config = <&stmmac_axi_setup>;
++		snps,mtl-rx-config = <&mtl_rx_setup>;
++		snps,mtl-tx-config = <&mtl_tx_setup>;
++
++		qcom,tx-vdma-map = <0 0 0 0 1 2 3 4 5 6 7 7>;
++		qcom,rx-vdma-map = <0 1 2 3 4 5 6 6 6 6 7 7>;
++		qcom,tx-pdma-map = <0 1 2 3 4 5 6 6 6 6 7 7>;
++		qcom,rx-pdma-map = <0 1 2 3 4 5 6 6 6 6 7 7>;
++
++		qcom-xpcs-handle = <&xpcs0>;
++
++		mtl_rx_setup: rx-queues-config {
++			snps,rx-queues-to-use = <10>;
++			snps,rx-sched-sp;
++
++			queue0 {
++				snps,dcb-algorithm;
++				snps,map-to-dma-channel = <0x0>;
++				snps,route-up;
++			};
++
++			queue1 {
++				snps,dcb-algorithm;
++				snps,map-to-dma-channel = <0x1>;
++				snps,route-ptp;
++			};
++
++			queue2 {
++				snps,avb-algorithm;
++				snps,map-to-dma-channel = <0x2>;
++				snps,route-avcp;
++			};
++
++			queue3 {
++				snps,avb-algorithm;
++				snps,map-to-dma-channel = <0x3>;
++				snps,priority = <0xc>;
++			};
++
++			queue4 {
++				snps,dcb-algorithm;
++				snps,map-to-dma-channel = <0x4>;
++			};
++
++			queue5 {
++				snps,dcb-algorithm;
++				snps,map-to-dma-channel = <0x5>;
++			};
++
++			queue6 {
++				snps,dcb-algorithm;
++				snps,map-to-dma-channel = <0x6>;
++			};
++
++			queue7 {
++				snps,dcb-algorithm;
++				snps,map-to-dma-channel = <0x7>;
++			};
++
++			queue8 {
++				snps,dcb-algorithm;
++				snps,map-to-dma-channel = <0x8>;
++			};
++
++			queue9 {
++				snps,dcb-algorithm;
++				snps,map-to-dma-channel = <0x9>;
++			};
++		};
++
++
++		mtl_tx_setup: tx-queues-config {
++			snps,tx-queues-to-use = <10>;
++			snps,tx-sched-sp;
++
++			queue0 {
++				snps,dcb-algorithm;
++			};
++
++			queue1 {
++				snps,dcb-algorithm;
++			};
++
++			queue2 {
++				snps,dcb-algorithm;
++			};
++
++			queue3 {
++				snps,dcb-algorithm;
++			};
++
++			queue4 {
++				snps,dcb-algorithm;
++			};
++
++			queue5 {
++				snps,dcb-algorithm;
++			};
++
++			queue6 {
++				snps,dcb-algorithm;
++			};
++
++			queue7 {
++				snps,dcb-algorithm;
++			};
++
++			queue8 {
++				snps,dcb-algorithm;
++			};
++
++			queue9 {
++				snps,dcb-algorithm;
++			};
++		};
++
++		stmmac_axi_setup: stmmac-axi-config {
++			snps,rd_osr_lmt = <0x10>;
++			snps,wr_osr_lmt = <0x10>;
++			snps,kbbe;
++			snps,blen = <0 0 0 0 16 0 0>;
++		};
++		
++		fixed-link {
++			status = "okay";
++			speed = <10000>;
++			full-duplex;
++		};
++
++	};
++
+ 		remoteproc_cdsp1: remoteproc@1f700000 {
+ 			compatible = "qcom,nord-cdsp1-pas";
+ 			reg = <0x0 0x1f700000 0x0 0x10000>;
+-- 
+2.34.1
+

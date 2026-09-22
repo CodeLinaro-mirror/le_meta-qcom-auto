@@ -1,0 +1,29 @@
+From 82f0943b5a2e135b92ecf798c8ffc238253d7e51 Mon Sep 17 00:00:00 2001
+From: Sagar Cheluvegowda <quic_scheluve@quicinc.com>
+Date: Thu, 12 Dec 2024 22:49:52 -0800
+Subject: [PATCH 08/28] PENDING: net: stmmac: Add missing 25GMAC link
+ capabilities
+
+Add 10Mbps and 100Mbps link speeds which are missing
+for 25GMAC.
+
+Change-Id: Ib070621c3f176ac961090a65973825e44882ee32
+Signed-off-by: Sagar Cheluvegowda <quic_scheluve@quicinc.com>
+---
+ drivers/net/ethernet/stmicro/stmmac/dwxgmac2_core.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/net/ethernet/stmicro/stmmac/dwxgmac2_core.c b/drivers/net/ethernet/stmicro/stmmac/dwxgmac2_core.c
+index f73e2f275ec82..836f4b4bf1190 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/dwxgmac2_core.c
++++ b/drivers/net/ethernet/stmicro/stmmac/dwxgmac2_core.c
+@@ -1586,7 +1586,8 @@ int dw25gmac_setup(struct stmmac_priv *priv)
+ 		mac->mcast_bits_log2 = ilog2(mac->multicast_filter_bins);
+ 
+ 	mac->link.caps = MAC_ASYM_PAUSE | MAC_SYM_PAUSE |
+-			 MAC_1000FD | MAC_2500FD | MAC_5000FD |
++			 MAC_10FD | MAC_100FD | MAC_1000FD |
++			 MAC_2500FD | MAC_5000FD |
+ 			 MAC_10000FD | MAC_25000FD;
+ 	mac->link.duplex = 0;
+ 	mac->link.speed10 = XGMAC_CONFIG_SS_10_MII;

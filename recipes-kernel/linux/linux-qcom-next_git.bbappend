@@ -38,9 +38,57 @@ SRC_URI:append = " \
     file://files/0014-mailbox-qcom-cpucp-restructure-the-cpucp-mailbox-dri.patch \
     file://files/0015-scmi-support-for-scmi-vendor-protocol-and-log-driver.patch \
     file://files/0016-arm64-dts-qcom-nord-add-reg-names-to-cpucp-mbox-node.patch \
+    file://0019-soc-qcom-socinfo-Report-SA8797P-as-QAM8797P.patch \
     file://0020-buffer-fix-NULL-pointer-deref-in-__bh_submit-for-vi.patch \
     file://files/0002-uapi-add-ccu_qup-header.patch \
     file://files/0003-uapi-add-smcinvoke-header.patch \
+    file://files/ethernet/0001-PENDING-net-PCS-Add-Qualcomm-XPCS-driver.patch \
+    file://files/ethernet/0002-PENDING-net-PCS-Add-10GBaseR-support-in-XPCS-driver.patch \
+    file://files/ethernet/0003-PENDING-net-PCS-Fix-USXGMII-reset-sequence-to-poll-f.patch \
+    file://files/ethernet/0004-PENDING-net-pcs-Add-5G-baseR-changes-in-PCS-driver.patch \
+    file://files/ethernet/0005-PENDING-net-PCS-Call-PCS-link-up-sequence-for-10GBAS.patch \
+    file://files/ethernet/0006-PENDING-net-PCS-Rework-and-expose-qcom_xpcs_destroy-.patch \
+    file://files/ethernet/0007-PENDING-net-stmmac-Fix-USXGMII-link-up-sequence.patch \
+    file://files/ethernet/0008-PENDING-net-pcs-Enable-PCS-Fusa-Shared-interrupt.patch \
+    file://files/ethernet/0009-PENDING-net-PCS-supply-Tx-to-Rx-loopback-clock-for-H.patch \
+    file://files/ethernet/0010-PENDING-net-stmmac-Remove-global-variable-for-tracki.patch \
+    file://files/ethernet/0011-PENDING-net-PCS-Check-and-recover-pcs-link-after-ser.patch \
+    file://files/ethernet/0012-PENDING-net-PCS-Loopback-TX-to-RX-clocks-when-XPCS-l.patch \
+    file://files/ethernet/0013-PENDING-net-PCS-Check-for-AN-status-before-posting-l.patch \
+    file://files/ethernet/0014-PENDING-net-pcs-Update-the-XPCS-sequence-and-add-ret.patch \
+    file://files/ethernet/0015-PENDING-net-pcs-wait-for-AN-completion-in-USXGMII-re.patch \
+    file://files/ethernet/0016-net-pcs-qcom-avoid-duplicate-init_module-cleanup_mod.patch \
+    file://files/ethernet/stmmac-caller/0001-FROMLIST-net-stmmac-Add-basic-dw25gmac-support-in-st.patch \
+    file://files/ethernet/stmmac-caller/0002-FROMLIST-net-stmmac-Add-snps_id-dev_id-to-struct-pla.patch \
+    file://files/ethernet/stmmac-caller/0003-PENDING-net-stmmac-pass-stmmac_priv-in-some-callback.patch \
+    file://files/ethernet/stmmac-caller/0004-PENDING-net-stmmac-Add-4k-Virtualization-support-to-.patch \
+    file://files/ethernet/stmmac-caller/0005-PENDING-net-stmmac-Add-sa8797p-support-within-ethqos.patch \
+    file://files/ethernet/stmmac-caller/0006-PENDING-net-stmmac-Add-IO-macro-configuration-for-US.patch \
+    file://files/ethernet/stmmac-caller/0007-PENDING-net-stmmac-Add-Qcom-specific-changes-for-HDM.patch \
+    file://files/ethernet/stmmac-caller/0008-PENDING-net-stmmac-Add-missing-25GMAC-link-capabilit.patch \
+    file://files/ethernet/stmmac-caller/0009-PENDING-net-stmmac-Move-desc-cache-compute-within-HD.patch \
+    file://files/ethernet/stmmac-caller/0010-PENDING-net-stmmac-Support-10GBaseR-iomacro-configur.patch \
+    file://files/ethernet/stmmac-caller/0011-PENDING-net-stmmac-dwmac-qcom-ethqos-Configure-host-.patch \
+    file://files/ethernet/stmmac-caller/0012-PENDING-net-stmmac-Enable-MMC-counters-for-25gmac.patch \
+    file://files/ethernet/stmmac-caller/0013-PENDING-net-stmmac-Reset-few-of-the-IO-macro-registe.patch \
+    file://files/ethernet/stmmac-caller/0014-PENDING-net-stmmac-change-mapping-between-VDMA-TC-PD.patch \
+    file://files/ethernet/stmmac-caller/0015-PENDING-net-stmmac-Change-PDMA-mapping-to-resolve-SM.patch \
+    file://files/ethernet/stmmac-caller/0016-PENDING-net-stmmac-enable-SGMII-loopback-for-DMA-res.patch \
+    file://files/ethernet/stmmac-caller/0017-PENDING-net-stmmac-Add-NULL-check-for-match-data.patch \
+    file://files/ethernet/stmmac-caller/0018-PENDING-net-stmmac-Disable-SPH.patch \
+    file://files/ethernet/stmmac-caller/0019-PENDING-net-stmmac-Define-AXI-clock-rate-for-referen.patch \
+    file://files/ethernet/stmmac-caller/0020-PENDING-net-stmmac-qcom-ethqos-configure-VDMA-and-PD.patch \
+    file://files/ethernet/stmmac-caller/0021-net-stmmac-Add-multi-channel-support.patch \
+    file://files/ethernet/stmmac-caller/0022-net-stmmac-mmc_core-drop-stale-mmc_rx_ipc_intr-field.patch \
+    file://files/ethernet/stmmac-caller/0023-PENDING-net-stmmac-Use-new-Qualcomm-XPCS-driver.patch \
+    file://files/ethernet/stmmac-caller/0024-PENDING-net-stmmac-Use-pcs_init-and-pcs_exit-functio.patch \
+    file://files/ethernet/stmmac-caller/0025-PENDING-net-stmmac-Use-generic-PCS-field-and-move-pc.patch \
+    file://files/ethernet/stmmac-caller/0026-eth_scmi_patch.patch \
+    file://files/ethernet/stmmac-caller/0027-DEBUG-net-stmmac-dwmac-qcom-ethqos-add-ETHDBG-bring-.patch \
+    file://files/ethernet/stmmac-caller/0028-net-pcs-qcom-build-as-its-own-module-so-the-driver-s.patch \
+    file://files/ethernet/stmmac-caller/0029-enable-ethqos-driver.patch \
+    file://files/ethernet/stmmac-caller/0030-hwif-ptp-fix.patch \
+    file://files/ethernet/dts/0001-arm64-dts-qcom-nord-enable-ethernet0-and-xpcs0.patch \
 "
 
 # Pin to a specific commit once you know it

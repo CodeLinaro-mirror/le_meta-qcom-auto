@@ -1,0 +1,39 @@
+From f7cd139b0b9bc1c35134a780a0eba4eafd49f6fd Mon Sep 17 00:00:00 2001
+From: Sagar Cheluvegowda <quic_scheluve@quicinc.com>
+Date: Tue, 1 Sep 2026 18:45:45 -0700
+Subject: [PATCH 22/28] net: stmmac: mmc_core: drop stale mmc_rx_ipc_intr
+ fields from dw25gmac_mmc_read
+
+dw25gmac_mmc_read() carried over mmc_rx_ipc_intr_mask/mmc_rx_ipc_intr reads
+from the pre-d0dc1e42109d dwxgmac_mmc_read() pattern. Upstream commit
+d0dc1e42109d ("net: stmmac: mmc_core: Drop interrupt registers from stats")
+already removed the equivalent fields from struct stmmac_counters because
+the values were actively misleading; this tree no longer declares them,
+so leaving these two lines in breaks the build.
+
+Signed-off-by: Sagar Cheluvegowda <quic_scheluve@quicinc.com>
+---
+ drivers/net/ethernet/stmicro/stmmac/mmc_core.c | 3 ---
+ 1 file changed, 3 deletions(-)
+
+diff --git a/drivers/net/ethernet/stmicro/stmmac/mmc_core.c b/drivers/net/ethernet/stmicro/stmmac/mmc_core.c
+index 98cd7fab84dd1..82300806e8b09 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/mmc_core.c
++++ b/drivers/net/ethernet/stmicro/stmmac/mmc_core.c
+@@ -741,7 +741,6 @@ static void dw25gmac_mmc_read(void __iomem *mmcaddr, struct stmmac_counters *mmc
+ 	dwxgmac_read_mmc_reg(mmcaddr, MMC_XGMAC_RX_VLAN_PKT_GB,
+ 			     &mmc->mmc_rx_vlan_frames_gb);
+ 	mmc->mmc_rx_watchdog_error += readl(mmcaddr + MMC_XGMAC_RX_WATCHDOG_ERR);
+-	mmc->mmc_rx_ipc_intr_mask = readl(mmcaddr + MMC_XGMAC_RX_IPC_INTR_MASK);
+ 
+ 	mmc->mmc_tx_fpe_fragment_cntr += readl(mmcaddr + MMC_XGMAC_TX_FPE_FRAG);
+ 	mmc->mmc_tx_hold_req_cntr += readl(mmcaddr + MMC_XGMAC_TX_HOLD_REQ);
+@@ -754,8 +753,6 @@ static void dw25gmac_mmc_read(void __iomem *mmcaddr, struct stmmac_counters *mmc
+ 	mmc->mmc_rx_fpe_fragment_cntr +=
+ 		readl(mmcaddr + MMC_XGMAC_RX_FPE_FRAG);
+ 
+-	/* Additional 25GMAC counters */
+-	mmc->mmc_rx_ipc_intr = readl(mmcaddr + MMC_25GMAC_RX_IPC_INTR);
+ 	/* IPv4 */
+ 	dwxgmac_read_mmc_reg(mmcaddr, MMC_25GMAC_RX_IPV4_GD,
+ 			     &mmc->mmc_rx_ipv4_gd);

@@ -1,0 +1,44 @@
+From 9efcb172b6eaaa4104b8e0ef6a7d9c36c6911003 Mon Sep 17 00:00:00 2001
+From: Suraj Jaiswal <quic_jsuraj@quicinc.com>
+Date: Wed, 18 Jun 2025 12:21:54 +0530
+Subject: [PATCH 18/28] PENDING: net: stmmac: Disable SPH
+
+Disable split header to fix t-put issue.
+Currently with split header enabled peak
+t-put for the TCP is not reached.
+
+Change-Id: Id18060aea33425eede7b45c98f7b94898bc1354b
+Signed-off-by: Suraj Jaiswal <quic_jsuraj@quicinc.com>
+---
+ drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c b/drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c
+index bef2e58ec5149..dee26587d5cd5 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c
++++ b/drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c
+@@ -118,6 +118,7 @@ struct ethqos_emac_driver_data {
+ 	bool has_emac_ge_3;
+ 	u8 dma_addr_width;
+ 	const char *link_clk_name;
++	u32 has_flags;
+ 	struct dwmac4_addrs dwmac4_addrs;
+ 	bool needs_sgmii_loopback;
+ 	bool has_xgmac;
+@@ -326,6 +327,7 @@ static const struct ethqos_emac_driver_data emac_v4_0_0_data = {
+ 	.rgmii_config_loopback_en = false,
+ 	.has_emac_ge_3 = true,
+ 	.link_clk_name = "phyaux",
++	.has_flags = (STMMAC_FLAG_HAS_INTEGRATED_PCS | STMMAC_FLAG_SPH_DISABLE),
+ 	.needs_sgmii_loopback = true,
+ 	.dma_addr_width = 36,
+ 	.dwmac4_addrs = {
+@@ -991,6 +993,8 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
+ 		plat_dat->flags |= STMMAC_FLAG_TSO_EN;
+ 	if (of_device_is_compatible(np, "qcom,qcs404-ethqos"))
+ 		plat_dat->flags |= STMMAC_FLAG_RX_CLK_RUNS_IN_LPI;
++	if (data->has_flags)
++		plat_dat->flags |= data->has_flags;
+ 	if (data->dma_addr_width)
+ 		plat_dat->host_dma_width = data->dma_addr_width;
+ 

@@ -1,0 +1,232 @@
+From 0dd1597f042764b48d0d193c5a801cf47b5a734a Mon Sep 17 00:00:00 2001
+From: Sagar Cheluvegowda <quic_scheluve@quicinc.com>
+Date: Thu, 13 Jun 2024 12:16:31 -0700
+Subject: [PATCH 03/28] PENDING: net: stmmac: pass stmmac_priv in some
+ callbacks
+
+Passing stmmac_priv to some of the callbacks allows
+hwif implementations to grab some data that platforms
+can customize. Adjust the callbacks accordingly in
+preparation of such a platform customization.
+
+Change-Id: Ic532592232a26fde4cdfba33572b703b217a1f43
+Signed-off-by: Sagar Cheluvegowda <quic_scheluve@quicinc.com>
+---
+ .../net/ethernet/stmicro/stmmac/dwmac-sun8i.c |  3 ++-
+ .../ethernet/stmicro/stmmac/dwmac1000_core.c  |  3 ++-
+ .../ethernet/stmicro/stmmac/dwmac100_core.c   |  3 ++-
+ .../net/ethernet/stmicro/stmmac/dwmac4_core.c |  4 ++--
+ drivers/net/ethernet/stmicro/stmmac/dwmac5.c  |  2 +-
+ drivers/net/ethernet/stmicro/stmmac/dwmac5.h  |  2 +-
+ .../ethernet/stmicro/stmmac/dwxgmac2_core.c   |  9 +++++----
+ drivers/net/ethernet/stmicro/stmmac/hwif.h    | 19 +++++++++++--------
+ 8 files changed, 26 insertions(+), 19 deletions(-)
+
+diff --git a/drivers/net/ethernet/stmicro/stmmac/dwmac-sun8i.c b/drivers/net/ethernet/stmicro/stmmac/dwmac-sun8i.c
+index 48c52eb962335..1f52d69a11e1e 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/dwmac-sun8i.c
++++ b/drivers/net/ethernet/stmicro/stmmac/dwmac-sun8i.c
+@@ -332,7 +332,8 @@ static void sun8i_dwmac_dump_regs(struct stmmac_priv *priv,
+  * Called from stmmac_ops->dump_regs
+  * Used for ethtool
+  */
+-static void sun8i_dwmac_dump_mac_regs(struct mac_device_info *hw,
++static void sun8i_dwmac_dump_mac_regs(struct stmmac_priv *priv,
++				      struct mac_device_info *hw,
+ 				      u32 *reg_space)
+ {
+ 	int i;
+diff --git a/drivers/net/ethernet/stmicro/stmmac/dwmac1000_core.c b/drivers/net/ethernet/stmicro/stmmac/dwmac1000_core.c
+index caac85fc08f1b..f3addbef7f1d8 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/dwmac1000_core.c
++++ b/drivers/net/ethernet/stmicro/stmmac/dwmac1000_core.c
+@@ -94,7 +94,8 @@ static int dwmac1000_rx_ipc_enable(struct mac_device_info *hw)
+ 	return !!(value & GMAC_CONTROL_IPC);
+ }
+ 
+-static void dwmac1000_dump_regs(struct mac_device_info *hw, u32 *reg_space)
++static void dwmac1000_dump_regs(struct stmmac_priv *priv, struct mac_device_info *hw,
++				u32 *reg_space)
+ {
+ 	void __iomem *ioaddr = hw->pcsr;
+ 	int i;
+diff --git a/drivers/net/ethernet/stmicro/stmmac/dwmac100_core.c b/drivers/net/ethernet/stmicro/stmmac/dwmac100_core.c
+index 94d24d355d957..b7d4b3d4a7598 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/dwmac100_core.c
++++ b/drivers/net/ethernet/stmicro/stmmac/dwmac100_core.c
+@@ -34,7 +34,8 @@ static void dwmac100_core_init(struct mac_device_info *hw,
+ #endif
+ }
+ 
+-static void dwmac100_dump_mac_regs(struct mac_device_info *hw, u32 *reg_space)
++static void dwmac100_dump_mac_regs(struct stmmac_priv *priv, struct mac_device_info *hw,
++				   u32 *reg_space)
+ {
+ 	void __iomem *ioaddr = hw->pcsr;
+ 
+diff --git a/drivers/net/ethernet/stmicro/stmmac/dwmac4_core.c b/drivers/net/ethernet/stmicro/stmmac/dwmac4_core.c
+index c6fcfae27c3d0..617f0aec40616 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/dwmac4_core.c
++++ b/drivers/net/ethernet/stmicro/stmmac/dwmac4_core.c
+@@ -211,7 +211,7 @@ static void dwmac4_prog_mtl_rx_algorithms(struct mac_device_info *hw,
+ 	writel(value, ioaddr + MTL_OPERATION_MODE);
+ }
+ 
+-static void dwmac4_prog_mtl_tx_algorithms(struct mac_device_info *hw,
++static void dwmac4_prog_mtl_tx_algorithms(struct stmmac_priv *priv, struct mac_device_info *hw,
+ 					  u32 tx_alg)
+ {
+ 	void __iomem *ioaddr = hw->pcsr;
+@@ -315,7 +315,7 @@ static void dwmac4_config_cbs(struct stmmac_priv *priv,
+ 	writel(value, ioaddr + mtl_low_credx_base_addr(dwmac4_addrs, queue));
+ }
+ 
+-static void dwmac4_dump_regs(struct mac_device_info *hw, u32 *reg_space)
++static void dwmac4_dump_regs(struct stmmac_priv *priv, struct mac_device_info *hw, u32 *reg_space)
+ {
+ 	void __iomem *ioaddr = hw->pcsr;
+ 	int i;
+diff --git a/drivers/net/ethernet/stmicro/stmmac/dwmac5.c b/drivers/net/ethernet/stmicro/stmmac/dwmac5.c
+index f1bb981cab7cd..0bc3e81c4018d 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/dwmac5.c
++++ b/drivers/net/ethernet/stmicro/stmmac/dwmac5.c
+@@ -517,7 +517,7 @@ int dwmac5_rxp_config(void __iomem *ioaddr, struct stmmac_tc_entry *entries,
+ 	return ret;
+ }
+ 
+-int dwmac5_flex_pps_config(void __iomem *ioaddr, int index,
++int dwmac5_flex_pps_config(struct stmmac_priv *priv, void __iomem *ioaddr, int index,
+ 			   struct stmmac_pps_cfg *cfg, bool enable,
+ 			   u32 sub_second_inc, u32 systime_flags)
+ {
+diff --git a/drivers/net/ethernet/stmicro/stmmac/dwmac5.h b/drivers/net/ethernet/stmicro/stmmac/dwmac5.h
+index 00b151b3b6887..cf021b8fd4a26 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/dwmac5.h
++++ b/drivers/net/ethernet/stmicro/stmmac/dwmac5.h
+@@ -90,7 +90,7 @@ int dwmac5_safety_feat_dump(struct stmmac_safety_stats *stats,
+ 			int index, unsigned long *count, const char **desc);
+ int dwmac5_rxp_config(void __iomem *ioaddr, struct stmmac_tc_entry *entries,
+ 		      unsigned int count);
+-int dwmac5_flex_pps_config(void __iomem *ioaddr, int index,
++int dwmac5_flex_pps_config(struct stmmac_priv *priv, void __iomem *ioaddr, int index,
+ 			   struct stmmac_pps_cfg *cfg, bool enable,
+ 			   u32 sub_second_inc, u32 systime_flags);
+ 
+diff --git a/drivers/net/ethernet/stmicro/stmmac/dwxgmac2_core.c b/drivers/net/ethernet/stmicro/stmmac/dwxgmac2_core.c
+index 32cd6850a6501..e714b7faeacb1 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/dwxgmac2_core.c
++++ b/drivers/net/ethernet/stmicro/stmmac/dwxgmac2_core.c
+@@ -205,7 +205,7 @@ static void dwxgmac2_prog_mtl_rx_algorithms(struct mac_device_info *hw,
+ 	writel(value, ioaddr + XGMAC_MTL_OPMODE);
+ }
+ 
+-static void dwxgmac2_prog_mtl_tx_algorithms(struct mac_device_info *hw,
++static void dwxgmac2_prog_mtl_tx_algorithms(struct stmmac_priv *priv, struct mac_device_info *hw,
+ 					    u32 tx_alg)
+ {
+ 	void __iomem *ioaddr = hw->pcsr;
+@@ -288,7 +288,7 @@ static void dwxgmac2_config_cbs(struct stmmac_priv *priv,
+ 	writel(value, ioaddr + XGMAC_MTL_TCx_ETS_CONTROL(queue));
+ }
+ 
+-static void dwxgmac2_dump_regs(struct mac_device_info *hw, u32 *reg_space)
++static void dwxgmac2_dump_regs(struct stmmac_priv *priv, struct mac_device_info *hw, u32 *reg_space)
+ {
+ 	void __iomem *ioaddr = hw->pcsr;
+ 	int i;
+@@ -1141,7 +1141,8 @@ static int dwxgmac3_rxp_config(void __iomem *ioaddr,
+ 	return ret;
+ }
+ 
+-static int dwxgmac2_get_mac_tx_timestamp(struct mac_device_info *hw, u64 *ts)
++static int dwxgmac2_get_mac_tx_timestamp(struct stmmac_priv *priv, struct mac_device_info *hw,
++					 u64 *ts)
+ {
+ 	void __iomem *ioaddr = hw->pcsr;
+ 	u32 value;
+@@ -1155,7 +1156,7 @@ static int dwxgmac2_get_mac_tx_timestamp(struct mac_device_info *hw, u64 *ts)
+ 	return 0;
+ }
+ 
+-static int dwxgmac2_flex_pps_config(void __iomem *ioaddr, int index,
++static int dwxgmac2_flex_pps_config(struct stmmac_priv *priv, void __iomem *ioaddr, int index,
+ 				    struct stmmac_pps_cfg *cfg, bool enable,
+ 				    u32 sub_second_inc, u32 systime_flags)
+ {
+diff --git a/drivers/net/ethernet/stmicro/stmmac/hwif.h b/drivers/net/ethernet/stmicro/stmmac/hwif.h
+index ee5e314921d68..ddfeca09dc3ec 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/hwif.h
++++ b/drivers/net/ethernet/stmicro/stmmac/hwif.h
+@@ -333,7 +333,8 @@ struct stmmac_ops {
+ 	/* Program RX Algorithms */
+ 	void (*prog_mtl_rx_algorithms)(struct mac_device_info *hw, u32 rx_alg);
+ 	/* Program TX Algorithms */
+-	void (*prog_mtl_tx_algorithms)(struct mac_device_info *hw, u32 tx_alg);
++	void (*prog_mtl_tx_algorithms)(struct stmmac_priv *priv, struct mac_device_info *hw,
++				       u32 tx_alg);
+ 	/* Set MTL TX queues weight */
+ 	void (*set_mtl_tx_queue_weight)(struct stmmac_priv *priv,
+ 					struct mac_device_info *hw,
+@@ -345,7 +346,9 @@ struct stmmac_ops {
+ 			   u32 send_slope, u32 idle_slope, u32 high_credit,
+ 			   u32 low_credit, u32 queue);
+ 	/* Dump MAC registers */
+-	void (*dump_regs)(struct mac_device_info *hw, u32 *reg_space);
++	void (*dump_regs)(struct stmmac_priv *priv,
++			  struct mac_device_info *hw,
++			  u32 *reg_space);
+ 	/* Handle extra events on specific interrupts hw dependent */
+ 	int (*host_irq_status)(struct stmmac_priv *priv,
+ 			       struct stmmac_extra_stats *x);
+@@ -388,7 +391,7 @@ struct stmmac_ops {
+ 	int (*rxp_config)(void __iomem *ioaddr, struct stmmac_tc_entry *entries,
+ 			  unsigned int count);
+ 	/* Flexible PPS */
+-	int (*flex_pps_config)(void __iomem *ioaddr, int index,
++	int (*flex_pps_config)(struct stmmac_priv *priv, void __iomem *ioaddr, int index,
+ 			       struct stmmac_pps_cfg *cfg, bool enable,
+ 			       u32 sub_second_inc, u32 systime_flags);
+ 	/* Loopback for selftests */
+@@ -397,7 +400,7 @@ struct stmmac_ops {
+ 	int (*rss_configure)(struct mac_device_info *hw,
+ 			     struct stmmac_rss *cfg, u32 num_rxq);
+ 	/* TX Timestamp */
+-	int (*get_mac_tx_timestamp)(struct mac_device_info *hw, u64 *ts);
++	int (*get_mac_tx_timestamp)(struct stmmac_priv *priv, struct mac_device_info *hw, u64 *ts);
+ 	/* Source Address Insertion / Replacement */
+ 	void (*sarc_configure)(void __iomem *ioaddr, int val);
+ 	/* Filtering */
+@@ -436,7 +439,7 @@ struct stmmac_ops {
+ #define stmmac_prog_mtl_rx_algorithms(__priv, __args...) \
+ 	stmmac_do_void_callback(__priv, mac, prog_mtl_rx_algorithms, __args)
+ #define stmmac_prog_mtl_tx_algorithms(__priv, __args...) \
+-	stmmac_do_void_callback(__priv, mac, prog_mtl_tx_algorithms, __args)
++	stmmac_do_void_callback(__priv, mac, prog_mtl_tx_algorithms, __priv, __args)
+ #define stmmac_set_mtl_tx_queue_weight(__priv, __args...) \
+ 	stmmac_do_void_callback(__priv, mac, set_mtl_tx_queue_weight, __priv, __args)
+ #define stmmac_map_mtl_to_dma(__priv, __args...) \
+@@ -444,7 +447,7 @@ struct stmmac_ops {
+ #define stmmac_config_cbs(__priv, __args...) \
+ 	stmmac_do_void_callback(__priv, mac, config_cbs, __priv, __args)
+ #define stmmac_dump_mac_regs(__priv, __args...) \
+-	stmmac_do_void_callback(__priv, mac, dump_regs, __args)
++	stmmac_do_void_callback(__priv, mac, dump_regs, __priv, __args)
+ #define stmmac_host_irq_status(__priv, __args...) \
+ 	stmmac_do_callback(__priv, mac, host_irq_status, __priv, __args)
+ #define stmmac_host_mtl_irq_status(__priv, __args...) \
+@@ -478,13 +481,13 @@ struct stmmac_ops {
+ #define stmmac_rxp_config(__priv, __args...) \
+ 	stmmac_do_callback(__priv, mac, rxp_config, __args)
+ #define stmmac_flex_pps_config(__priv, __args...) \
+-	stmmac_do_callback(__priv, mac, flex_pps_config, __args)
++	stmmac_do_callback(__priv, mac, flex_pps_config, __priv, __args)
+ #define stmmac_set_mac_loopback(__priv, __args...) \
+ 	stmmac_do_void_callback(__priv, mac, set_mac_loopback, __args)
+ #define stmmac_rss_configure(__priv, __args...) \
+ 	stmmac_do_callback(__priv, mac, rss_configure, __args)
+ #define stmmac_get_mac_tx_timestamp(__priv, __args...) \
+-	stmmac_do_callback(__priv, mac, get_mac_tx_timestamp, __args)
++	stmmac_do_callback(__priv, mac, get_mac_tx_timestamp, __priv, __args)
+ #define stmmac_sarc_configure(__priv, __args...) \
+ 	stmmac_do_void_callback(__priv, mac, sarc_configure, __args)
+ #define stmmac_config_l3_filter(__priv, __args...) \

@@ -1,0 +1,66 @@
+From ff26f61c250efb3072fb85c1f18987a0def7492c Mon Sep 17 00:00:00 2001
+From: Sagar Cheluvegowda <quic_scheluve@quicinc.com>
+Date: Tue, 1 Sep 2026 10:29:42 -0700
+Subject: [PATCH 16/16] net: pcs: qcom: avoid duplicate
+ init_module/cleanup_module in pcs_xpcs.ko
+
+pcs-xpcs-qcom.o links into the same combined pcs_xpcs.ko as
+pcs-xpcs-plat.o, which already owns that module's init/exit via its own
+module_platform_driver(). A second module_platform_driver() here
+collided at link time (multiple definition of init_module/cleanup_module).
+
+Replace it with explicit qcom_xpcs_driver_register()/_unregister()
+functions, not wrapped in module_init(). Not part of any upstream
+gerrit -- needed purely to integrate with nord-next's current
+pcs-xpcs-plat.c-owned module structure, which didn't exist when the
+original qcom XPCS driver gerrits were authored.
+
+The stmmac/ethqos-side caller of qcom_xpcs_create() (not yet ported)
+is expected to call these at its own module init/exit.
+---
+ drivers/net/pcs/pcs-xpcs-qcom.c | 20 +++++++++++++++++++-
+ include/linux/pcs-xpcs-qcom.h   |  3 +++
+ 2 files changed, 22 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/net/pcs/pcs-xpcs-qcom.c b/drivers/net/pcs/pcs-xpcs-qcom.c
+index 5c35f4f6f9ce..8a36462d72d8 100644
+--- a/drivers/net/pcs/pcs-xpcs-qcom.c
++++ b/drivers/net/pcs/pcs-xpcs-qcom.c
+@@ -1235,6 +1235,24 @@ static struct platform_driver pcs_xpcs_qcom_driver = {
+ 		.of_match_table = of_match_ptr(qcom_xpcs_match),
+ 	},
+ };
+-module_platform_driver(pcs_xpcs_qcom_driver);
++
++/*
++ * Not wrapped in module_platform_driver()/module_init(): this object is
++ * linked into the same pcs_xpcs.ko as pcs-xpcs-plat.c, which already owns
++ * that module's init_module/cleanup_module. The caller that wires up
++ * qcom,xpcs (the stmmac/ethqos-side consumer of qcom_xpcs_create()) is
++ * responsible for calling qcom_xpcs_driver_register()/_unregister().
++ */
++int qcom_xpcs_driver_register(void)
++{
++	return platform_driver_register(&pcs_xpcs_qcom_driver);
++}
++EXPORT_SYMBOL_GPL(qcom_xpcs_driver_register);
++
++void qcom_xpcs_driver_unregister(void)
++{
++	platform_driver_unregister(&pcs_xpcs_qcom_driver);
++}
++EXPORT_SYMBOL_GPL(qcom_xpcs_driver_unregister);
+ 
+ MODULE_LICENSE("GPL");
+diff --git a/include/linux/pcs-xpcs-qcom.h b/include/linux/pcs-xpcs-qcom.h
+index 5238df9388e3..612f0604c676 100644
+--- a/include/linux/pcs-xpcs-qcom.h
++++ b/include/linux/pcs-xpcs-qcom.h
+@@ -40,4 +40,7 @@ void qcom_xpcs_destroy(struct phylink_pcs *pcs);
+ 
+ void qcom_xpcs_get_err_stats(struct phylink_pcs *pcs, unsigned long *ptr);
+ 
++int qcom_xpcs_driver_register(void);
++void qcom_xpcs_driver_unregister(void);
++
+ #endif /* __LINUX_PCS_XPCS_QCOM_H */

@@ -1,0 +1,26 @@
+From 61d5ab77256f3a10051f2b65294470bec776ec4d Mon Sep 17 00:00:00 2001
+From: Sagar Cheluvegowda <quic_scheluve@quicinc.com>
+Date: Tue, 7 Jan 2025 14:41:38 -0800
+Subject: [PATCH 10/28] PENDING: net: stmmac: Support 10GBaseR iomacro
+ configuration
+
+Support 10GBaseR IOmacro configuration similar to USXGMII.
+
+Change-Id: Ida6a5afd0288673373692a553d6658ff6edf3a4e
+Signed-off-by: Sagar Cheluvegowda <quic_scheluve@quicinc.com>
+---
+ drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c b/drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c
+index bfa9824c329a4..3457de21c2abc 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c
++++ b/drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c
+@@ -900,6 +900,7 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
+ 		plat_dat->mac_finish = ethqos_mac_finish_serdes;
+ 		break;
+ 	case PHY_INTERFACE_MODE_USXGMII:
++	case PHY_INTERFACE_MODE_10GBASER:
+ 		plat_dat->fix_mac_speed = ethqos_fix_mac_speed_usxgmii;
+ 		break;
+ 	default:

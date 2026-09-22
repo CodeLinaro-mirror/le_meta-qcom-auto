@@ -1,0 +1,63 @@
+From 9df4b64a1403644d071d6985ee619e9dfcc184d2 Mon Sep 17 00:00:00 2001
+From: Yanteng Si <siyanteng@loongson.cn>
+Date: Wed, 7 Aug 2024 21:45:29 +0800
+Subject: [PATCH 21/28] net: stmmac: Add multi-channel support
+
+DW GMAC v3.73 can be equipped with the Audio Video (AV) feature which
+enables transmission of time-sensitive traffic over bridged local area
+networks (DWC Ethernet QoS Product). In that case there can be up to two
+additional DMA-channels available with no Tx COE support (unless there is
+vendor-specific IP-core alterations). Each channel is implemented as a
+separate Control and Status register (CSR) for managing the transmit and
+receive functions, descriptor handling, and interrupt handling.
+
+Add the multi-channels DW GMAC controllers support just by making sure the
+already implemented DMA-configs are performed on the per-channel basis.
+
+Note the only currently known instance of the multi-channel DW GMAC
+IP-core is the LS2K2000 GNET controller, which has been released with the
+vendor-specific feature extension of having eight DMA-channels. The device
+support will be added in one of the following up commits.
+
+Signed-off-by: Feiyang Chen <chenfeiyang@loongson.cn>
+Signed-off-by: Yinggang Gu <guyinggang@loongson.cn>
+Reviewed-by: Serge Semin <fancer.lancer@gmail.com>
+Acked-by: Huacai Chen <chenhuacai@loongson.cn>
+Signed-off-by: Yanteng Si <siyanteng@loongson.cn>
+Tested-by: Serge Semin <fancer.lancer@gmail.com>
+Signed-off-by: Paolo Abeni <pabeni@redhat.com>
+(cherry picked from commit ad72f783de06827a1f20d7df57ca52ee102a6faf)
+---
+ drivers/net/ethernet/stmicro/stmmac/dwmac1000_dma.c | 5 +++--
+ drivers/net/ethernet/stmicro/stmmac/dwmac_dma.h     | 2 ++
+ 2 files changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/net/ethernet/stmicro/stmmac/dwmac1000_dma.c b/drivers/net/ethernet/stmicro/stmmac/dwmac1000_dma.c
+index 7325c27f1c68f..3ac7a7949529c 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/dwmac1000_dma.c
++++ b/drivers/net/ethernet/stmicro/stmmac/dwmac1000_dma.c
+@@ -43,8 +43,9 @@ static void dwmac1000_dma_axi(void __iomem *ioaddr, struct stmmac_axi *axi)
+ 	writel(value, ioaddr + DMA_AXI_BUS_MODE);
+ }
+ 
+-static void dwmac1000_dma_init(struct stmmac_priv *priv, void __iomem *ioaddr,
+-			       struct stmmac_dma_cfg *dma_cfg)
++static void dwmac1000_dma_init_channel(struct stmmac_priv *priv,
++				       void __iomem *ioaddr,
++				       struct stmmac_dma_cfg *dma_cfg, u32 chan)
+ {
+ 	int txpbl = dma_cfg->txpbl ?: dma_cfg->pbl;
+ 	int rxpbl = dma_cfg->rxpbl ?: dma_cfg->pbl;
+diff --git a/drivers/net/ethernet/stmicro/stmmac/dwmac_dma.h b/drivers/net/ethernet/stmicro/stmmac/dwmac_dma.h
+index e1c37ac2c99d2..79c6e7b4ea0c6 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/dwmac_dma.h
++++ b/drivers/net/ethernet/stmicro/stmmac/dwmac_dma.h
+@@ -115,6 +115,8 @@ static inline u32 dma_chan_base_addr(u32 base, u32 chan)
+ #define DMA_CHAN_STATUS(chan)	dma_chan_base_addr(DMA_STATUS, chan)
+ #define DMA_CHAN_CONTROL(chan)	dma_chan_base_addr(DMA_CONTROL, chan)
+ #define DMA_CHAN_INTR_ENA(chan)	dma_chan_base_addr(DMA_INTR_ENA, chan)
++#define DMA_CHAN_MISSED_FRAME_CTR(chan)	\
++				dma_chan_base_addr(DMA_MISSED_FRAME_CTR, chan)
+ #define DMA_CHAN_RX_WATCHDOG(chan)	\
+ 				dma_chan_base_addr(DMA_RX_WATCHDOG, chan)
+ 

@@ -1,0 +1,154 @@
+From 9f8957ba991938e00dfaa01cfbd9dbdd926221d9 Mon Sep 17 00:00:00 2001
+From: Sagar Cheluvegowda <quic_scheluve@quicinc.com>
+Date: Tue, 29 Apr 2025 21:58:37 -0700
+Subject: [PATCH 25/28] PENDING: net: stmmac: Use generic PCS field and move
+ pcs_pre_init before Serdes powerup
+
+As PCS models are hardware-specific, it is more
+appropriate to use the generic PCS field in the
+mac_device_info struct, remove the usage of
+qcom_xpcs everywhere and use the generic phylink_pcs
+instead.
+When STMMAC_FLAG_SERDES_UP_AFTER_PHY_LINKUP dev flag is
+not set we expect Serdes programming to be done within
+ndo_open callback and that requires Rx clock to be present.
+So make sure enabling of Xpcs Rx loopback clock is done
+before we start programming Serdes block not after that.
+
+Change-Id: I891b31e7e591ecb6408774edc5f69949fd9c858e
+Signed-off-by: Sagar Cheluvegowda <quic_scheluve@quicinc.com>
+---
+ drivers/net/ethernet/stmicro/stmmac/common.h  |  1 -
+ .../stmicro/stmmac/dwmac-qcom-ethqos.c        | 21 +++++++++++--------
+ .../net/ethernet/stmicro/stmmac/stmmac_main.c | 18 ++++++++--------
+ 3 files changed, 21 insertions(+), 19 deletions(-)
+
+diff --git a/drivers/net/ethernet/stmicro/stmmac/common.h b/drivers/net/ethernet/stmicro/stmmac/common.h
+index f52c03a5aa24c..6f583dabe4517 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/common.h
++++ b/drivers/net/ethernet/stmicro/stmmac/common.h
+@@ -625,7 +625,6 @@ struct mac_device_info {
+ 	const struct stmmac_vlan_ops *vlan;
+ 	struct phylink_pcs *phylink_pcs;
+ 	struct dw_xpcs *xpcs;
+-	struct phylink_pcs *qcom_pcs; /* Qcom external PCS */
+ 	struct mii_regs mii;	/* MII register Addresses */
+ 	struct mac_link link;
+ 	void __iomem *pcsr;     /* vpointer to device CSRs */
+diff --git a/drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c b/drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c
+index 2b65bc4f23db6..e0537fdc83995 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c
++++ b/drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c
+@@ -627,8 +627,9 @@ static void ethqos_fix_mac_speed_rgmii(void *bsp_priv,
+ 
+ 	ethqos_rgmii_macro_init(ethqos, speed);
+ 
+-	if (priv->plat->qcom_pcs)
+-		qcom_xpcs_link_up(priv->plat->qcom_pcs, mode, interface, speed,
++	if (priv->hw->phylink_pcs)
++		qcom_xpcs_link_up(priv->hw->phylink_pcs, mode,
++				  priv->plat->phy_interface, speed,
+ 				  DUPLEX_FULL);
+ }
+ 
+@@ -669,8 +670,9 @@ static void ethqos_fix_mac_speed_sgmii(void *bsp_priv,
+ 
+ 	ethqos_pcs_set_inband(ethqos, interface == PHY_INTERFACE_MODE_SGMII);
+ 
+-	if (priv->plat->qcom_pcs)
+-		qcom_xpcs_link_up(priv->plat->qcom_pcs, mode, interface, speed,
++	if (priv->hw->phylink_pcs)
++		qcom_xpcs_link_up(priv->hw->phylink_pcs, mode,
++				  priv->plat->phy_interface, speed,
+ 				  DUPLEX_FULL);
+ }
+ 
+@@ -764,8 +766,9 @@ static void ethqos_fix_mac_speed_usxgmii(void *bsp_priv,
+ 		return;
+ 	}
+ 
+-	if (priv->plat->qcom_pcs)
+-		qcom_xpcs_link_up(priv->plat->qcom_pcs, mode, interface, speed,
++	if (priv->hw->phylink_pcs)
++		qcom_xpcs_link_up(priv->hw->phylink_pcs, mode,
++				  priv->plat->phy_interface, speed,
+ 				  DUPLEX_FULL);
+ }
+ 
+@@ -957,8 +960,8 @@ static int ethqos_xpcs_init(struct stmmac_priv *priv)
+ 
+ 	xpcs_node = of_parse_phandle(priv->device->of_node, "qcom-xpcs-handle", 0);
+ 
+-	priv->hw->qcom_pcs = qcom_xpcs_create(xpcs_node, priv->plat->phy_interface);
+-	if (IS_ERR_OR_NULL(priv->hw->qcom_pcs))
++	priv->hw->phylink_pcs = qcom_xpcs_create(xpcs_node, priv->plat->phy_interface);
++	if (IS_ERR_OR_NULL(priv->hw->phylink_pcs))
+ 		return -ENODEV;
+ 
+ 	return 0;
+@@ -966,7 +969,7 @@ static int ethqos_xpcs_init(struct stmmac_priv *priv)
+ 
+ static void ethqos_xpcs_exit(struct stmmac_priv *priv)
+ {
+-	qcom_xpcs_destroy(priv->hw->qcom_pcs);
++	qcom_xpcs_destroy(priv->hw->phylink_pcs);
+ }
+ 
+ static int qcom_ethqos_probe(struct platform_device *pdev)
+diff --git a/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c b/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
+index ad803e3121aeb..f20135ff7ac4d 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
++++ b/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
+@@ -1022,6 +1022,8 @@ static struct phylink_pcs *stmmac_mac_select_pcs(struct phylink_config *config,
+ 	struct stmmac_priv *priv = netdev_priv(to_net_dev(config->dev));
+ 	struct phylink_pcs *pcs;
+ 
++	return priv->hw->phylink_pcs;
++
+ 	if (priv->plat->select_pcs) {
+ 		pcs = priv->plat->select_pcs(priv, interface);
+ 		if (!IS_ERR(pcs))
+@@ -1031,11 +1033,6 @@ static struct phylink_pcs *stmmac_mac_select_pcs(struct phylink_config *config,
+ 	if (priv->integrated_pcs &&
+ 	    test_bit(interface, priv->integrated_pcs->pcs.supported_interfaces))
+ 		return &priv->integrated_pcs->pcs;
+-
+-	if (priv->hw->qcom_pcs)
+-		return priv->hw->qcom_pcs;
+-
+-	return NULL;
+ }
+ 
+ static void stmmac_mac_config(struct phylink_config *config, unsigned int mode,
+@@ -3663,10 +3660,6 @@ static int stmmac_hw_setup(struct net_device *dev)
+ 	u8 chan;
+ 	int ret;
+ 
+-	/* Make sure RX clock is enabled */
+-	if (priv->hw->phylink_pcs)
+-		phylink_pcs_pre_init(priv->phylink, priv->hw->phylink_pcs);
+-
+ 	/* Note that clk_rx_i must be running for reset to complete. This
+ 	 * clock may also be required when setting the MAC address.
+ 	 *
+@@ -4168,6 +4161,10 @@ static int __stmmac_open(struct net_device *dev,
+ 
+ 	stmmac_reset_queues_param(priv);
+ 
++	/* Make sure RX clock is enabled */
++	if (priv->hw->phylink_pcs)
++		phylink_pcs_pre_init(priv->phylink, priv->hw->phylink_pcs);
++
+ 	ret = stmmac_hw_setup(dev);
+ 	if (ret < 0) {
+ 		netdev_err(priv->dev, "%s: Hw setup failed\n", __func__);
+@@ -8314,6 +8311,9 @@ int stmmac_resume(struct device *dev)
+ 		if (priv->mii)
+ 			stmmac_mdio_reset(priv->mii);
+ 	}
++	/* Make sure RX clock is enabled */
++	if (priv->hw->phylink_pcs)
++		phylink_pcs_pre_init(priv->phylink, priv->hw->phylink_pcs);
+ 
+ 	if (!(priv->plat->flags & STMMAC_FLAG_SERDES_UP_AFTER_PHY_LINKUP)) {
+ 		ret = stmmac_legacy_serdes_power_up(priv);

@@ -1,0 +1,247 @@
+From 6a9672d2985211dfb349ff7577ad471e6740dc09 Mon Sep 17 00:00:00 2001
+From: Abhishek Chauhan <quic_abchauha@quicinc.com>
+Date: Tue, 8 Apr 2025 18:28:27 -0700
+Subject: [PATCH 08/16] PENDING: net: pcs: Enable PCS Fusa Shared interrupt
+
+Enable PCS Functional safety interrupt once the link is up to
+report FSM timeout and Data parity errors via ethtool stats
+Ensure to clear the errors on every link up and only handle
+the interrupt when the Remote link is up and Link status is
+set in case of USXGMII. Check for just Remote link up in all
+other cases such as 10GbaseR and 5GbaseR mode.
+
+Change-Id: Iaccfafd56e1c4d7ab35243550c3873b37d870c72
+Signed-off-by: Abhishek Chauhan <quic_abchauha@quicinc.com>
+(cherry picked from commit df52f84305e9d1369083105c18942d867362b226)
+---
+ drivers/net/pcs/pcs-xpcs-qcom.c | 132 +++++++++++++++++++++++++++++++-
+ drivers/net/pcs/pcs-xpcs-qcom.h |   9 ++-
+ include/linux/pcs-xpcs-qcom.h   |   5 ++
+ 3 files changed, 143 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/net/pcs/pcs-xpcs-qcom.c b/drivers/net/pcs/pcs-xpcs-qcom.c
+index a004d74a88a5..82c90dd9b676 100644
+--- a/drivers/net/pcs/pcs-xpcs-qcom.c
++++ b/drivers/net/pcs/pcs-xpcs-qcom.c
+@@ -147,6 +147,22 @@ static int qcom_xpcs_poll_reset(struct dw_xpcs_qcom *qxpcs, unsigned int offset,
+ 	return (ret & field) ? -ETIMEDOUT : 0;
+ }
+ 
++static int qcom_xpcs_poll_bit_set(struct dw_xpcs_qcom *qxpcs, unsigned int offset,
++				  unsigned int field)
++{
++	unsigned int retries = 256;
++	int ret;
++
++	do {
++		usleep_range(1000, 2000);
++		ret = qcom_xpcs_read(qxpcs, offset);
++		if (ret & field)
++			return 0;
++	} while (--retries);
++
++	return -ETIMEDOUT;
++}
++
+ static int xpcs_soft_reset(struct dw_xpcs_qcom *qxpcs,
+ 			   const struct xpcs_compat *compat)
+ {
+@@ -242,8 +258,28 @@ static int qcom_xpcs_reset_usxgmii(struct dw_xpcs_qcom *qxpcs)
+ 
+ 	qcom_xpcs_write(qxpcs, DW_VR_MII_PCS_DIG_CTRL1, ret | DW_USXGMII_RST);
+ 
+-	if (!qxpcs->intr_en)
+-		return qcom_xpcs_poll_reset(qxpcs, DW_VR_MII_PCS_DIG_CTRL1, USXG_RST_BIT_STATUS);
++	if (!qxpcs->intr_en) {
++		ret = qcom_xpcs_poll_reset(qxpcs, DW_VR_MII_PCS_DIG_CTRL1, USXG_RST_BIT_STATUS);
++
++		if (ret < 0)
++			return ret;
++
++		switch (qxpcs->phy_interface) {
++		case PHY_INTERFACE_MODE_USXGMII:
++			ret = qcom_xpcs_poll_bit_set(qxpcs,
++						     DW_SR_MII_MMD_STS, DW_SR_MII_STS_LINK_STS);
++			if (ret < 0)
++				return ret;
++			fallthrough;
++		case PHY_INTERFACE_MODE_10GBASER:
++		case PHY_INTERFACE_MODE_5GBASER:
++			ret = qcom_xpcs_poll_bit_set(qxpcs,
++						     DW_SR_MII_PCS_STS1, DW_SR_XS_PCS_STS1);
++			if (ret < 0)
++				return ret;
++		}
++		return ret;
++	}
+ 
+ 	return qcom_xpcs_poll_reset_usxgmii(qxpcs, DW_VR_MII_PCS_DIG_CTRL1, USXG_RST_BIT_STATUS);
+ }
+@@ -449,6 +485,86 @@ static void qcom_xpcs_get_state(struct phylink_pcs *pcs,
+ 	}
+ }
+ 
++irqreturn_t qcom_xpcs_fusa_isr(int irq, void *dev_data)
++{
++	struct dw_xpcs_qcom *qxpcs = (struct dw_xpcs_qcom *)dev_data;
++	int ret, linksts, remotelinksts;
++
++	ret = qcom_xpcs_read(qxpcs, DW_VR_XS_PCS_SFTY_UE_INTR0);
++
++	/* PCS fusa is valid only when link is up */
++	switch (qxpcs->phy_interface) {
++	case PHY_INTERFACE_MODE_USXGMII:
++		remotelinksts = qcom_xpcs_read(qxpcs, DW_SR_MII_MMD_STS);
++		if (!(remotelinksts & DW_SR_MII_STS_LINK_STS))
++			return IRQ_NONE;
++		fallthrough;
++	case PHY_INTERFACE_MODE_10GBASER:
++	case PHY_INTERFACE_MODE_5GBASER:
++		linksts = qcom_xpcs_read(qxpcs, DW_SR_MII_PCS_STS1);
++		if (!(linksts & DW_SR_XS_PCS_STS1))
++			return IRQ_NONE;
++	}
++
++	if (ret > 0) {
++		pr_debug("Fusa XPCS IRQ %d\n", ret);
++		qxpcs->pcs_fusa_error_count++;
++		qcom_xpcs_write(qxpcs, DW_VR_XS_PCS_SFTY_UE_INTR0, 0x0);
++		return IRQ_HANDLED;
++	}
++
++	return IRQ_NONE;
++}
++
++static int qcom_xpcs_fusa_intr_enable(struct dw_xpcs_qcom *qxpcs)
++{
++	int ret = 0;
++
++	ret = request_irq(qxpcs->pcs_fusa_intr, qcom_xpcs_fusa_isr,
++			  IRQF_SHARED, "xpcs-fusa", qxpcs);
++	if (ret)
++		pr_err("Unable to register XPCS IRQ %d\n",
++		       qxpcs->pcs_fusa_intr);
++
++	return ret;
++}
++
++static void qcom_xpcs_fusa_intr_disable(struct dw_xpcs_qcom *qxpcs)
++{
++	if (qxpcs->pcs_fusa_intr) {
++		free_irq(qxpcs->pcs_fusa_intr, qxpcs);
++		qxpcs->pcs_fusa_error_count = 0x0;
++		qcom_xpcs_write(qxpcs, DW_VR_XS_PCS_SFTY_DISABLE, 0x1);
++	}
++}
++
++static int qcom_xpcs_enable(struct phylink_pcs *pcs)
++{
++	struct dw_xpcs_qcom *qxpcs = phylink_pcs_to_xpcs(pcs);
++	int ret = 0;
++
++	if (qxpcs->pcs_fusa_intr)
++		ret = qcom_xpcs_fusa_intr_enable(qxpcs);
++
++	return ret;
++}
++
++static void qcom_xpcs_disable(struct phylink_pcs *pcs)
++{
++	struct dw_xpcs_qcom *qxpcs = phylink_pcs_to_xpcs(pcs);
++
++	if (qxpcs->pcs_fusa_intr)
++		qcom_xpcs_fusa_intr_disable(qxpcs);
++}
++
++void qcom_xpcs_get_err_stats(struct phylink_pcs *pcs, unsigned long *ptr)
++{
++	struct dw_xpcs_qcom *qxpcs = phylink_pcs_to_xpcs(pcs);
++
++	*ptr = qxpcs->pcs_fusa_error_count;
++}
++EXPORT_SYMBOL_GPL(qcom_xpcs_get_err_stats);
++
+ void qcom_xpcs_link_up_usxgmii(struct dw_xpcs_qcom *qxpcs, int speed)
+ {
+ 	int mmd_ctrl;
+@@ -527,6 +643,12 @@ void qcom_xpcs_link_up_usxgmii(struct dw_xpcs_qcom *qxpcs, int speed)
+ 	if (mmd_ctrl < 0)
+ 		goto out;
+ 
++	if (qxpcs->pcs_fusa_intr) {
++		/* enable PCS FUSA only when link is up*/
++		qcom_xpcs_write(qxpcs, DW_VR_XS_PCS_SFTY_DISABLE, 0x0);
++		/* Reset Fusa Error for all Link down/up */
++		qxpcs->pcs_fusa_error_count = 0x0;
++	}
+ 	XPCSINFO("USXGMII link is up\n");
+ 	return;
+ read_err:
+@@ -677,6 +799,8 @@ static const struct phylink_pcs_ops qcom_xpcs_phylink_ops = {
+ 	.pcs_validate = qcom_xpcs_validate,
+ 	.pcs_config = qcom_xpcs_config,
+ 	.pcs_get_state = qcom_xpcs_get_state,
++	.pcs_enable = qcom_xpcs_enable,
++	.pcs_disable = qcom_xpcs_disable,
+ };
+ 
+ struct phylink_pcs *qcom_xpcs_create(struct device_node *np, phy_interface_t interface)
+@@ -868,6 +992,10 @@ static int qcom_xpcs_probe(struct platform_device *pdev)
+ 			qxpcs->intr_en = true;
+ 	}
+ 
++	qxpcs->pcs_fusa_intr = platform_get_irq_byname_optional(pdev, "sfty");
++	if (qxpcs->pcs_fusa_intr < 0)
++		pr_info("XPCS FUSA IRQ is not enabled\n");
++
+ 	platform_set_drvdata(pdev, qxpcs);
+ 
+ 	return 0;
+diff --git a/drivers/net/pcs/pcs-xpcs-qcom.h b/drivers/net/pcs/pcs-xpcs-qcom.h
+index 5d3d3cf44c52..b06711d14a6f 100644
+--- a/drivers/net/pcs/pcs-xpcs-qcom.h
++++ b/drivers/net/pcs/pcs-xpcs-qcom.h
+@@ -2,7 +2,7 @@
+ /*
+  * Synopsys DesignWare XPCS platform device driver
+  *
+- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
++ * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+  */
+ 
+ #include <linux/pcs-xpcs-qcom.h>
+@@ -20,6 +20,13 @@
+ #define DW_VR_XS_PCS_DIG_STS		0x2040 /* SWI name: EMAC0_VR_XS_PCS_DIG_STS */
+ #define DW_RXFIFO_ERR			GENMASK(6, 5)
+ #define DW_R2TLBE				BIT(14)
++#define DW_SR_XS_PCS_STS1		BIT(2)
++
++/* SWI name: EMAC0_VR_XS_PCS_SFTY_UE_INTR0 */
++#define DW_VR_XS_PCS_SFTY_UE_INTR0		0x23C0
++/* SWI name EMAC0_VR_XS_PCS_SFTY_DISABLE*/
++#define DW_VR_XS_PCS_SFTY_DISABLE		0x23D0
++
+ 
+ /* SR_MII */
+ #define DW_FULL_DUPLEX			BIT(8)
+diff --git a/include/linux/pcs-xpcs-qcom.h b/include/linux/pcs-xpcs-qcom.h
+index 5d526a04780c..08b8ab8011c5 100644
+--- a/include/linux/pcs-xpcs-qcom.h
++++ b/include/linux/pcs-xpcs-qcom.h
+@@ -22,6 +22,8 @@ struct dw_xpcs_qcom {
+ 	struct phylink_pcs pcs;
+ 	void __iomem *addr;
+ 	int pcs_intr;
++	int pcs_fusa_intr;
++	int pcs_fusa_error_count;
+ 	bool intr_en;
+ 	bool needs_aneg;
+ 	int phy_interface;
+@@ -32,4 +34,7 @@ struct phylink_pcs *qcom_xpcs_create(struct device_node *np,
+ void qcom_xpcs_link_up(struct phylink_pcs *pcs, unsigned int mode,
+ 		  phy_interface_t interface, int speed, int duplex);
+ void qcom_xpcs_destroy(struct phylink_pcs *pcs);
++
++void qcom_xpcs_get_err_stats(struct phylink_pcs *pcs, unsigned long *ptr);
++
+ #endif /* __LINUX_PCS_XPCS_QCOM_H */

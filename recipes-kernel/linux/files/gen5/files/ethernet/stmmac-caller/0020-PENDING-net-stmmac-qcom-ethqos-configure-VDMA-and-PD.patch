@@ -1,0 +1,485 @@
+From 6ffa41c8f70dff14042385f7e64c7d886996b4a4 Mon Sep 17 00:00:00 2001
+From: Sagar Cheluvegowda <scheluve@qti.qualcomm.com>
+Date: Tue, 14 Apr 2026 12:19:33 -0700
+Subject: [PATCH 20/28] PENDING: net: stmmac: qcom-ethqos: configure VDMA and
+ PDMA channel mappings via device tree
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Currently, the Hardware DMA (HDMA) channel mappings for both TX and RX are
+hardcoded in the qcom-ethqos driver. This limits the flexibility to
+support different mapping requirements across various platforms.
+
+This patch makes the HDMA channel mappings fully configurable
+by introducing separate mappings for VDMA (Virtual DMA) and
+PDMA (Physical DMA). Specifically, this patch:
+
+1. Modifies `qcom_ethqos_hdma_cfg()` to dynamically parse the
+separate VDMA and PDMA channel mappings from the device tree
+using the `qcom,tx-pdma-map`, `qcom,rx-pdma-map`,
+`qcom,tx-vdma-map`, and `qcom,rx-vdma-map` properties.
+2. Ensures these parsed, separate mappings are correctly
+utilized during DMA initialization to establish the proper
+physical-to-virtual channel relationships.
+3.  Updates `dwxgmac2_config_cbs()` in the core driver to handle
+HDMA accurately. When HDMA is enabled, Credit Based Shaper (CBS)
+parameters are managed at the Traffic Class (TC) level rather
+than per MTL queue. This patch updates the function to utilize
+the proper physical DMA (PDMA) mapping—which corresponds to the
+correct TC—instead of the queue index. By routing the configuration
+through the mapped PDMA channel, we ensure that the correct TC
+is selected and the CBS parameters are accurately programmed for
+the underlying hardware queues.
+
+Change-Id: I559137afaafee8166a613d77fa8b2edec46ea0e3
+Signed-off-by: Sagar Cheluvegowda <scheluve@qti.qualcomm.com>
+---
+ .../net/ethernet/stmicro/stmmac/dw25gmac.c    |  61 +++++++--
+ .../stmicro/stmmac/dwmac-qcom-ethqos.c        | 120 +++++++++++++-----
+ .../net/ethernet/stmicro/stmmac/stmmac_tc.c   |  87 ++++++++-----
+ include/linux/stmmac.h                        |   6 +
+ 4 files changed, 197 insertions(+), 77 deletions(-)
+
+diff --git a/drivers/net/ethernet/stmicro/stmmac/dw25gmac.c b/drivers/net/ethernet/stmicro/stmmac/dw25gmac.c
+index e6ead78cade9e..c548e1e773c5c 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/dw25gmac.c
++++ b/drivers/net/ethernet/stmicro/stmmac/dw25gmac.c
+@@ -1,6 +1,7 @@
+ // SPDX-License-Identifier: GPL-2.0-only
+ /*
+  * Copyright (c) 2024 Broadcom Corporation
++ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+  */
+ #include "stmmac.h"
+ #include "dwxgmac2.h"
+@@ -109,9 +110,18 @@ void dw25gmac_dma_init_tx_chan(struct stmmac_priv *priv,
+ 			       dma_addr_t dma_addr, u32 chan)
+ {
+ 	const struct dwxgmac_addrs *dwxgmac_addrs = priv->plat->dwxgmac_addrs;
+-	u32 tc = (dma_cfg->tx_pdma_custom_map ? dma_cfg->tx_pdma_map[chan] : chan);
++	u32 tc_pdma_map, tc_vdma_map, numtc;
+ 	u32 value;
+ 
++	numtc = priv->dma_cap.numtc;
++	if (!numtc) {
++		dev_err(priv->device, "numtc is 0, cannot compute TC mapping\n");
++		return;
++	}
++
++	tc_pdma_map = (dma_cfg->tx_pdma_custom_map ? dma_cfg->tx_pdma_map[chan] : chan % numtc);
++	tc_vdma_map = (dma_cfg->tx_vdma_custom_map ? dma_cfg->tx_vdma_map[chan] : chan % numtc);
++
+ 	/* Descriptor cache size and prefetch threshold size */
+ 	value = rd_dma_ch_ind(ioaddr, MODE_TXDESCCTRL, chan);
+ 	value &= ~XXVGMAC_TXDCSZ;
+@@ -124,7 +134,7 @@ void dw25gmac_dma_init_tx_chan(struct stmmac_priv *priv,
+ 	/* PDMA to TC mapping */
+ 	value = rd_dma_ch_ind(ioaddr, MODE_TXEXTCFG, chan);
+ 	value &= ~XXVGMAC_TP2TCMP;
+-	value |= FIELD_PREP(XXVGMAC_TP2TCMP, tc);
++	value |= FIELD_PREP(XXVGMAC_TP2TCMP, tc_pdma_map);
+ 	if (dma_cfg->orrq)
+ 		value |= FIELD_PREP(XXVGMAC_ORRQ, dma_cfg->orrq);
+ 	wr_dma_ch_ind(ioaddr, MODE_TXEXTCFG, chan, value);
+@@ -132,7 +142,7 @@ void dw25gmac_dma_init_tx_chan(struct stmmac_priv *priv,
+ 	/* VDMA to TC mapping */
+ 	value = readl(ioaddr + XGMAC_DMA_CH_TX_CONTROL(dwxgmac_addrs, chan));
+ 	value &= ~XXVGMAC_TVDMA2TCMP;
+-	value |= FIELD_PREP(XXVGMAC_TVDMA2TCMP, tc);
++	value |= FIELD_PREP(XXVGMAC_TVDMA2TCMP, tc_vdma_map);
+ 	writel(value, ioaddr + XGMAC_DMA_CH_TX_CONTROL(dwxgmac_addrs, chan));
+ 
+ 	writel(upper_32_bits(dma_addr),
+@@ -147,9 +157,18 @@ void dw25gmac_dma_init_rx_chan(struct stmmac_priv *priv,
+ 			       dma_addr_t dma_addr, u32 chan)
+ {
+ 	const struct dwxgmac_addrs *dwxgmac_addrs = priv->plat->dwxgmac_addrs;
+-	u32 tc = (dma_cfg->rx_pdma_custom_map ? dma_cfg->rx_pdma_map[chan] : chan);
++	u32 tc_pdma_map, tc_vdma_map, numtc;
+ 	u32 value;
+ 
++	numtc = priv->dma_cap.numtc;
++	if (!numtc) {
++		dev_err(priv->device, "numtc is 0, cannot compute TC mapping\n");
++		return;
++	}
++
++	tc_pdma_map = (dma_cfg->rx_pdma_custom_map ? dma_cfg->rx_pdma_map[chan] : chan % numtc);
++	tc_vdma_map = (dma_cfg->rx_vdma_custom_map ? dma_cfg->rx_vdma_map[chan] : chan % numtc);
++
+ 	/* Descriptor cache size and prefetch threshold size */
+ 	value = rd_dma_ch_ind(ioaddr, MODE_RXDESCCTRL, chan);
+ 	value &= ~XXVGMAC_RXDCSZ;
+@@ -162,7 +181,7 @@ void dw25gmac_dma_init_rx_chan(struct stmmac_priv *priv,
+ 	/* PDMA to TC mapping */
+ 	value = rd_dma_ch_ind(ioaddr, MODE_RXEXTCFG, chan);
+ 	value &= ~XXVGMAC_RP2TCMP;
+-	value |= FIELD_PREP(XXVGMAC_RP2TCMP, tc);
++	value |= FIELD_PREP(XXVGMAC_RP2TCMP, tc_pdma_map);
+ 	if (dma_cfg->owrq)
+ 		value |= FIELD_PREP(XXVGMAC_OWRQ, dma_cfg->owrq);
+ 	value |= XXVGMAC_RXPEN;
+@@ -171,7 +190,7 @@ void dw25gmac_dma_init_rx_chan(struct stmmac_priv *priv,
+ 	/* VDMA to TC mapping */
+ 	value = readl(ioaddr + XGMAC_DMA_CH_RX_CONTROL(dwxgmac_addrs, chan));
+ 	value &= ~XXVGMAC_RVDMA2TCMP;
+-	value |= FIELD_PREP(XXVGMAC_RVDMA2TCMP, tc);
++	value |= FIELD_PREP(XXVGMAC_RVDMA2TCMP, tc_vdma_map);
+ 	writel(value, ioaddr + XGMAC_DMA_CH_RX_CONTROL(dwxgmac_addrs, chan));
+ 
+ 	writel(upper_32_bits(dma_addr),
+@@ -186,19 +205,28 @@ void dw25gmac_dma_map_tx_offline_chan(struct stmmac_priv *priv,
+ 				      u32 chan)
+ {
+ 	const struct dwxgmac_addrs *dwxgmac_addrs = priv->plat->dwxgmac_addrs;
+-	u32 tc = (dma_cfg->tx_pdma_custom_map ? dma_cfg->tx_pdma_map[chan] : chan);
++	u32 tc_pdma_map, tc_vdma_map, numtc;
+ 	u32 value;
+ 
++	numtc = priv->dma_cap.numtc;
++	if (!numtc) {
++		dev_err(priv->device, "numtc is 0, cannot compute TC mapping\n");
++		return;
++	}
++
++	tc_pdma_map = (dma_cfg->tx_pdma_custom_map ? dma_cfg->tx_pdma_map[chan] : chan % numtc);
++	tc_vdma_map = (dma_cfg->tx_vdma_custom_map ? dma_cfg->tx_vdma_map[chan] : chan % numtc);
++
+ 	/* PDMA to TC mapping for channels that are offline */
+ 	value = rd_dma_ch_ind(ioaddr, MODE_TXEXTCFG, chan);
+ 	value &= ~XXVGMAC_TP2TCMP;
+-	value |= FIELD_PREP(XXVGMAC_TP2TCMP, tc);
++	value |= FIELD_PREP(XXVGMAC_TP2TCMP, tc_pdma_map);
+ 	wr_dma_ch_ind(ioaddr, MODE_TXEXTCFG, chan, value);
+ 
+ 	/* VDMA to TC mapping for channels that are offline */
+ 	value = readl(ioaddr + XGMAC_DMA_CH_TX_CONTROL(dwxgmac_addrs, chan));
+ 	value &= ~XXVGMAC_TVDMA2TCMP;
+-	value |= FIELD_PREP(XXVGMAC_TVDMA2TCMP, tc);
++	value |= FIELD_PREP(XXVGMAC_TVDMA2TCMP, tc_vdma_map);
+ 	writel(value, ioaddr + XGMAC_DMA_CH_TX_CONTROL(dwxgmac_addrs, chan));
+ }
+ 
+@@ -208,19 +236,28 @@ void dw25gmac_dma_map_rx_offline_chan(struct stmmac_priv *priv,
+ 				      u32 chan)
+ {
+ 	const struct dwxgmac_addrs *dwxgmac_addrs = priv->plat->dwxgmac_addrs;
+-	u32 tc = (dma_cfg->rx_pdma_custom_map ? dma_cfg->rx_pdma_map[chan] : chan);
++	u32 tc_pdma_map, tc_vdma_map, numtc;
+ 	u32 value;
+ 
++	numtc = priv->dma_cap.numtc;
++	if (!numtc) {
++		dev_err(priv->device, "numtc is 0, cannot compute TC mapping\n");
++		return;
++	}
++
++	tc_pdma_map = (dma_cfg->rx_pdma_custom_map ? dma_cfg->rx_pdma_map[chan] : chan % numtc);
++	tc_vdma_map = (dma_cfg->rx_vdma_custom_map ? dma_cfg->rx_vdma_map[chan] : chan % numtc);
++
+ 	/* PDMA to TC mapping for channels that are offline */
+ 	value = rd_dma_ch_ind(ioaddr, MODE_RXEXTCFG, chan);
+ 	value &= ~XXVGMAC_RP2TCMP;
+-	value |= FIELD_PREP(XXVGMAC_RP2TCMP, tc);
++	value |= FIELD_PREP(XXVGMAC_RP2TCMP, tc_pdma_map);
+ 	wr_dma_ch_ind(ioaddr, MODE_RXEXTCFG, chan, value);
+ 
+ 	/* VDMA to TC mapping for channels that are offline */
+ 	value = readl(ioaddr + XGMAC_DMA_CH_RX_CONTROL(dwxgmac_addrs, chan));
+ 	value &= ~XXVGMAC_RVDMA2TCMP;
+-	value |= FIELD_PREP(XXVGMAC_RVDMA2TCMP, tc);
++	value |= FIELD_PREP(XXVGMAC_RVDMA2TCMP, tc_vdma_map);
+ 	writel(value, ioaddr + XGMAC_DMA_CH_RX_CONTROL(dwxgmac_addrs, chan));
+ }
+ 
+diff --git a/drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c b/drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c
+index 851241abbd307..bd04210c59fe1 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c
++++ b/drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c
+@@ -839,8 +839,45 @@ static void ethqos_ptp_clk_freq_config(struct stmmac_priv *priv)
+ 	netdev_dbg(priv->dev, "PTP rate %lu\n", plat_dat->clk_ptp_rate);
+ }
+ 
+-static void qcom_ethqos_hdma_cfg(struct plat_stmmacenet_data *plat)
++static void qcom_ethqos_get_queue_and_tc_from_vdma(struct stmmac_priv *priv,
++						   u32 vdma_ch,
++						   unsigned long *queue_mask,
++						   u32 *tc)
+ {
++	u32 tx_queues_cnt = priv->plat->tx_queues_to_use;
++	int i;
++
++	*queue_mask = 0;
++
++	if (vdma_ch >= MTL_MAX_TX_QUEUES) {
++		netdev_err(priv->dev, "VDMA channel %u out of range\n", vdma_ch);
++		return;
++	}
++
++	/* Look up the TC this VDMA channel is mapped to */
++	*tc = priv->plat->dma_cfg->tx_vdma_map[vdma_ch];
++
++	/* Find all PDMA channels mapped to the same TC as the VDMA channel.
++	 * A TC can map to multiple PDMA channels (1:many). Since PDMA channels
++	 * and TX queues have a 1:1 correspondence, each matching PDMA channel
++	 * index is set as a bit in queue_mask.
++	 */
++	for (i = 0; i < tx_queues_cnt; i++) {
++		if (priv->plat->dma_cfg->tx_pdma_map[i] == *tc)
++			*queue_mask |= BIT(i);
++	}
++
++	if (!*queue_mask)
++		netdev_warn(priv->dev, "No PDMA channel found for VDMA %u (TC %u)\n",
++			    vdma_ch, *tc);
++}
++
++static int qcom_ethqos_hdma_cfg(struct platform_device *pdev, struct plat_stmmacenet_data *plat)
++{
++	struct device_node *np = pdev->dev.of_node;
++	u32 map[STMMAC_CH_MAX];
++	int count, i;
++
+ 	plat->dma_cfg->orrq = 15;
+ 	plat->dma_cfg->owrq = 15;
+ 	plat->dma_cfg->txdcsz = 4;
+@@ -848,33 +885,51 @@ static void qcom_ethqos_hdma_cfg(struct plat_stmmacenet_data *plat)
+ 	plat->dma_cfg->rxdcsz = 4;
+ 	plat->dma_cfg->rdps = 1;
+ 
+-	plat->dma_cfg->tx_pdma_custom_map = true;
+-	plat->dma_cfg->tx_pdma_map[0] = 0;
+-	plat->dma_cfg->tx_pdma_map[1] = 1;
+-	plat->dma_cfg->tx_pdma_map[2] = 2;
+-	plat->dma_cfg->tx_pdma_map[3] = 3;
+-	plat->dma_cfg->tx_pdma_map[4] = 4;
+-	plat->dma_cfg->tx_pdma_map[5] = 5;
+-	plat->dma_cfg->tx_pdma_map[6] = 5;
+-	plat->dma_cfg->tx_pdma_map[7] = 6;
+-	plat->dma_cfg->tx_pdma_map[8] = 6;
+-	plat->dma_cfg->tx_pdma_map[9] = 6;
+-	plat->dma_cfg->tx_pdma_map[10] = 7;
+-	plat->dma_cfg->tx_pdma_map[11] = 7;
+-
+-	plat->dma_cfg->rx_pdma_custom_map = true;
+-	plat->dma_cfg->rx_pdma_map[0] = 0;
+-	plat->dma_cfg->rx_pdma_map[1] = 1;
+-	plat->dma_cfg->rx_pdma_map[2] = 2;
+-	plat->dma_cfg->rx_pdma_map[3] = 3;
+-	plat->dma_cfg->rx_pdma_map[4] = 4;
+-	plat->dma_cfg->rx_pdma_map[5] = 5;
+-	plat->dma_cfg->rx_pdma_map[6] = 5;
+-	plat->dma_cfg->rx_pdma_map[7] = 6;
+-	plat->dma_cfg->rx_pdma_map[8] = 6;
+-	plat->dma_cfg->rx_pdma_map[9] = 6;
+-	plat->dma_cfg->rx_pdma_map[10] = 7;
+-	plat->dma_cfg->rx_pdma_map[11] = 7;
++	count = of_property_count_u32_elems(np, "qcom,tx-pdma-map");
++	if (count > 0 && count <= STMMAC_CH_MAX &&
++	    !of_property_read_u32_array(np, "qcom,tx-pdma-map", map, count)) {
++		plat->dma_cfg->tx_pdma_custom_map = true;
++		for (i = 0; i < count; i++)
++			plat->dma_cfg->tx_pdma_map[i] = map[i];
++	} else {
++		dev_err(&pdev->dev, "Tx PDMA map not defined falling back to default config\n");
++		return -EINVAL;
++	}
++
++	count = of_property_count_u32_elems(np, "qcom,rx-pdma-map");
++	if (count > 0 && count <= STMMAC_CH_MAX &&
++	    !of_property_read_u32_array(np, "qcom,rx-pdma-map", map, count)) {
++		plat->dma_cfg->rx_pdma_custom_map = true;
++		for (i = 0; i < count; i++)
++			plat->dma_cfg->rx_pdma_map[i] = map[i];
++	} else {
++		dev_err(&pdev->dev, "Rx PDMA map not defined falling back to default config\n");
++		return -EINVAL;
++	}
++
++	count = of_property_count_u32_elems(np, "qcom,tx-vdma-map");
++	if (count > 0 && count <= STMMAC_CH_MAX &&
++	    !of_property_read_u32_array(np, "qcom,tx-vdma-map", map, count)) {
++		plat->dma_cfg->tx_vdma_custom_map = true;
++		for (i = 0; i < count; i++)
++			plat->dma_cfg->tx_vdma_map[i] = map[i];
++	} else {
++		dev_err(&pdev->dev, "Tx VDMA map not defined falling back to default config\n");
++		return -EINVAL;
++	}
++
++	count = of_property_count_u32_elems(np, "qcom,rx-vdma-map");
++	if (count > 0 && count <= STMMAC_CH_MAX &&
++	    !of_property_read_u32_array(np, "qcom,rx-vdma-map", map, count)) {
++		plat->dma_cfg->rx_vdma_custom_map = true;
++		for (i = 0; i < count; i++)
++			plat->dma_cfg->rx_vdma_map[i] = map[i];
++	} else {
++		dev_err(&pdev->dev, "Rx VDMA map not defined falling back to default config\n");
++		return -EINVAL;
++	}
++
++	return 0;
+ }
+ 
+ static int qcom_ethqos_probe(struct platform_device *pdev)
+@@ -989,8 +1044,13 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
+ 		plat_dat->core_type = DWMAC_CORE_XGMAC;
+ 		plat_dat->dwxgmac_addrs = &data->dwxgmac_addrs;
+ 		plat_dat->has_hdma = data->has_hdma;
+-		if (plat_dat->has_hdma)
+-			qcom_ethqos_hdma_cfg(plat_dat);
++		if (plat_dat->has_hdma) {
++			ret = qcom_ethqos_hdma_cfg(pdev, plat_dat);
++			if (ret)
++				return ret;
++			plat_dat->get_queue_and_tc_from_vdma =
++				qcom_ethqos_get_queue_and_tc_from_vdma;
++		}
+ 	}
+ 	if (of_property_read_bool(np, "snps,tso"))
+ 		plat_dat->flags |= STMMAC_FLAG_TSO_EN;
+diff --git a/drivers/net/ethernet/stmicro/stmmac/stmmac_tc.c b/drivers/net/ethernet/stmicro/stmmac/stmmac_tc.c
+index 14cabe76e53ec..a0a8c7604b997 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/stmmac_tc.c
++++ b/drivers/net/ethernet/stmicro/stmmac/stmmac_tc.c
+@@ -335,7 +335,9 @@ static int tc_setup_cbs(struct stmmac_priv *priv,
+ 	u32 tx_queues_count = priv->plat->tx_queues_to_use;
+ 	s64 port_transmit_rate_kbps;
+ 	u32 queue = qopt->queue;
++	unsigned long queue_mask = BIT(queue);
+ 	u32 mode_to_use;
++	u32 tc = queue;
+ 	u64 value;
+ 	u32 ptr;
+ 	int ret;
+@@ -346,6 +348,16 @@ static int tc_setup_cbs(struct stmmac_priv *priv,
+ 	if (!priv->dma_cap.av)
+ 		return -EOPNOTSUPP;
+ 
++	/* With HDMA, the queue number from userspace identifies a VDMA channel,
++	 * not a physical queue. Resolve it to the corresponding hardware queue
++	 * mask and TC before applying the CBS configuration.
++	 */
++	if (priv->plat->has_hdma) {
++		priv->plat->get_queue_and_tc_from_vdma(priv, queue, &queue_mask, &tc);
++		if (!queue_mask)
++			return -EINVAL;
++	}
++
+ 	port_transmit_rate_kbps = qopt->idleslope - qopt->sendslope;
+ 
+ 	if (qopt->enable) {
+@@ -372,48 +384,53 @@ static int tc_setup_cbs(struct stmmac_priv *priv,
+ 		ptr = 0;
+ 	}
+ 
+-	mode_to_use = priv->plat->tx_queues_cfg[queue].mode_to_use;
+-	if (mode_to_use == MTL_QUEUE_DCB && qopt->enable) {
+-		ret = stmmac_dma_qmode(priv, priv->ioaddr, queue, MTL_QUEUE_AVB);
+-		if (ret)
+-			return ret;
+-
+-		priv->plat->tx_queues_cfg[queue].mode_to_use = MTL_QUEUE_AVB;
+-	} else if (!qopt->enable) {
+-		ret = stmmac_dma_qmode(priv, priv->ioaddr, queue,
+-				       MTL_QUEUE_DCB);
+-		if (ret)
+-			return ret;
++	for_each_set_bit(queue, &queue_mask, tx_queues_count) {
++		mode_to_use = priv->plat->tx_queues_cfg[queue].mode_to_use;
++		if (mode_to_use == MTL_QUEUE_DCB && qopt->enable) {
++			ret = stmmac_dma_qmode(priv, priv->ioaddr, queue, MTL_QUEUE_AVB);
++			if (ret)
++				return ret;
++
++			priv->plat->tx_queues_cfg[queue].mode_to_use = MTL_QUEUE_AVB;
++		} else if (!qopt->enable) {
++			ret = stmmac_dma_qmode(priv, priv->ioaddr, queue,
++					       MTL_QUEUE_DCB);
++			if (ret)
++				return ret;
++
++			priv->plat->tx_queues_cfg[queue].mode_to_use = MTL_QUEUE_DCB;
++			continue;
++		}
+ 
+-		priv->plat->tx_queues_cfg[queue].mode_to_use = MTL_QUEUE_DCB;
+-		return 0;
+-	}
++		/* Final adjustments for HW */
++		value = div_s64(qopt->idleslope * 1024ll * ptr, port_transmit_rate_kbps);
++		priv->plat->tx_queues_cfg[queue].idle_slope = value & GENMASK(31, 0);
+ 
+-	/* Final adjustments for HW */
+-	value = div_s64(qopt->idleslope * 1024ll * ptr, port_transmit_rate_kbps);
+-	priv->plat->tx_queues_cfg[queue].idle_slope = value & GENMASK(31, 0);
++		value = div_s64(-qopt->sendslope * 1024ll * ptr, port_transmit_rate_kbps);
++		priv->plat->tx_queues_cfg[queue].send_slope = value & GENMASK(31, 0);
+ 
+-	value = div_s64(-qopt->sendslope * 1024ll * ptr, port_transmit_rate_kbps);
+-	priv->plat->tx_queues_cfg[queue].send_slope = value & GENMASK(31, 0);
++		value = qopt->hicredit * 1024ll * 8;
++		priv->plat->tx_queues_cfg[queue].high_credit = value & GENMASK(31, 0);
+ 
+-	value = qopt->hicredit * 1024ll * 8;
+-	priv->plat->tx_queues_cfg[queue].high_credit = value & GENMASK(31, 0);
++		value = qopt->locredit * 1024ll * 8;
++		priv->plat->tx_queues_cfg[queue].low_credit = value & GENMASK(31, 0);
+ 
+-	value = qopt->locredit * 1024ll * 8;
+-	priv->plat->tx_queues_cfg[queue].low_credit = value & GENMASK(31, 0);
++		ret = stmmac_config_cbs(priv, priv->hw,
++					priv->plat->tx_queues_cfg[queue].send_slope,
++					priv->plat->tx_queues_cfg[queue].idle_slope,
++					priv->plat->tx_queues_cfg[queue].high_credit,
++					priv->plat->tx_queues_cfg[queue].low_credit,
++					tc);
++		if (ret)
++			return ret;
+ 
+-	ret = stmmac_config_cbs(priv, priv->hw,
+-				priv->plat->tx_queues_cfg[queue].send_slope,
+-				priv->plat->tx_queues_cfg[queue].idle_slope,
+-				priv->plat->tx_queues_cfg[queue].high_credit,
+-				priv->plat->tx_queues_cfg[queue].low_credit,
+-				queue);
+-	if (ret)
+-		return ret;
++		dev_info(priv->device, "CBS %s %d: send %d, idle %d, hi %d, lo %d\n",
++			 priv->plat->has_hdma ? "TC" : "queue",
++			 priv->plat->has_hdma ? tc : queue,
++			 qopt->sendslope, qopt->idleslope,
++			 qopt->hicredit, qopt->locredit);
++	}
+ 
+-	dev_info(priv->device, "CBS queue %d: send %d, idle %d, hi %d, lo %d\n",
+-			queue, qopt->sendslope, qopt->idleslope,
+-			qopt->hicredit, qopt->locredit);
+ 	return 0;
+ }
+ 
+diff --git a/include/linux/stmmac.h b/include/linux/stmmac.h
+index 485faecae0d0e..599257ccbc6ce 100644
+--- a/include/linux/stmmac.h
++++ b/include/linux/stmmac.h
+@@ -136,6 +136,10 @@ struct stmmac_dma_cfg {
+ 	bool rx_pdma_custom_map;
+ 	u8 tx_pdma_map[MTL_MAX_TX_QUEUES];
+ 	u8 rx_pdma_map[MTL_MAX_RX_QUEUES];
++	bool tx_vdma_custom_map;
++	bool rx_vdma_custom_map;
++	u8 tx_vdma_map[MTL_MAX_TX_QUEUES];
++	u8 rx_vdma_map[MTL_MAX_RX_QUEUES];
+ };
+ 
+ #define AXI_BLEN	7
+@@ -319,6 +323,8 @@ struct plat_stmmacenet_data {
+ 	int (*suspend)(struct device *dev, void *priv);
+ 	int (*resume)(struct device *dev, void *priv);
+ 	int (*mac_setup)(void *priv, struct mac_device_info *mac);
++	void (*get_queue_and_tc_from_vdma)(struct stmmac_priv *priv, u32 vdma_ch,
++					   unsigned long *queue_mask, u32 *tc);
+ 	int (*clks_config)(void *priv, bool enabled);
+ 	int (*crosststamp)(ktime_t *device, struct system_counterval_t *system,
+ 			   void *ctx);

@@ -1,0 +1,27 @@
+From 2d8a040d3a9fa724e82b049940961c428a77ee11 Mon Sep 17 00:00:00 2001
+From: Sagar Cheluvegowda <quic_scheluve@quicinc.com>
+Date: Thu, 23 Jan 2025 12:26:42 -0800
+Subject: [PATCH 05/16] PENDING: net: PCS: Call PCS link up sequence for
+ 10GBASER
+
+Call PCS link up sequence for 10GBASER.
+
+Change-Id: I25ccb9c3e2348c779b1a68f780d555ee80904f5a
+Signed-off-by: Sagar Cheluvegowda <quic_scheluve@quicinc.com>
+(cherry picked from commit c99aef7d3bf8030fd279c7f9de4ec8c807fb9a2a)
+---
+ drivers/net/pcs/pcs-xpcs-qcom.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/drivers/net/pcs/pcs-xpcs-qcom.c b/drivers/net/pcs/pcs-xpcs-qcom.c
+index 37caf6256797..4795e0c9a582 100644
+--- a/drivers/net/pcs/pcs-xpcs-qcom.c
++++ b/drivers/net/pcs/pcs-xpcs-qcom.c
+@@ -574,6 +574,7 @@ void qcom_xpcs_link_up(struct phylink_pcs *pcs, unsigned int mode,
+ 
+ 	switch (interface) {
+ 	case PHY_INTERFACE_MODE_USXGMII:
++	case PHY_INTERFACE_MODE_10GBASER:
+ 	case PHY_INTERFACE_MODE_5GBASER:
+ 		qcom_xpcs_link_up_usxgmii(qxpcs, speed);
+ 		break;

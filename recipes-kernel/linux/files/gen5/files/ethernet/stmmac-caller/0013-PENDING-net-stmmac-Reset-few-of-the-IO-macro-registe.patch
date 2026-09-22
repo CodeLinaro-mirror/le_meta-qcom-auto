@@ -1,0 +1,66 @@
+From cbb392530e9b09ad27a68bf5a85473d746cbc491 Mon Sep 17 00:00:00 2001
+From: Sagar Cheluvegowda <quic_scheluve@quicinc.com>
+Date: Mon, 7 Apr 2025 17:47:15 -0700
+Subject: [PATCH 13/28] PENDING: net: stmmac: Reset few of the IO macro
+ registers to POR values before programming
+
+1. Add support for resetting IO macro registers to POR values
+in case of USXGMII interface
+2. Remove few of the registers from resetting to POR values.
+
+Change-Id: Ifc20f531df75bff6a1803526720309ba2a3563ef
+Signed-off-by: Sagar Cheluvegowda <quic_scheluve@quicinc.com>
+---
+ .../stmicro/stmmac/dwmac-qcom-ethqos.c        | 22 ++++++++++++-------
+ 1 file changed, 14 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c b/drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c
+index c1ffb9cea4065..60fdb71ac38b3 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c
++++ b/drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c
+@@ -305,13 +305,13 @@ static const struct ethqos_emac_por emac_v4_0_0_por[] = {
+ };
+ 
+ static const struct ethqos_emac_por emac_v6_6_0_por[] = {
+-	{ .offset = RGMII_IO_MACRO_CONFIG,	.value = 0x40c04c03 },
+-	{ .offset = SDCC_HC_REG_DLL_CONFIG,	.value = 0xd642c },
+-	{ .offset = SDCC_HC_REG_DDR_CONFIG,	.value = 0x80040868 },
+-	{ .offset = SDCC_HC_REG_DLL_CONFIG2,	.value = 0xa001 },
+-	{ .offset = SDCC_USR_CTL,		.value = 0x90106c0 },
+-	{ .offset = RGMII_IO_MACRO_CONFIG2,	.value = 0x2200a0 },
+-	{ .offset = SDCC_TEST_CTL, .value = 0x90106c0 },
++	{ .offset = RGMII_IO_MACRO_CONFIG,	.value = 0xC04D03 },
++	{ .offset = SDCC_HC_REG_DLL_CONFIG,	.value = 0x2004642C },
++	{ .offset = SDCC_HC_REG_DDR_CONFIG,	.value = 0x80040800 },
++	{ .offset = SDCC_HC_REG_DLL_CONFIG2,	.value = 0x00200000 },
++	{ .offset = SDCC_USR_CTL,		.value = 0x00010800 },
++	{ .offset = RGMII_IO_MACRO_CONFIG2,	.value = 0x222060},
++	{ .offset = RGMII_IO_MACRO_SCRATCH_2, .value = 0x4c },
+ };
+ 
+ static const struct ethqos_emac_driver_data emac_v4_0_0_data = {
+@@ -655,9 +655,15 @@ static void ethqos_fix_mac_speed_usxgmii(void *bsp_priv,
+ 					 unsigned int mode)
+ {
+ 	struct qcom_ethqos *ethqos = bsp_priv;
++	unsigned int i;
+ 
+ 	qcom_ethqos_set_sgmii_loopback(ethqos, false);
+ 
++	/* Reset to POR values */
++	for (i = 0; i < ethqos->num_por; i++)
++		rgmii_writel(ethqos, ethqos->por[i].value,
++			     ethqos->por[i].offset);
++
+ 	ethqos_set_func_clk_en(ethqos);
+ 
+ 	rgmii_updatel(ethqos, RGMII_BYPASS_EN, RGMII_BYPASS_EN, RGMII_IO_MACRO_BYPASS);
+@@ -715,7 +721,7 @@ static void ethqos_fix_mac_speed_usxgmii(void *bsp_priv,
+ 			      RGMII_IO_MACRO_CONFIG);
+ 		rgmii_updatel(ethqos, RGMII_CONFIG2_MAX_SPD_PRG_3, BIT(20),
+ 			      RGMII_IO_MACRO_CONFIG2);
+-		rgmii_updatel(ethqos, RGMII_SCRATCH2_MAX_SPD_PRG_6, BIT(1),
++		rgmii_updatel(ethqos, RGMII_SCRATCH2_MAX_SPD_PRG_6, BIT(10),
+ 			      RGMII_IO_MACRO_SCRATCH_2);
+ 		break;
+ 

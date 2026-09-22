@@ -1,0 +1,44 @@
+From ed8341821a1e7c1a1db168faf8ba256ed6784e67 Mon Sep 17 00:00:00 2001
+From: Sagar Cheluvegowda <quic_scheluve@quicinc.com>
+Date: Mon, 6 Oct 2025 18:09:15 -0700
+Subject: [PATCH 17/28] PENDING: net: stmmac: Add NULL check for match data
+
+The qcom_ethqos_probe() function retrieves platform-specific data
+using of_device_get_match_data(). The returned pointer is then
+dereferenced without a preceding NULL check.
+
+If a new device is added to the of_device_id table without a
+corresponding .data field, of_device_get_match_data() will return
+NULL. This leads to a kernel panic from a NULL pointer dereference
+on the subsequent line.
+
+This commit adds a check to validate the data pointer immediately
+after the call. If the pointer is NULL, an error is logged and the
+probe function returns -ENODEV, preventing the crash and providing
+clear feedback for debugging.
+
+This ensures the driver probes safely and handles missing platform
+data gracefully.
+
+Change-Id: Id997429aa24032565b7e0c13a82daa901bca0a89
+Signed-off-by: Sagar Cheluvegowda <quic_scheluve@quicinc.com>
+---
+ drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c b/drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c
+index 458dde1d0e2a7..bef2e58ec5149 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c
++++ b/drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c
+@@ -932,6 +932,11 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
+ 	data = of_device_get_match_data(dev);
+ 	ethqos->rgmii_por = data->rgmii_por;
+ 	ethqos->num_rgmii_por = data->num_rgmii_por;
++	if (!data) {
++		dev_err(dev, "No match data found\n");
++		return -ENODEV;
++	}
++
+ 	ethqos->has_io_macro_ge_4 = data->has_io_macro_ge_4;
+ 	ethqos->rgmii_config_loopback_en = data->rgmii_config_loopback_en;
+ 	ethqos->has_emac_ge_3 = data->has_emac_ge_3;

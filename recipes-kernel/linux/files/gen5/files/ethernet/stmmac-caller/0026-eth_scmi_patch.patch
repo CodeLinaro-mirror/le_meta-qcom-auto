@@ -1,0 +1,446 @@
+From 8b2aa761f89056346019dee165de1c95598e2ff7 Mon Sep 17 00:00:00 2001
+From: Sagar Cheluvegowda <quic_scheluve@quicinc.com>
+Date: Thu, 3 Sep 2026 15:00:51 -0700
+Subject: [PATCH 26/28] eth_scmi_patch
+
+Change-Id: I43f01a2e7674973d316d82eb08d6c5c99d3633ee
+Signed-off-by: Sagar Cheluvegowda <scheluve@qti.qualcomm.com>
+---
+ .../stmicro/stmmac/dwmac-qcom-ethqos.c        | 309 +++++++++++++++++-
+ 1 file changed, 303 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c b/drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c
+index e0537fdc83995..650f8aad0be68 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c
++++ b/drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c
+@@ -7,6 +7,8 @@
+ #include <linux/platform_device.h>
+ #include <linux/phy.h>
+ #include <linux/phy/phy.h>
++#include <linux/pm_opp.h>
++#include <linux/pm_domain.h>
+ #include <linux/pcs-xpcs-qcom.h>
+ 
+ #include "stmmac.h"
+@@ -106,6 +108,13 @@
+ 
+ #define SGMII_10M_RX_CLK_DVDR			0x31
+ 
++enum domain_t {
++	POWER_CORE = 0,
++	POWER_CLK = 1,
++	PERF_SERDES = 2,
++	PERF_5G_SERDES = 3,
++};
++
+ struct ethqos_emac_por {
+ 	unsigned int offset;
+ 	unsigned int value;
+@@ -120,12 +129,14 @@ struct ethqos_emac_driver_data {
+ 	u8 dma_addr_width;
+ 	const char *link_clk_name;
+ 	u32 has_flags;
++	unsigned int ptp_clk_rate;
+ 	unsigned int axi_clk_rate;
+ 	struct dwmac4_addrs dwmac4_addrs;
+ 	bool needs_sgmii_loopback;
+ 	bool has_xgmac;
+ 	bool has_hdma;
+ 	bool has_io_macro_ge_4;
++	struct dev_pm_domain_attach_data pd_data;
+ };
+ 
+ struct qcom_ethqos {
+@@ -133,6 +144,7 @@ struct qcom_ethqos {
+ 	void __iomem *rgmii_base;
+ 	struct clk *link_clk;
+ 	struct phy *serdes_phy;
++	int serdes_speed;
+ 	phy_interface_t phy_mode;
+ 
+ 	const struct ethqos_emac_por *rgmii_por;
+@@ -144,6 +156,8 @@ struct qcom_ethqos {
+ 	bool rgmii_config_loopback_en;
+ 	bool has_emac_ge_3;
+ 	bool needs_sgmii_loopback;
++	bool use_domains;
++	struct dev_pm_domain_list *pd_list;
+ };
+ 
+ static u32 rgmii_readl(struct qcom_ethqos *ethqos, unsigned int offset)
+@@ -332,6 +346,7 @@ static const struct ethqos_emac_driver_data emac_v4_0_0_data = {
+ 	.has_flags = (STMMAC_FLAG_HAS_INTEGRATED_PCS | STMMAC_FLAG_SPH_DISABLE),
+ 	.needs_sgmii_loopback = true,
+ 	.dma_addr_width = 36,
++	.ptp_clk_rate = 230400000,
+ 	.dwmac4_addrs = {
+ 		.dma_chan = 0x00008100,
+ 		.dma_chan_offset = 0x1000,
+@@ -348,6 +363,11 @@ static const struct ethqos_emac_driver_data emac_v4_0_0_data = {
+ 		.mtl_low_cred = 0x00008024,
+ 		.mtl_low_cred_offset = 0x1000,
+ 	},
++	.pd_data = {
++		.pd_flags = PD_FLAG_NO_DEV_LINK,
++		.pd_names = (const char*[]) { "power_core", "power_mdio", "perf_serdes" },
++		.num_pd_names = 3,
++	},
+ };
+ 
+ static const struct ethqos_emac_driver_data emac_v6_6_0_data = {
+@@ -361,6 +381,7 @@ static const struct ethqos_emac_driver_data emac_v6_6_0_data = {
+ 	.needs_sgmii_loopback = true,
+ 	.has_io_macro_ge_4 = true,
+ 	.axi_clk_rate = 380000000,
++	.ptp_clk_rate = 250000000,
+ 	.dwxgmac_addrs = {
+ 		.dma_even_chan_base  = 0x00008500,
+ 		.dma_odd_chan_base = 0x00008580,
+@@ -371,8 +392,95 @@ static const struct ethqos_emac_driver_data emac_v6_6_0_data = {
+ 		.pps_base = 0x00007080,
+ 		.pps_offset = 0x10,
+ 	},
++	.pd_data = {
++		.pd_flags = PD_FLAG_NO_DEV_LINK,
++		.pd_names = (const char*[]) { "power_core", "power_mdio", "perf_serdes","perf_5g_serdes" },
++		.num_pd_names = 4,
++	},
+ };
+ 
++
++static int qcom_ethqos_is_genpd_on(struct device *dev)
++{
++	struct generic_pm_domain *genpd = pd_to_genpd(dev->pm_domain);
++
++	return (genpd->status == GENPD_STATE_ON);
++}
++
++static int qcom_ethqos_domain_attach(struct qcom_ethqos *ethqos)
++{
++	struct ethqos_emac_driver_data *data;
++	struct device *dev = &ethqos->pdev->dev;
++
++	data = of_device_get_match_data(dev);
++	if (!data) {
++		dev_err(dev, "qcom_ethqos_domain_attach driver data is NULL\n");
++		return -EINVAL;
++	}
++
++	dev_dbg(dev, "qcom_ethqos_domain_attach num pd %d\n", data->pd_data.num_pd_names);
++	return dev_pm_domain_attach_list(dev, &data->pd_data, &ethqos->pd_list);
++}
++
++static int qcom_ethqos_domain_on(struct qcom_ethqos *ethqos, enum domain_t dom)
++{
++	struct device *dev = ethqos->pd_list->pd_devs[dom];
++	int ret = 0;
++
++	if (!qcom_ethqos_is_genpd_on(dev)) {
++		ret = pm_runtime_resume_and_get(dev);
++		if (ret < 0)
++			dev_err(dev, "poweron(domain=%d) failed.(err=%d)\n", dom, ret);
++
++		dev_dbg(dev, "Requesting power on for (domain=%d)", dom);
++	} else {
++		dev_dbg(dev, "Domain is already on (domain=%d)", dom);
++	}
++	return ret;
++}
++
++static void qcom_ethqos_domain_off(struct qcom_ethqos *ethqos, enum domain_t dom)
++{
++	struct device *dev = ethqos->pd_list->pd_devs[dom];
++	int ret = 0;
++
++	if (qcom_ethqos_is_genpd_on(dev)) {
++		ret = pm_runtime_put_sync(dev);
++		if (ret < 0)
++			dev_err(dev, "poweroff(domain=%d) failed.(err=%d)\n", dom, ret);
++
++		dev_dbg(dev, "Requesting power off for (domain=%d)", dom);
++	} else {
++		dev_dbg(dev, "Domain is already off (domain=%d)", dom);
++	}
++}
++
++static int qcom_ethqos_serdes_set_level(struct qcom_ethqos *ethqos)
++{
++	struct device *dev = NULL;
++	int ret = 0;
++
++	if (ethqos->phy_mode == PHY_INTERFACE_MODE_USXGMII ||
++		ethqos->phy_mode == PHY_INTERFACE_MODE_10GBASER) {
++		dev = ethqos->pd_list->pd_devs[PERF_SERDES];
++	} else if(ethqos->phy_mode == PHY_INTERFACE_MODE_5GBASER) {
++		dev = ethqos->pd_list->pd_devs[PERF_5G_SERDES];
++	} else {
++		dev = ethqos->pd_list->pd_devs[PERF_SERDES];
++	}
++	ret = dev_pm_opp_set_level(dev, ethqos->serdes_speed);
++	if (ret)
++		dev_err(dev, "Failed to set serdes level. (err=%d)\n", ret);
++
++	if (!ret) {
++		ret = pm_runtime_resume_and_get(dev);
++		if (ret >= 0)
++			ret = pm_runtime_put_sync(dev);
++	}
++
++	return ret;
++}
++
+ static int ethqos_dll_configure(struct qcom_ethqos *ethqos)
+ {
+ 	struct device *dev = &ethqos->pdev->dev;
+@@ -654,17 +762,35 @@ static void ethqos_fix_mac_speed_sgmii(void *bsp_priv,
+ 
+ 	switch (speed) {
+ 	case SPEED_2500:
++		rgmii_updatel(ethqos, RGMII_CONFIG2_RGMII_CLK_SEL_CFG,
++			      RGMII_CONFIG2_RGMII_CLK_SEL_CFG,
++			      RGMII_IO_MACRO_CONFIG2);
++		if (ethqos->serdes_speed != SPEED_2500) {
++			if (ethqos->use_domains)
++				qcom_ethqos_serdes_set_level(ethqos);
++			else
++			phy_set_speed(ethqos->serdes_phy, SPEED_2500);
++		}
++		ethqos->serdes_speed = SPEED_2500;
++		stmmac_pcs_ctrl_ane(priv, 0, 0);
++		break;
+ 	case SPEED_1000:
+ 		rgmii_setmask(ethqos, RGMII_CONFIG2_RGMII_CLK_SEL_CFG,
+ 			      RGMII_IO_MACRO_CONFIG2);
+ 		break;
+-	case SPEED_100:
+-		break;
+ 	case SPEED_10:
+ 		rgmii_updatel(ethqos, RGMII_CONFIG_SGMII_CLK_DVDR,
+ 			      FIELD_PREP(RGMII_CONFIG_SGMII_CLK_DVDR,
+ 					 SGMII_10M_RX_CLK_DVDR),
+ 			      RGMII_IO_MACRO_CONFIG);
++		if (ethqos->serdes_speed != SPEED_1000) {
++			if (ethqos->use_domains)
++				qcom_ethqos_serdes_set_level(ethqos);
++			else
++				phy_set_speed(ethqos->serdes_phy, SPEED_1000);
++		}
++		ethqos->serdes_speed = SPEED_1000;
++		stmmac_pcs_ctrl_ane(priv, 1, 0);
+ 		break;
+ 	}
+ 
+@@ -695,6 +821,9 @@ static void ethqos_fix_mac_speed_usxgmii(void *bsp_priv,
+ 
+ 	ethqos_set_func_clk_en(ethqos);
+ 
++	if (ethqos->use_domains)
++		qcom_ethqos_serdes_set_level(ethqos);
++
+ 	rgmii_updatel(ethqos, RGMII_BYPASS_EN, RGMII_BYPASS_EN, RGMII_IO_MACRO_BYPASS);
+ 	rgmii_updatel(ethqos, RGMII_CONFIG2_MODE_EN_VIA_GMII, 0, RGMII_IO_MACRO_CONFIG2);
+ 	rgmii_updatel(ethqos, SGMII_PHY_CNTRL0_2P5G_1G_CLK_SEL, BIT(5),
+@@ -813,6 +942,143 @@ static int ethqos_mac_finish_serdes(struct net_device *ndev, void *priv,
+ 	return ret;
+ }
+ 
++static int qcom_ethqos_serdes_up(struct net_device *ndev, void *priv)
++{
++	struct qcom_ethqos *ethqos = priv;
++	int ret = 0;
++
++	ret = qcom_ethqos_serdes_set_level(ethqos);
++
++	return ret;
++}
++
++static void qcom_ethqos_serdes_down(struct net_device *ndev, void *priv)
++{
++	struct qcom_ethqos *ethqos = priv;
++	int old_speed = ethqos->serdes_speed;
++	int domain = PERF_SERDES;
++
++	ethqos->serdes_speed = 10;
++	qcom_ethqos_serdes_set_level(ethqos);
++	ethqos->serdes_speed = old_speed;
++}
++
++/* callback for stmmac runtime suspend/resume functions */
++static int qcom_ethqos_domain_transition_d0d1(void *priv, bool high)
++{
++	struct qcom_ethqos *ethqos = priv;
++	int ret = 0;
++
++	if (high) {
++		ret = qcom_ethqos_domain_on(ethqos, POWER_CLK);
++		if (ret < 0) {
++			dev_err(&ethqos->pdev->dev, "MDIO Transition from d1 to d0 failed\n");
++			return ret;
++		}
++	} else {
++		qcom_ethqos_domain_off(ethqos, POWER_CLK);
++	}
++	return ret;
++}
++
++static int qcom_ethqos_domain_transition_d0d3(void *priv, bool high)
++{
++	struct qcom_ethqos *ethqos = priv;
++	int ret = 0;
++
++	if (high) {
++		ret = qcom_ethqos_domain_on(ethqos, POWER_CORE);
++		if (ret < 0) {
++			dev_err(&ethqos->pdev->dev, "CORE Transition from d3 to d0 failed\n");
++			return ret;
++		}
++
++		ret = qcom_ethqos_domain_on(ethqos, POWER_CLK);
++		if (ret < 0) {
++			dev_err(&ethqos->pdev->dev, "MDIO Transition from d3 to d0 failed\n");
++			qcom_ethqos_domain_off(ethqos, POWER_CORE);
++			return ret;
++		}
++	} else {
++		qcom_ethqos_domain_off(ethqos, POWER_CLK);
++		qcom_ethqos_domain_off(ethqos, POWER_CORE);
++	}
++
++	return ret;
++}
++
++static void qcom_ethqos_exit(struct device *dev, void *prv)
++{
++	struct qcom_ethqos *ethqos = prv;
++	struct net_device *ndev = platform_get_drvdata(ethqos->pdev);
++	struct stmmac_priv *priv = netdev_priv(ndev);
++
++	/* pm_runtime_disable is called on driver remove.
++	 * And not called on Suspend/resume.
++	 */
++	if (!pm_runtime_enabled(priv->device)) {
++		pm_runtime_enable(priv->device);
++		qcom_ethqos_domain_transition_d0d3(prv, false);
++		pm_runtime_disable(priv->device);
++		dev_pm_domain_detach_list(ethqos->pd_list);
++		dev_dbg(&ethqos->pdev->dev, "Detaching all Power and Perf domains");
++	} else {
++		dev_dbg(&ethqos->pdev->dev, "Turning off Power and Perf domains");
++	}
++}
++
++static int qcom_ethqos_init(struct device *dev, void *prv)
++{
++	struct qcom_ethqos *ethqos = prv;
++	int ret = 0;
++
++	qcom_ethqos_serdes_set_level(ethqos);
++
++	/* Enable functional clock to prevent DMA reset to timeout due
++	 * to lacking PHY clock after the hardware block has been power
++	 * cycled. The actual configuration will be adjusted once
++	 * ethqos_fix_mac_speed() is invoked.
++	 */
++	ethqos_set_func_clk_en(ethqos);
++
++	return ret;
++}
++
++static int qcom_ethqos_suspend(struct device *dev, void *prv)
++{
++	struct net_device *ndev = dev_get_drvdata(dev);
++	struct stmmac_priv *priv = netdev_priv(ndev);
++	struct qcom_ethqos *ethqos = prv;
++	int ret = 0;
++
++	set_bit(STMMAC_DOWN, &priv->state);
++
++	if (priv->dev->irq > 0)
++		disable_irq(priv->dev->irq);
++
++	dev_dbg(&ethqos->pdev->dev, "Perf/power domain will turned off by SCMI framework.");
++
++	return ret;
++}
++
++static int qcom_ethqos_resume(struct device *dev, void *prv)
++{
++	struct net_device *ndev = dev_get_drvdata(dev);
++	struct stmmac_priv *priv = netdev_priv(ndev);
++	struct qcom_ethqos *ethqos = prv;
++	int ret = 0;
++
++	ret = qcom_ethqos_init(dev, prv);
++
++	if (priv->dev->irq > 0)
++		enable_irq(priv->dev->irq);
++
++	dev_dbg(&ethqos->pdev->dev, "Perf/power domain will turned on by SCMI framework.");
++
++	clear_bit(STMMAC_DOWN, &priv->state);
++	return ret;
++}
++
+ static int ethqos_clks_config(void *priv, bool enabled)
+ {
+ 	struct qcom_ethqos *ethqos = priv;
+@@ -1024,6 +1290,8 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
+ 	}
+ 
+ 	ethqos->pdev = pdev;
++	ethqos->serdes_speed = SPEED_1000;
++
+ 	ethqos->rgmii_base = devm_platform_ioremap_resource_byname(pdev, "rgmii");
+ 	if (IS_ERR(ethqos->rgmii_base))
+ 		return dev_err_probe(dev, PTR_ERR(ethqos->rgmii_base),
+@@ -1042,10 +1310,36 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
+ 	ethqos->has_emac_ge_3 = data->has_emac_ge_3;
+ 	ethqos->needs_sgmii_loopback = data->needs_sgmii_loopback;
+ 
+-	ethqos->link_clk = devm_clk_get(dev, data->link_clk_name ?: "rgmii");
+-	if (IS_ERR(ethqos->link_clk))
+-		return dev_err_probe(dev, PTR_ERR(ethqos->link_clk),
+-				     "Failed to get link_clk\n");
++	if (of_device_is_compatible(np, "qcom,sa8255p-ethqos") ||
++		of_device_is_compatible(np, "qcom,sa8620p-ethqos") ||
++		of_device_is_compatible(np, "qcom,sa8787p-ethqos") ||
++		of_device_is_compatible(np, "qcom,sa8797p-ethqos")) {
++		ret = qcom_ethqos_domain_attach(ethqos);
++		if (ret < 0) {
++			dev_err(dev, "Failed to attach domains.\n");
++			return ret;
++		}
++
++		dev_info(dev, "domains loaded successfully.\n");
++		ethqos->use_domains = true;
++		plat_dat->clks_config = qcom_ethqos_domain_transition_d0d1;
++		plat_dat->serdes_powerup = qcom_ethqos_serdes_up;
++		plat_dat->serdes_powerdown = qcom_ethqos_serdes_down;
++		plat_dat->exit = qcom_ethqos_exit;
++		plat_dat->init = qcom_ethqos_init;
++		plat_dat->suspend = qcom_ethqos_suspend;
++		plat_dat->resume = qcom_ethqos_resume;
++
++		qcom_ethqos_domain_transition_d0d3(ethqos, true);
++		qcom_ethqos_serdes_set_level(ethqos);
++	}
++
++	if (!ethqos->use_domains) {
++		ethqos->link_clk = devm_clk_get(dev, data->link_clk_name ?: "rgmii");
++		if (IS_ERR(ethqos->link_clk))
++			return dev_err_probe(dev, PTR_ERR(ethqos->link_clk),
++						"Failed to get link_clk\n");
++	}
+ 
+ 	ret = ethqos_clks_config(ethqos, true);
+ 	if (ret)
+@@ -1075,6 +1369,9 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
+ 	plat_dat->bsp_priv = ethqos;
+ 	plat_dat->set_clk_tx_rate = ethqos_set_clk_tx_rate;
+ 	plat_dat->dump_debug_regs = rgmii_dump;
++	if (ethqos->use_domains)
++		plat_dat->clk_ptp_rate = data->ptp_clk_rate;
++	else
+ 	plat_dat->ptp_clk_freq_config = ethqos_ptp_clk_freq_config;
+ 	plat_dat->core_type = DWMAC_CORE_GMAC4;
+ 	plat_dat->clk_ref_rate = data->axi_clk_rate;

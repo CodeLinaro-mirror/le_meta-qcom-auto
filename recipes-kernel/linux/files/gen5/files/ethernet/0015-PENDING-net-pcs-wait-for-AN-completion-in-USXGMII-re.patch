@@ -1,0 +1,86 @@
+From f36af55ca6826d15e5f363df8559b7f9cd44f1b5 Mon Sep 17 00:00:00 2001
+From: Mei Xie <meixie@qti.qualcomm.com>
+Date: Tue, 28 Jul 2026 10:54:28 +0800
+Subject: [PATCH 15/16] PENDING: net: pcs: wait for AN completion in USXGMII
+ reset
+
+In qcom_xpcs_reset_usxgmii(), when needs_aneg is set, poll for the
+AN completion interrupt (DW_VR_MII_ANCMPLT_INTR) before proceeding
+with the link status check. Clear the interrupt status bit after AN
+completes.
+
+Change-Id: Ief6fdb50c3709d92fa1c810cd6950496f8558b4d
+Signed-off-by: Mei Xie <meixie@qti.qualcomm.com>
+(cherry picked from commit 316dd218914150b2d4cbcb30db21f2dda8b9c0df)
+---
+ drivers/net/pcs/pcs-xpcs-qcom.c | 28 ++++++++++++++++++++++++----
+ 1 file changed, 24 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/net/pcs/pcs-xpcs-qcom.c b/drivers/net/pcs/pcs-xpcs-qcom.c
+index dfa364ff2329..5c35f4f6f9ce 100644
+--- a/drivers/net/pcs/pcs-xpcs-qcom.c
++++ b/drivers/net/pcs/pcs-xpcs-qcom.c
+@@ -268,6 +268,22 @@ static int qcom_xpcs_reset_usxgmii(struct dw_xpcs_qcom *qxpcs)
+ 
+ 		switch (qxpcs->phy_interface) {
+ 		case PHY_INTERFACE_MODE_USXGMII:
++			if (qxpcs->needs_aneg) {
++				ret = qcom_xpcs_poll_bit_set(qxpcs,
++							     DW_VR_MII_AN_INTR_STS,
++							     DW_VR_MII_ANCMPLT_INTR);
++				if (ret < 0)
++					return ret;
++
++				XPCSDBG("XPCS AN completed\n");
++				ret = qcom_xpcs_read(qxpcs, DW_VR_MII_AN_INTR_STS);
++				if (ret < 0)
++					return ret;
++
++				/* Clear the AN completion interrupt status */
++				ret &= ~DW_VR_MII_ANCMPLT_INTR;
++				qcom_xpcs_write(qxpcs, DW_VR_MII_AN_INTR_STS, ret);
++			}
+ 			qcom_xpcs_read(qxpcs, DW_SR_MII_MMD_STS);
+ 			ret = qcom_xpcs_poll_bit_set(qxpcs,
+ 						     DW_SR_MII_MMD_STS, DW_SR_MII_STS_LINK_STS);
+@@ -495,8 +511,12 @@ static int qcom_xpcs_get_link_status(struct dw_xpcs_qcom *qxpcs,
+ 					goto recover;
+ 				else
+ 					XPCSDBG("XPCS AN completed\n");
++
+ 				ret = qcom_xpcs_read(qxpcs, DW_VR_MII_AN_INTR_STS);
+-				/* Clear the IOC status */
++				if (ret < 0)
++					goto recover;
++
++				/* Clear the AN completion interrupt status */
+ 				ret &= ~DW_VR_MII_ANCMPLT_INTR;
+ 				qcom_xpcs_write(qxpcs, DW_VR_MII_AN_INTR_STS, ret);
+ 			}
+@@ -544,7 +564,7 @@ static int xpcs_get_state_c37_usxgmii(struct dw_xpcs_qcom *qxpcs,
+ 	return 0;
+ }
+ 
+-static void qcom_xpcs_get_state(struct phylink_pcs *pcs,
++static void qcom_xpcs_get_state(struct phylink_pcs *pcs, unsigned int neg_mode,
+ 				struct phylink_link_state *state)
+ {
+ 	struct dw_xpcs_qcom *qxpcs = phylink_pcs_to_xpcs(pcs);
+@@ -1061,7 +1081,7 @@ struct phylink_pcs *qcom_xpcs_create(struct device_node *np, phy_interface_t int
+ out:
+ 	XPCSERR("qxpcs creation failed\n");
+ 	kfree(qxpcs);
+-	return ret;
++	return ERR_PTR(ret);
+ }
+ EXPORT_SYMBOL_GPL(qcom_xpcs_create);
+ 
+@@ -1167,7 +1187,7 @@ static int qcom_xpcs_probe(struct platform_device *pdev)
+ 
+ 	qxpcs = kzalloc(sizeof(*qxpcs), GFP_KERNEL);
+ 	if (!qxpcs)
+-		return ERR_PTR(-ENOMEM);
++		return -ENOMEM;
+ 
+ 	qxpcs->addr = devm_platform_ioremap_resource_byname(pdev, "qxpcs");
+ 	if (IS_ERR_OR_NULL(qxpcs->addr)) {

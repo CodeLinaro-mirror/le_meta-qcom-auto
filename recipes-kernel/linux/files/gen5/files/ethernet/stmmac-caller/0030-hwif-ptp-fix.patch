@@ -1,0 +1,29 @@
+From 72ea50726a82b300c71e557ae649dc4588aee310 Mon Sep 17 00:00:00 2001
+From: Sagar Cheluvegowda <quic_scheluve@quicinc.com>
+Date: Fri, 11 Sep 2026 14:12:22 -0700
+Subject: [PATCH] hwif ptp fix
+
+
+Signed-off-by: Sagar Cheluvegowda <quic_scheluve@quicinc.com>
+
+---
+ drivers/net/ethernet/stmicro/stmmac/hwif.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/net/ethernet/stmicro/stmmac/hwif.c b/drivers/net/ethernet/stmicro/stmmac/hwif.c
+index 537089e77a64..413cb2a11f63 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/hwif.c
++++ b/drivers/net/ethernet/stmicro/stmmac/hwif.c
+@@ -298,7 +298,9 @@ static const struct stmmac_hwif_entry {
+ 		.desc = &dwxgmac210_desc_ops,
+ 		.dma = &dw25gmac400_dma_ops,
+ 		.mac = &dwxgmac210_ops,
++		.vlan = &dwxgmac210_vlan_ops,
+ 		.hwtimestamp = &stmmac_ptp,
++		.ptp = &stmmac_ptp_clock_ops,
+ 		.mode = NULL,
+ 		.tc = &dwmac510_tc_ops,
+ 		.mmc = &dw25gmac_mmc_ops,
+-- 
+2.34.1
+

@@ -1,0 +1,53 @@
+From 4c81e1e8611895677ecd646f94ebf809016a8624 Mon Sep 17 00:00:00 2001
+From: Sagar Cheluvegowda <scheluve@qti.qualcomm.com>
+Date: Tue, 27 Jan 2026 18:10:53 -0800
+Subject: [PATCH 19/28] PENDING: net: stmmac: Define AXI clock rate for
+ reference clock
+
+On platforms where the System Control and Management Interface (SCMI)
+is enabled, the stmmac driver does not have a method to dynamically
+query the AXI clock rate from the clock driver. This prevents the
+driver from obtaining the necessary reference clock rate, leading to
+incorrect configuration.
+
+To resolve this, populate the AXI clock rate in 'ethqos_emac_driver_data'
+and propagate it to the platform data's 'clk_ref_rate', This ensures
+that the driver has a valid clock rate to operate correctly on
+SCMI-enabled systems.
+
+Define the AXI Clock ref rate for Nord as 380Mhz.
+
+Change-Id: Ia0a0e0dccd33a6d91e9ab5d1eb7cb63486a18808
+Signed-off-by: Sagar Cheluvegowda <scheluve@qti.qualcomm.com>
+---
+ drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c b/drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c
+index dee26587d5cd5..851241abbd307 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c
++++ b/drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c
+@@ -119,6 +119,7 @@ struct ethqos_emac_driver_data {
+ 	u8 dma_addr_width;
+ 	const char *link_clk_name;
+ 	u32 has_flags;
++	unsigned int axi_clk_rate;
+ 	struct dwmac4_addrs dwmac4_addrs;
+ 	bool needs_sgmii_loopback;
+ 	bool has_xgmac;
+@@ -358,6 +359,7 @@ static const struct ethqos_emac_driver_data emac_v6_6_0_data = {
+ 	.has_hdma = true,
+ 	.needs_sgmii_loopback = true,
+ 	.has_io_macro_ge_4 = true,
++	.axi_clk_rate = 380000000,
+ 	.dwxgmac_addrs = {
+ 		.dma_even_chan_base  = 0x00008500,
+ 		.dma_odd_chan_base = 0x00008580,
+@@ -979,6 +981,7 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
+ 	plat_dat->dump_debug_regs = rgmii_dump;
+ 	plat_dat->ptp_clk_freq_config = ethqos_ptp_clk_freq_config;
+ 	plat_dat->core_type = DWMAC_CORE_GMAC4;
++	plat_dat->clk_ref_rate = data->axi_clk_rate;
+ 	if (ethqos->has_emac_ge_3)
+ 		plat_dat->dwmac4_addrs = &data->dwmac4_addrs;
+ 	plat_dat->pmt = true;

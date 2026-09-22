@@ -1,0 +1,82 @@
+From 0b7ca4d89c35ed3cc47dd58d02b1f84b14dab6b3 Mon Sep 17 00:00:00 2001
+From: Sagar Cheluvegowda <quic_scheluve@quicinc.com>
+Date: Mon, 6 Jan 2025 19:00:18 -0800
+Subject: [PATCH 16/28] PENDING: net: stmmac: enable SGMII loopback for DMA
+ reset
+
+enable SGMII Tx to Rx loopback bit as the RX clocks
+from the AQR113C PHY are not available at the time
+of the DMA reset. We can however extract the RX clock
+from the internal SERDES block. Once the link is up,
+we can revert to the previous state.
+
+Change-Id: Ib3020c3a3f05f23b8ec47b396a3147273c380622
+Signed-off-by: Sagar Cheluvegowda <quic_scheluve@quicinc.com>
+---
+ .../stmicro/stmmac/dwmac-qcom-ethqos.c        | 25 +++++++++++++------
+ 1 file changed, 17 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c b/drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c
+index bef79c680ef60..458dde1d0e2a7 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c
++++ b/drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c
+@@ -122,6 +122,7 @@ struct ethqos_emac_driver_data {
+ 	bool needs_sgmii_loopback;
+ 	bool has_xgmac;
+ 	bool has_hdma;
++	bool has_io_macro_ge_4;
+ };
+ 
+ struct qcom_ethqos {
+@@ -133,6 +134,10 @@ struct qcom_ethqos {
+ 
+ 	const struct ethqos_emac_por *rgmii_por;
+ 	unsigned int num_rgmii_por;
++
++	const struct ethqos_emac_por *por;
++	unsigned int num_por;
++	bool has_io_macro_ge_4;
+ 	bool rgmii_config_loopback_en;
+ 	bool has_emac_ge_3;
+ 	bool needs_sgmii_loopback;
+@@ -216,14 +221,15 @@ static int ethqos_set_clk_tx_rate(void *bsp_priv, struct clk *clk_tx_i,
+ static void
+ qcom_ethqos_set_sgmii_loopback(struct qcom_ethqos *ethqos, bool enable)
+ {
+-	if (!ethqos->needs_sgmii_loopback ||
+-	    ethqos->phy_mode != PHY_INTERFACE_MODE_2500BASEX)
+-		return;
+-
+-	rgmii_updatel(ethqos,
+-		      SGMII_PHY_CNTRL1_SGMII_TX_TO_RX_LOOPBACK_EN,
+-		      enable ? SGMII_PHY_CNTRL1_SGMII_TX_TO_RX_LOOPBACK_EN : 0,
+-		      EMAC_WRAPPER_SGMII_PHY_CNTRL1);
++	if (ethqos->needs_sgmii_loopback &&
++	    (ethqos->phy_mode == PHY_INTERFACE_MODE_2500BASEX ||
++	     ethqos->phy_mode == PHY_INTERFACE_MODE_USXGMII))
++		rgmii_updatel(ethqos,
++			      SGMII_PHY_CNTRL1_SGMII_TX_TO_RX_LOOPBACK_EN,
++			      enable ? SGMII_PHY_CNTRL1_SGMII_TX_TO_RX_LOOPBACK_EN : 0,
++			      ethqos->has_io_macro_ge_4 ?
++			      EMAC_WRAPPER_SGMII_PHY_CNTRL1_V4 :
++			      EMAC_WRAPPER_SGMII_PHY_CNTRL1);
+ }
+ 
+ static void ethqos_set_func_clk_en(struct qcom_ethqos *ethqos)
+@@ -348,6 +354,8 @@ static const struct ethqos_emac_driver_data emac_v6_6_0_data = {
+ 	.link_clk_name = "phyaux",
+ 	.has_xgmac = true,
+ 	.has_hdma = true,
++	.needs_sgmii_loopback = true,
++	.has_io_macro_ge_4 = true,
+ 	.dwxgmac_addrs = {
+ 		.dma_even_chan_base  = 0x00008500,
+ 		.dma_odd_chan_base = 0x00008580,
+@@ -924,6 +932,7 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
+ 	data = of_device_get_match_data(dev);
+ 	ethqos->rgmii_por = data->rgmii_por;
+ 	ethqos->num_rgmii_por = data->num_rgmii_por;
++	ethqos->has_io_macro_ge_4 = data->has_io_macro_ge_4;
+ 	ethqos->rgmii_config_loopback_en = data->rgmii_config_loopback_en;
+ 	ethqos->has_emac_ge_3 = data->has_emac_ge_3;
+ 	ethqos->needs_sgmii_loopback = data->needs_sgmii_loopback;

@@ -1,0 +1,42 @@
+From 6da2bc256e1b5b5c156c16355b08d9c140494e20 Mon Sep 17 00:00:00 2001
+From: Abhishek Chauhan <quic_abchauha@quicinc.com>
+Date: Thu, 30 Oct 2025 22:57:31 -0700
+Subject: [PATCH 12/16] PENDING: net: PCS: Loopback TX to RX clocks when XPCS
+ link fail
+
+RX clocks are provided by Phy or Switch but since XPCS link up failed
+we dont know what went wrong on the far end side.
+This can happen if Phy hardware configuration done is incorrect
+or Phy is not supplying consistent RX clocks due to hardware issue.
+
+So when XPCS link fails, loop the Tx clocks to Rx clocks.
+
+Change-Id: I93a393f5941f2145b4a4e3d85fa1109890c7a53a
+Signed-off-by: Abhishek Chauhan <quic_abchauha@quicinc.com>
+(cherry picked from commit 55ac763032ed1bf4aaf7a1eb1ac1e46e238af525)
+---
+ drivers/net/pcs/pcs-xpcs-qcom.c | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/drivers/net/pcs/pcs-xpcs-qcom.c b/drivers/net/pcs/pcs-xpcs-qcom.c
+index 93a8535665fc..64182274d038 100644
+--- a/drivers/net/pcs/pcs-xpcs-qcom.c
++++ b/drivers/net/pcs/pcs-xpcs-qcom.c
+@@ -766,6 +766,17 @@ void qcom_xpcs_link_up_usxgmii(struct dw_xpcs_qcom *qxpcs, int speed)
+ read_err:
+ 	XPCSERR("Failed to read register\n");
+ out:
++	/* ERROR CASE:
++	 * Enable Loopback RX clock as we expect the Phy or switch
++	 * to be able to supply the required Rx clock by this time
++	 * But since XPCS link up failed we dont know what went wrong on the
++	 * far end side.
++	 * This can happen if Phy hardware configuration done is incorrect
++	 * or Phy is not supplying consistent RX clocks due to hardware issue.
++	 */
++	if (qxpcs->pcs.rxc_always_on)
++		qcom_xpcs_loopback(qxpcs, true);
++
+ 	XPCSERR("Failed to bring up USXGMII link\n");
+ }
+ 

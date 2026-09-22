@@ -1,0 +1,37 @@
+From cf70a86e33ee5dd6e083fff25398ec79383245ea Mon Sep 17 00:00:00 2001
+From: Jitendra Vegiraju <jitendra.vegiraju@broadcom.com>
+Date: Tue, 5 Nov 2024 00:33:01 -0800
+Subject: [PATCH 02/28] FROMLIST: net: stmmac: Add snps_id, dev_id to struct
+ plat_stmmacenet_data
+
+Introduce new variables plat_stmmacenet_data::snps_id,
+dev_id to allow glue drivers to specify synopsys ID
+and device id respectively.These values take
+precedence over reading from HW register. This
+facility provides a mechansim to use setup function
+from stmmac core module and yet override MAC.VERSION
+CSR if the glue driver chooses to do so.
+
+Change-Id: I13e0764fa9f03f8446aed36c3895982fabe0f907
+Signed-off-by: Jitendra Vegiraju <jitendra.vegiraju@broadcom.com>
+Link: https://lore.kernel.org/bpf/20241018205332.525595-2-jitendra.vegiraju@broadcom.com/
+Patch-mainline: netdev @ 10/18/2024 20:53
+Signed-off-by: Sagar Cheluvegowda <quic_scheluve@quicinc.com>
+(cherry picked from commit 8b31c0f69951888c7f91f46a1ef8c03607867cbf)
+---
+ include/linux/stmmac.h | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/include/linux/stmmac.h b/include/linux/stmmac.h
+index 4430b967abdeb..f1d393dfeb6b6 100644
+--- a/include/linux/stmmac.h
++++ b/include/linux/stmmac.h
+@@ -216,6 +216,8 @@ struct mac_device_info;
+ 
+ struct plat_stmmacenet_data {
+ 	enum dwmac_core_type core_type;
++	u32 snps_id;
++	u32 dev_id;
+ 	int bus_id;
+ 	int phy_addr;
+ 	/* MAC ----- optional PCS ----- SerDes ----- optional PHY ----- Media

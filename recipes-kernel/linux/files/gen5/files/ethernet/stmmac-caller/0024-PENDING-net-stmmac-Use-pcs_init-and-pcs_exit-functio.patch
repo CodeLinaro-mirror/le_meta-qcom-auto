@@ -1,0 +1,117 @@
+From 6ecf0af8310a766bc8a487d866decd4061a803aa Mon Sep 17 00:00:00 2001
+From: Sagar Cheluvegowda <quic_scheluve@quicinc.com>
+Date: Tue, 25 Mar 2025 17:45:02 -0700
+Subject: [PATCH 24/28] PENDING: net: stmmac: Use pcs_init and pcs_exit
+ functions within ethqos driver
+
+Use pcs_init and pcs_exit callbacks from stmmac driver
+to perform initialization and de-initialization of PCS
+hardware block.
+
+Change-Id: I7923381455b075824a701d88176866954c6d346a
+Signed-off-by: Sagar Cheluvegowda <quic_scheluve@quicinc.com>
+---
+ drivers/net/ethernet/stmicro/stmmac/common.h  |  3 +-
+ .../stmicro/stmmac/dwmac-qcom-ethqos.c        | 31 +++++++++++++------
+ .../net/ethernet/stmicro/stmmac/stmmac_main.c |  4 +--
+ include/linux/stmmac.h                        |  1 -
+ 4 files changed, 26 insertions(+), 13 deletions(-)
+
+diff --git a/drivers/net/ethernet/stmicro/stmmac/common.h b/drivers/net/ethernet/stmicro/stmmac/common.h
+index eb6a539662b9e..f52c03a5aa24c 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/common.h
++++ b/drivers/net/ethernet/stmicro/stmmac/common.h
+@@ -623,8 +623,9 @@ struct mac_device_info {
+ 	const struct stmmac_mmc_ops *mmc;
+ 	const struct stmmac_est_ops *est;
+ 	const struct stmmac_vlan_ops *vlan;
+-	struct dw_xpcs *xpcs;
+ 	struct phylink_pcs *phylink_pcs;
++	struct dw_xpcs *xpcs;
++	struct phylink_pcs *qcom_pcs; /* Qcom external PCS */
+ 	struct mii_regs mii;	/* MII register Addresses */
+ 	struct mac_link link;
+ 	void __iomem *pcsr;     /* vpointer to device CSRs */
+diff --git a/drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c b/drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c
+index 7a6dfef023223..2b65bc4f23db6 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c
++++ b/drivers/net/ethernet/stmicro/stmmac/dwmac-qcom-ethqos.c
+@@ -951,6 +951,24 @@ static int qcom_ethqos_hdma_cfg(struct platform_device *pdev, struct plat_stmmac
+ 	return 0;
+ }
+ 
++static int ethqos_xpcs_init(struct stmmac_priv *priv)
++{
++	struct device_node *xpcs_node;
++
++	xpcs_node = of_parse_phandle(priv->device->of_node, "qcom-xpcs-handle", 0);
++
++	priv->hw->qcom_pcs = qcom_xpcs_create(xpcs_node, priv->plat->phy_interface);
++	if (IS_ERR_OR_NULL(priv->hw->qcom_pcs))
++		return -ENODEV;
++
++	return 0;
++}
++
++static void ethqos_xpcs_exit(struct stmmac_priv *priv)
++{
++	qcom_xpcs_destroy(priv->hw->qcom_pcs);
++}
++
+ static int qcom_ethqos_probe(struct platform_device *pdev)
+ {
+ 	struct device_node *np = pdev->dev.of_node;
+@@ -1072,6 +1090,10 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
+ 				qcom_ethqos_get_queue_and_tc_from_vdma;
+ 		}
+ 	}
++	if (of_property_present(dev->of_node, "qcom-xpcs-handle")) {
++		plat_dat->pcs_init = ethqos_xpcs_init;
++		plat_dat->pcs_exit = ethqos_xpcs_exit;
++	}
+ 	if (of_property_read_bool(np, "snps,tso"))
+ 		plat_dat->flags |= STMMAC_FLAG_TSO_EN;
+ 	if (of_device_is_compatible(np, "qcom,qcs404-ethqos"))
+@@ -1086,15 +1108,6 @@ static int qcom_ethqos_probe(struct platform_device *pdev)
+ 		plat_dat->serdes_powerdown  = qcom_ethqos_serdes_powerdown;
+ 	}
+ 
+-	if (of_property_present(dev->of_node, "qcom-xpcs-handle")) {
+-		pcs_node = of_parse_phandle(dev->of_node, "qcom-xpcs-handle", 0);
+-		plat_dat->qcom_pcs = qcom_xpcs_create(pcs_node, plat_dat->phy_interface);
+-		if (IS_ERR_OR_NULL(plat_dat->qcom_pcs)) {
+-			dev_warn(dev, "Qcom Xpcs not found\n");
+-			return -ENODEV;
+-		}
+-	}
+-
+ 	/* Enable TSO on queue0 and enable TBS on rest of the queues */
+ 	for (i = 1; i < plat_dat->tx_queues_to_use; i++)
+ 		plat_dat->tx_queues_cfg[i].tbs_en = 1;
+diff --git a/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c b/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
+index 1fd259c46d905..ad803e3121aeb 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
++++ b/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
+@@ -1032,8 +1032,8 @@ static struct phylink_pcs *stmmac_mac_select_pcs(struct phylink_config *config,
+ 	    test_bit(interface, priv->integrated_pcs->pcs.supported_interfaces))
+ 		return &priv->integrated_pcs->pcs;
+ 
+-	if (priv->plat->qcom_pcs)
+-		return priv->plat->qcom_pcs;
++	if (priv->hw->qcom_pcs)
++		return priv->hw->qcom_pcs;
+ 
+ 	return NULL;
+ }
+diff --git a/include/linux/stmmac.h b/include/linux/stmmac.h
+index e8ac260223b29..599257ccbc6ce 100644
+--- a/include/linux/stmmac.h
++++ b/include/linux/stmmac.h
+@@ -326,7 +326,6 @@ struct plat_stmmacenet_data {
+ 	void (*get_queue_and_tc_from_vdma)(struct stmmac_priv *priv, u32 vdma_ch,
+ 					   unsigned long *queue_mask, u32 *tc);
+ 	int (*clks_config)(void *priv, bool enabled);
+-	struct phylink_pcs *qcom_pcs;
+ 	int (*crosststamp)(ktime_t *device, struct system_counterval_t *system,
+ 			   void *ctx);
+ 	void (*dump_debug_regs)(void *priv);
