@@ -26,9 +26,7 @@ diff --git a/drivers/firmware/arm_scmi/transports/Kconfig b/drivers/firmware/arm
 index 57eccf316e26..010703f77dde 100644
 --- a/drivers/firmware/arm_scmi/transports/Kconfig
 +++ b/drivers/firmware/arm_scmi/transports/Kconfig
-@@ -120,4 +120,15 @@ config ARM_SCMI_TRANSPORT_VIRTIO_ATOMIC_ENABLE
- 	  in atomic context too, at the price of using a number of busy-waiting
- 	  primitives all over instead. If unsure say N.
+@@ -122,2 +122,12 @@
  
 +config QTI_SCMI_VENDOR_PROTOCOL
 +	tristate "Qualcomm Technologies, Inc. Qcom SCMI vendor Protocol"
@@ -40,15 +38,12 @@ index 57eccf316e26..010703f77dde 100644
 +
 +	  This driver defines the commands or message ID's used for this
 +	  communication and also exposes the ops used by clients.
-+
  endmenu
 diff --git a/drivers/firmware/arm_scmi/transports/Makefile b/drivers/firmware/arm_scmi/transports/Makefile
 index b08686571712..4cceb72ef623 100644
 --- a/drivers/firmware/arm_scmi/transports/Makefile
 +++ b/drivers/firmware/arm_scmi/transports/Makefile
-@@ -7,3 +7,4 @@ scmi_transport_optee-objs := optee.o
- obj-$(CONFIG_ARM_SCMI_TRANSPORT_OPTEE) += scmi_transport_optee.o
- scmi_transport_virtio-objs := virtio.o
+@@ -11,1 +11,2 @@
  obj-$(CONFIG_ARM_SCMI_TRANSPORT_VIRTIO) += scmi_transport_virtio.o
 +obj-$(CONFIG_QTI_SCMI_VENDOR_PROTOCOL) += qcom_scmi_vendor.o
 diff --git a/drivers/firmware/arm_scmi/transports/qcom_scmi_vendor.c b/drivers/firmware/arm_scmi/transports/qcom_scmi_vendor.c
@@ -217,10 +212,7 @@ diff --git a/drivers/soc/qcom/Kconfig b/drivers/soc/qcom/Kconfig
 index 672db9f265ca..4ff9b03372e8 100644
 --- a/drivers/soc/qcom/Kconfig
 +++ b/drivers/soc/qcom/Kconfig
-@@ -417,6 +428,17 @@ config QCOM_KVM_ENABLED
- 	 To address this, the QCOM_KVM_ENABLED config is introduced since the
- 	 device tree cannot detect Kbuild configurations.
-
+@@ -329,1 +329,11 @@
 +config QTI_QCOM_SCMI_CLIENT
 +	tristate "Qualcomm Technologies Inc. SCMI client driver"
 +	depends on QTI_SCMI_VENDOR_PROTOCOL
@@ -231,21 +223,14 @@ index 672db9f265ca..4ff9b03372e8 100644
 +	  This driver delivers the qcom vendor protocol handle to interface
 +	  driver, and interface driver will use this handle to communicate with
 +	  cpucp.
-+
- source "drivers/soc/qcom/mem_buf/Kconfig"
- source "drivers/soc/qcom/smcinvoke/Kconfig"
-
+   source of truth for that information.
 diff --git a/drivers/soc/qcom/Makefile b/drivers/soc/qcom/Makefile
 index 8aa4935cee98..d1eebd9b3bf8 100644
 --- a/drivers/soc/qcom/Makefile
 +++ b/drivers/soc/qcom/Makefile
-@@ -45,5 +45,6 @@ obj-$(CONFIG_QCOM_SOC_DEBUG) += qcom_soc_debug.o
- obj-$(CONFIG_QCOM_SECURE_BUFFER) += secure_buffer.o
- usb_f_qdss-y			:= f_qdss.o
- obj-$(CONFIG_USB_F_QDSS)	+= usb_f_qdss.o
+@@ -43,1 +43,2 @@
+ obj-$(CONFIG_QCOM_UBWC_CONFIG) += ubwc_config.o
 +obj-$(CONFIG_QTI_QCOM_SCMI_CLIENT) += qcom_scmi_client.o
- obj-$(CONFIG_QCOM_RPROC_MINIDUMP)	+= qcom_rproc_minidump.o
- obj-$(CONFIG_QCOM_MINIDUMP)	  += qcom_minidump.o
 diff --git a/drivers/soc/qcom/qcom_scmi_client.c b/drivers/soc/qcom/qcom_scmi_client.c
 new file mode 100644
 index 000000000000..c9dd34674c38
