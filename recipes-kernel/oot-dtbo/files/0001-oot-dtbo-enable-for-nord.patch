@@ -12,22 +12,11 @@ the sa8797p platform.
 
 Signed-off-by: Venkatakrishnaiah Pari <vpari@qti.qualcomm.com>
 ---
- devicetree/Makefile                           |   92 +-
- devicetree/nord-ride_overlay.dtso             |   55 +
- .../oot-dt-bindings/qcom-ipcc-sa8797p.h       |  164 ++
- .../oot-dt-bindings/qcom-shmem-sa8797p.h      |   34 +
- devicetree/sa8797p-vfio.dtsi                  | 2074 +++++++++++++++++
- 5 files changed, 2331 insertions(+), 88 deletions(-)
- create mode 100644 devicetree/nord-ride_overlay.dtso
- create mode 100644 devicetree/oot-dt-bindings/qcom-ipcc-sa8797p.h
- create mode 100644 devicetree/oot-dt-bindings/qcom-shmem-sa8797p.h
- create mode 100644 devicetree/sa8797p-vfio.dtsi
-
 diff --git a/devicetree/Makefile b/devicetree/Makefile
-index e365223..b469b56 100644
+index f037b7a..b469b56 100644
 --- a/devicetree/Makefile
 +++ b/devicetree/Makefile
-@@ -1,93 +1,9 @@
+@@ -1,97 +1,9 @@
  # SPDX-License-Identifier: GPL-2.0
 +# sa8797 (nord) out-of-tree device tree overlays for LY.AU.0.3.0 porting
 +# Stripped to sa8797 target only; original multi-platform entries removed.
@@ -62,6 +51,8 @@ index e365223..b469b56 100644
 -dtb-y += sa7255p-ride/sa7255p_overlay.dtbo
 -dtb-y += sa7255p-ride/sa7255p-v3_overlay.dtbo
 -dtb-y += sa7255p-ride/sa7255p_overlay_pcie_ep.dtbo
+-dtb-y += sa7255p-ride/sa7255p-adp-star_overlay.dtbo
+-dtb-y += sa7255p-ride/sa7255p-vm-adp-star_overlay.dtbo
 -dtb-y += sa8775p-v3_overlay.dtbo
 -dtb-y += sa8255p-ride/sa8255p_overlay.dtbo
 -dtb-y += sa8255p-ride/sa8255p-v3_overlay.dtbo
@@ -115,6 +106,8 @@ index e365223..b469b56 100644
 -
 -dtb-y += sa7255p-ride/sa7255p-ddr-0gvm-12gb_overlay.dtbo
 -dtb-y += sa7255p-ride/sa7255p-ddr-1gvm-12gb_overlay.dtbo
+-dtb-y += sa7255p-ride/sa7255p-ddr-1gvm-8gb_overlay.dtbo
+-dtb-y += sa7255p-ride/sa7255p-ddr-0gvm-8gb_overlay.dtbo
 -dtb-y += sa8255p-ride/sa8255p-ddr-0gvm-12gb_overlay.dtbo
 -dtb-y += sa8255p-ride/sa8255p-ddr-0gvm-36gb_overlay.dtbo
 -dtb-y += sa8255p-ride/sa8255p-ddr-1gvm-36gb_overlay.dtbo
@@ -127,7 +120,7 @@ index e365223..b469b56 100644
  include $(PWD)/Makefile.common
 diff --git a/devicetree/nord-ride_overlay.dtso b/devicetree/nord-ride_overlay.dtso
 new file mode 100644
-index 0000000..6e0acf7
+index 0000000..e9569a7
 --- /dev/null
 +++ b/devicetree/nord-ride_overlay.dtso
 @@ -0,0 +1,55 @@
@@ -188,7 +181,7 @@ index 0000000..6e0acf7
 +};
 diff --git a/devicetree/oot-dt-bindings/qcom-ipcc-sa8797p.h b/devicetree/oot-dt-bindings/qcom-ipcc-sa8797p.h
 new file mode 100644
-index 0000000..4e104be
+index 0000000..29dfa7c
 --- /dev/null
 +++ b/devicetree/oot-dt-bindings/qcom-ipcc-sa8797p.h
 @@ -0,0 +1,164 @@
@@ -2476,6 +2469,3 @@ index 0000000..2100711
 +		dma-coherent;
 +	};
 +};
--- 
-2.34.1
-

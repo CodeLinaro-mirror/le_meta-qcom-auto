@@ -7,29 +7,8 @@ Signed-off-by: Venkatakrishnaiah Pari <vpari@qti.qualcomm.com>
 
 Upstream-Status: Inappropriate
 ---
- safelinux-modules/Kbuild                      |  6 +-
- safelinux-modules/drivers/apps_pinctrl.c      |  3 +-
- .../drivers/arm-smmu-qcom-fusa.c              |  3 +-
- safelinux-modules/drivers/dmabuf_share.c      |  3 +-
- safelinux-modules/drivers/kiumd.c             | 30 ++++----
- safelinux-modules/drivers/kiumd_common.c      | 74 ++++++++++++-------
- safelinux-modules/drivers/kiumd_kgsl.c        |  5 +-
- safelinux-modules/drivers/kryo_arm64_edac.c   |  3 +-
- safelinux-modules/drivers/pinctrl_fusa.c      |  3 +-
- safelinux-modules/drivers/profiler.c          | 11 +--
- safelinux-modules/drivers/qcom_dload_mode.c   |  3 +-
- .../drivers/qcom_ethqos_filter.c              |  2 +-
- safelinux-modules/drivers/qcom_io_mem.c       |  7 +-
- .../drivers/qcom_l3_cache_config.c            |  3 +-
- safelinux-modules/drivers/qcom_remote_virq.c  |  3 +-
- safelinux-modules/drivers/qcom_vdev.c         |  6 +-
- safelinux-modules/drivers/scm_user_intf.c     | 17 +++--
- safelinux-modules/drivers/vfio_iommu_qcom.c   | 50 ++++++++-----
- .../include/linux/kiumd_common.h              | 72 ++++++++++++------
- 19 files changed, 179 insertions(+), 125 deletions(-)
-
 diff --git a/safelinux-modules/Kbuild b/safelinux-modules/Kbuild
-index aeb0647..3111732 100644
+index 8b6407b..5cd4d50 100644
 --- a/safelinux-modules/Kbuild
 +++ b/safelinux-modules/Kbuild
 @@ -11,7 +11,7 @@ apps_pinctrl-objs := drivers/apps_pinctrl.o
@@ -68,7 +47,7 @@ index 98c1453..91353f5 100644
  
  static int apps_pinctrl_suspend(struct device *dev)
 diff --git a/safelinux-modules/drivers/arm-smmu-qcom-fusa.c b/safelinux-modules/drivers/arm-smmu-qcom-fusa.c
-index f36f406..3e238f9 100644
+index c7c139d..141e0d0 100644
 --- a/safelinux-modules/drivers/arm-smmu-qcom-fusa.c
 +++ b/safelinux-modules/drivers/arm-smmu-qcom-fusa.c
 @@ -17,6 +17,7 @@
@@ -79,7 +58,7 @@ index f36f406..3e238f9 100644
  
  #define CREATE_TRACE_POINTS
  #include "arm-smmu-qcom-fusa.h"
-@@ -1117,7 +1118,7 @@ static struct platform_driver qsmmu_fusa_driver = {
+@@ -1142,7 +1143,7 @@ static struct platform_driver qsmmu_fusa_driver = {
  		.of_match_table = qsmmu_fusa_of_match,
  	},
  	.probe = qsmmu_fusa_probe,
@@ -101,11 +80,42 @@ index c3af819..37d1000 100644
 +MODULE_IMPORT_NS("DMA_BUF");
  MODULE_LICENSE("GPL");
  MODULE_DESCRIPTION("Platform buffer share driver");
+diff --git a/safelinux-modules/drivers/iommu_faults.c b/safelinux-modules/drivers/iommu_faults.c
+index 5e87a59..7431f59 100644
+--- a/safelinux-modules/drivers/iommu_faults.c
++++ b/safelinux-modules/drivers/iommu_faults.c
+@@ -234,16 +234,16 @@ static int iommu_fault_custom_handler(struct iommu_domain *domain,
+ 	if (__ratelimit(&iommufault_rs))
+ 		dev_err(dev, "SMMU fault: iova=0x%lx fsr=0x%08x [%s%s%s%s%s%s%s%s%s%s] flags=0x%x\n",
+ 			iova, fsr,
+-			(fsr & ARM_SMMU_FSR_TF)     ? "TF "     : "",
+-			(fsr & ARM_SMMU_FSR_AFF)    ? "AFF "    : "",
+-			(fsr & ARM_SMMU_FSR_PF)     ? "PF "     : "",
+-			(fsr & ARM_SMMU_FSR_EF)     ? "EF "     : "",
+-			(fsr & ARM_SMMU_FSR_TLBMCF) ? "TLBMCF " : "",
+-			(fsr & ARM_SMMU_FSR_TLBLKF) ? "TLBLKF " : "",
+-			(fsr & ARM_SMMU_FSR_ASF)    ? "ASF "    : "",
+-			(fsr & ARM_SMMU_FSR_UUT)    ? "UUT "    : "",
+-			(fsr & ARM_SMMU_FSR_SS)     ? "SS "     : "",
+-			(fsr & ARM_SMMU_FSR_MULTI)  ? "MULTI "  : "",
++			(fsr & ARM_SMMU_CB_FSR_TF)     ? "TF "     : "",
++			(fsr & ARM_SMMU_CB_FSR_AFF)    ? "AFF "    : "",
++			(fsr & ARM_SMMU_CB_FSR_PF)     ? "PF "     : "",
++			(fsr & ARM_SMMU_CB_FSR_EF)     ? "EF "     : "",
++			(fsr & ARM_SMMU_CB_FSR_TLBMCF) ? "TLBMCF " : "",
++			(fsr & ARM_SMMU_CB_FSR_TLBLKF) ? "TLBLKF " : "",
++			(fsr & ARM_SMMU_CB_FSR_ASF)    ? "ASF "    : "",
++			(fsr & ARM_SMMU_CB_FSR_UUT)    ? "UUT "    : "",
++			(fsr & ARM_SMMU_CB_FSR_SS)     ? "SS "     : "",
++			(fsr & ARM_SMMU_CB_FSR_MULTI)  ? "MULTI "  : "",
+ 			flags);
+ 
+ out_unlock:
 diff --git a/safelinux-modules/drivers/kiumd.c b/safelinux-modules/drivers/kiumd.c
-index c22052a..fb5040e 100644
+index 90c1ac3..6169590 100644
 --- a/safelinux-modules/drivers/kiumd.c
 +++ b/safelinux-modules/drivers/kiumd.c
-@@ -11,19 +11,10 @@
+@@ -12,19 +12,10 @@
  #include "safelinux_modules_trace.h"
  #include "vfio.h"
  
@@ -125,15 +135,7 @@ index c22052a..fb5040e 100644
  
  #define IOVA_ZERO	((dma_addr_t)0)
  
-@@ -32,7 +23,6 @@ static struct kmem_cache *iommu_addr_cache;
- /**
-  * Added in kernel tag v6.12-rc1
-  */
--DEFINE_FREE(fput, struct file *, if (_T) fput(_T))
- 
- /**
-  * @Brief: This function provide the device
-@@ -458,7 +448,18 @@ static int kiumd_dmabuf_custom_iova_init(char __user *arg, struct file *fp)
+@@ -462,7 +453,18 @@ static int kiumd_dmabuf_custom_iova_init(char __user *arg, struct file *fp)
  	}
  
  	cookie = (struct kiumd_iommu_dma_cookie *)domain->iova_cookie;
@@ -152,34 +154,16 @@ index c22052a..fb5040e 100644
  	qcom_iommu_generate_resv_regions(dev, &resrvd);
  	list_for_each_entry(region, &resrvd, list) {
  		lo = iova_pfn(iovad, region->start);
-@@ -604,7 +605,7 @@ static int __kiumd_dmabuf_vfio_unmap(struct kiumd_ctx *kiumd_ctx,
- 	dma_addr = smap->is_iova_zero ?
- 		   IOVA_ZERO : sg_dma_address(smap->sgt_ptr->sgl);
+@@ -617,7 +619,7 @@ static int __kiumd_dmabuf_vfio_unmap(struct kiumd_ctx *kiumd_ctx,
+ 	trace_kiumd_dmabuf_vfio_unmap_start(dev_name(smap->dev), smap->id, dma_addr);
+ 
  	if (smap->is_fixed_map) {
 -		ret = kiumd_configure_dma_cookie(smap->dev, IOMMU_DMA_MSI_COOKIE,
 +		ret = kiumd_configure_dma_cookie(smap->dev, IOMMU_COOKIE_DMA_MSI,
  						 dma_addr);
  		if (ret)
  			return -ENODEV;
-@@ -1218,7 +1219,7 @@ static int kiumd_close(struct inode *inode, struct file *filp)
- 				if (smap->is_fixed_map) {
- 					ret = kiumd_configure_dma_cookie(
- 							smap->dev,
--							IOMMU_DMA_MSI_COOKIE,
-+							IOMMU_COOKIE_DMA_MSI,
- 							(dma_addr_t)smap->dmabuf_ptr);
- 					if (ret) {
- 						pr_err("%s %d failed to configure cookie\n", __func__, __LINE__);
-@@ -1253,7 +1254,7 @@ static int kiumd_close(struct inode *inode, struct file *filp)
- 				if (smap->is_fixed_map) {
- 					ret = kiumd_configure_dma_cookie(
- 							smap->dev,
--							IOMMU_DMA_IOVA_COOKIE,
-+							IOMMU_COOKIE_DMA_MSI,
- 							(dma_addr_t)smap->dmabuf_ptr);
- 					if (ret) {
- 						pr_err("%s %d failed to configure cookie\n", __func__, __LINE__);
-@@ -1662,7 +1663,6 @@ static struct platform_driver kiumd_driver = {
+@@ -1503,7 +1505,6 @@ static struct platform_driver kiumd_driver = {
  	.probe = kiumd_probe,
  };
  module_platform_driver(kiumd_driver);
@@ -189,7 +173,7 @@ index c22052a..fb5040e 100644
  MODULE_DESCRIPTION("KIUMD");
  MODULE_LICENSE("GPL v2");
 diff --git a/safelinux-modules/drivers/kiumd_common.c b/safelinux-modules/drivers/kiumd_common.c
-index c70e352..516df6d 100644
+index fa5004a..05c5482 100644
 --- a/safelinux-modules/drivers/kiumd_common.c
 +++ b/safelinux-modules/drivers/kiumd_common.c
 @@ -106,17 +106,25 @@ struct kiumd_iommu_dma_cookie *kiumd_get_dma_cookie(struct device *dev)
@@ -237,7 +221,7 @@ index c70e352..516df6d 100644
 +                                enum iommu_domain_cookie_type type,
 +                                dma_addr_t iova)
  {
- 	int ret;
+ 	int ret = 0;
  
 -	if (!cookie) {
 +	if (!cookie || !domain) {
@@ -263,7 +247,7 @@ index c70e352..516df6d 100644
  
  	domain = kiumd_iommu_get_dma_domain(dev);
  	if (!domain) {
-@@ -344,17 +352,21 @@ static int insert_iova(struct pgtable_map *pgtable_ctx,
+@@ -307,17 +315,21 @@ static int insert_iova(struct pgtable_map *pgtable_ctx,
  }
  
  int kiumd_configure_dma_cookie(struct device *dev,
@@ -272,9 +256,11 @@ index c70e352..516df6d 100644
 +				     enum iommu_domain_cookie_type cookie_type,
 +				     dma_addr_t dma_addr)
  {
- 	struct kiumd_iommu_dma_cookie *cookie;
+-	struct kiumd_iommu_dma_cookie *cookie = NULL;
+-	int ret = 0;
++	struct kiumd_iommu_dma_cookie *cookie;
 +	struct iommu_domain *domain;
- 	int ret;
++	int ret;
  
  	cookie = kiumd_get_dma_cookie(dev);
 -	if (!cookie)
@@ -289,7 +275,7 @@ index c70e352..516df6d 100644
  	if (ret) {
  		pr_err("%s %d failed to set cookie\n", __func__, __LINE__);
  		return -EINVAL;
-@@ -376,6 +388,12 @@ static struct iova_domain *kiumd_get_iova_domain(struct device *dev)
+@@ -339,6 +351,12 @@ static struct iova_domain *kiumd_get_iova_domain(struct device *dev)
  	}
  
  	cookie = (struct kiumd_iommu_dma_cookie *)domain->iova_cookie;
@@ -302,7 +288,7 @@ index c70e352..516df6d 100644
  	iovad = &cookie->iovad;
  
  	return iovad;
-@@ -1103,7 +1121,7 @@ int set_kgsl_map_iova(struct kmem_cache *addr_cache, struct kiumd_ctx *kiumd_ctx
+@@ -1067,7 +1085,7 @@ int set_kgsl_map_iova(struct kmem_cache *addr_cache, struct kiumd_ctx *kiumd_ctx
  	smap->kgsl_ctx.pt_id = kiusr.pt_id;
  	smap->kgsl_ctx.iova = iova;
  
@@ -311,12 +297,15 @@ index c70e352..516df6d 100644
  	if (ret) {
  		dev_err(dev, "Failed to set cookie for the GPU device\n");
  		(void)clear_kgsl_map_iova(addr_cache, kiumd_ctx, smap);
-@@ -1124,15 +1142,17 @@ void add_to_smmu_table(struct kiumd_ctx *ctx, struct smmu_map_data *map_data)
+@@ -1100,16 +1118,18 @@ struct smmu_map_data *remove_smap(struct kiumd_ctx *ctx, int id)
+ 
  int set_allocated_iova(struct device *dev, unsigned long iova)
  {
- 	struct kiumd_iommu_dma_cookie *cookie;
+-	struct kiumd_iommu_dma_cookie *cookie = NULL;
+-	int ret = 0;
++	struct kiumd_iommu_dma_cookie *cookie;
 +	struct iommu_domain *domain;
- 	int ret;
++	int ret;
  
  	cookie = kiumd_get_dma_cookie(dev);
 -	if (!cookie) {
@@ -331,7 +320,7 @@ index c70e352..516df6d 100644
  	if (ret)
  		pr_err("%s failed to set cookie\n", __func__);
  
-@@ -1170,7 +1190,7 @@ int init_and_allocate_iova(struct kmem_cache *addr_cache, struct device *dev,
+@@ -1147,7 +1167,7 @@ int init_and_allocate_iova(struct kmem_cache *addr_cache, struct device *dev,
  
  	smap->is_fixed_map = true;
  	smap->iova_rb  = iova;
@@ -340,11 +329,11 @@ index c70e352..516df6d 100644
  	if (ret < 0) {
  		pr_err("%s: Failed to set the iova.\n", __func__);
  		free_allocated_iova(addr_cache, kiumd_ctx, iova);
-@@ -1208,13 +1228,11 @@ u64 kiumd_get_dmabuf_size(int dmabuf_fd)
+@@ -1185,13 +1205,11 @@ u64 kiumd_get_dmabuf_size(int dmabuf_fd)
   */
  bool is_fixed_mapping(struct device *dev)
  {
--	struct kiumd_iommu_dma_cookie *cookie;
+-	struct kiumd_iommu_dma_cookie *cookie = NULL;
 +	struct iommu_domain *domain;
  
 -	cookie = kiumd_get_dma_cookie(dev);
@@ -383,10 +372,10 @@ index 2df06a6..2fb4ed9 100644
  
  static const struct of_device_id  kiumd_kgsl_id[] = {
 diff --git a/safelinux-modules/drivers/kryo_arm64_edac.c b/safelinux-modules/drivers/kryo_arm64_edac.c
-index 4d7389b..eb5c291 100644
+index e8360c5..362f3f3 100644
 --- a/safelinux-modules/drivers/kryo_arm64_edac.c
 +++ b/safelinux-modules/drivers/kryo_arm64_edac.c
-@@ -654,7 +654,7 @@ out_mem:
+@@ -702,7 +702,7 @@ out_mem:
  	return rc;
  }
  
@@ -395,8 +384,8 @@ index 4d7389b..eb5c291 100644
  {
  	struct erp_drvdata *drv = dev_get_drvdata(&pdev->dev);
  	struct edac_device_ctl_info *edac_ctl = drv->edev_ctl;
-@@ -669,7 +669,6 @@ static int kryo_cpu_erp_remove(struct platform_device *pdev)
- 	edac_device_del_device(edac_ctl->dev);
+@@ -713,7 +713,6 @@ static int kryo_cpu_erp_remove(struct platform_device *pdev)
+ 
  	edac_device_free_ctl_info(edac_ctl);
  
 -	return 0;
@@ -425,7 +414,7 @@ index 2203b34..25c67dd 100644
  
  module_platform_driver(pinctrl_fusa_driver);
 diff --git a/safelinux-modules/drivers/profiler.c b/safelinux-modules/drivers/profiler.c
-index 8cda8d7..b806875 100644
+index 3214a65..b8cfd2b 100644
 --- a/safelinux-modules/drivers/profiler.c
 +++ b/safelinux-modules/drivers/profiler.c
 @@ -22,12 +22,13 @@
@@ -456,7 +445,7 @@ index 8cda8d7..b806875 100644
  		break;
  	default:
  		pr_err("cmd_id %d is not supported.\n",
-@@ -540,9 +542,8 @@ exit_unreg_chrdev_region:
+@@ -544,9 +546,8 @@ exit_unreg_chrdev_region:
  	return rc;
  }
  
@@ -466,12 +455,39 @@ index 8cda8d7..b806875 100644
 -	return 0;
  }
  
- static const struct conf_data sa8797_ddr_info = {
+ static const struct conf_data seca_ddr_info = {
 diff --git a/safelinux-modules/drivers/qcom_dload_mode.c b/safelinux-modules/drivers/qcom_dload_mode.c
-index ac3c521..f75d252 100644
+index 45c3fdc..e0f2b65 100644
 --- a/safelinux-modules/drivers/qcom_dload_mode.c
 +++ b/safelinux-modules/drivers/qcom_dload_mode.c
-@@ -240,12 +240,11 @@ static void __iomem *map_prop_mem(const char *propname)
+@@ -11,6 +11,7 @@
+ #include <linux/of_platform.h>
+ #include <linux/platform_device.h>
+ #include <linux/types.h>
++#include <linux/version.h>
+ #include <linux/firmware/qcom/qcom_scm.h>
+ 
+ /*
+@@ -97,9 +98,18 @@ static int set_dump_mode(enum qcom_download_mode mode)
+ 	}
+ 
+ 	if (mode == QCOM_DOWNLOAD_NODUMP) {
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(7, 3, 0))
+ 		ret = qcom_scm_disable_sdi();
+ 		if (ret)
+ 			pr_err("dload: failed to disable SDI, ret = %d\n", ret);
++#else
++		/*
++		 * qcom_scm_disable_sdi() was made private to the SCM driver
++		 * (no longer exported) in 7.3. SDI is now disabled by the
++		 * kernel SCM driver at probe based on the "qcom,sdi-enabled"
++		 * DT property, so there is nothing to do from here.
++		 */
++#endif
+ 	}
+ 
+ 	dump_mode = mode;
+@@ -360,12 +370,11 @@ static void __iomem *map_prop_mem(const char *propname)
  	return addr;
  }
  
@@ -485,21 +501,8 @@ index ac3c521..f75d252 100644
  }
  
  static int qcom_dload_probe(struct platform_device *pdev)
-diff --git a/safelinux-modules/drivers/qcom_ethqos_filter.c b/safelinux-modules/drivers/qcom_ethqos_filter.c
-index 9f16c1e..71f8602 100644
---- a/safelinux-modules/drivers/qcom_ethqos_filter.c
-+++ b/safelinux-modules/drivers/qcom_ethqos_filter.c
-@@ -266,7 +266,7 @@ static int del_hw_vlan_rx_fltr(int vid)
- 	return ret;
- }
- 
--void read_available_vlan_tags(void)
-+static void read_available_vlan_tags(void)
- {
- 	void __iomem *ioaddr = mac_base;
- 	uint32_t read_tag_reg, read_data_reg;
 diff --git a/safelinux-modules/drivers/qcom_io_mem.c b/safelinux-modules/drivers/qcom_io_mem.c
-index 117d127..fcce4ec 100644
+index c0d49be..38714a2 100644
 --- a/safelinux-modules/drivers/qcom_io_mem.c
 +++ b/safelinux-modules/drivers/qcom_io_mem.c
 @@ -22,6 +22,7 @@
@@ -508,9 +511,9 @@ index 117d127..fcce4ec 100644
  #include <linux/pm_runtime.h>
 +#include <linux/platform_device.h>
  
- #define IS_PGTABLE_SET(kiusr) \
- 	((kiusr.ptselect == KGSL_GLOBAL_PT) || (kiusr.ptselect == KGSL_PER_PROCESS_PT))
-@@ -123,7 +124,7 @@ static irqreturn_t umd_kgsl_irq_handler(int irq, void *dev_id)
+ #define CREATE_TRACE_POINTS
+ #include "safelinux_modules_trace.h"
+@@ -150,7 +151,7 @@ static irqreturn_t umd_kgsl_irq_handler(int irq, void *dev_id)
  	ctx->irq_masked = true;
  
  	if (ctx->eventfd_ctx)
@@ -519,9 +522,69 @@ index 117d127..fcce4ec 100644
  
  	return IRQ_HANDLED;
  }
-@@ -1425,6 +1425,5 @@ static struct platform_driver gpu_parent_driver = {
+@@ -703,12 +704,12 @@ static int umd_platform_fixed_iova_control(char __user *arg, struct umd_kgsl_dat
+ 		return -EFAULT;
  
- module_platform_driver(gpu_parent_driver);
+ 	if (iovausr.iova_flag == KGSL_SMMU_GLOBALPT_FIXED_ADDR_CLEAR)
+-		cookie_type = IOMMU_DMA_IOVA_COOKIE;
++		cookie_type = IOMMU_COOKIE_DMA_IOVA;
+ 	else
+-		cookie_type = IOMMU_DMA_MSI_COOKIE;
++		cookie_type = IOMMU_COOKIE_DMA_MSI;
+ 
+ 	if (iovausr.iova_flag == KGSL_SMMU_GLOBALPT_FIXED_ADDR_SET) {
+-		cookie_type = IOMMU_DMA_MSI_COOKIE;
++		cookie_type = IOMMU_COOKIE_DMA_MSI;
+ 		iova_usr = iovausr.iova;
+ 	}
+ 
+@@ -725,6 +726,7 @@ static int kiumd_mmio_iommu_map(struct kiumd_smmu_mmio_map *kiusr,
+ 				struct resource *res)
+ {
+ 	struct kiumd_iommu_dma_cookie *cookie;
++	struct iommu_domain *domain;
+ 	int ret, retval = 0;
+ 	dma_addr_t dma_addr;
+ 	u64 addr, size;
+@@ -733,14 +735,15 @@ static int kiumd_mmio_iommu_map(struct kiumd_smmu_mmio_map *kiusr,
+ 	size = resource_size(res);
+ 
+ 	cookie = kiumd_get_dma_cookie(dev);
+-	if (!cookie) {
++	domain = kiumd_iommu_get_dma_domain(dev);
++	if (!cookie || !domain) {
+ 		pr_err("%s:cookie not found\n", __func__);
+ 		return -EINVAL;
+ 	}
+ 
+ 	if (kiusr->fixed_iova) {
+ 		mutex_lock(&cookie->mutex);
+-		ret = kiumd_set_dma_cookie(cookie, IOMMU_DMA_MSI_COOKIE, kiusr->iova);
++		ret = kiumd_set_dma_cookie(domain, cookie, IOMMU_COOKIE_DMA_MSI, kiusr->iova);
+ 		if (ret) {
+ 			mutex_unlock(&cookie->mutex);
+ 			return -EINVAL;
+@@ -750,7 +753,7 @@ static int kiumd_mmio_iommu_map(struct kiumd_smmu_mmio_map *kiusr,
+ 	dma_addr = dma_map_resource(dev, addr, size, 0, 0);
+ 	ret = dma_mapping_error(dev, dma_addr);
+ 	if (kiusr->fixed_iova) {
+-		retval = kiumd_set_dma_cookie(cookie, IOMMU_DMA_IOVA_COOKIE, 0);
++		retval = kiumd_set_dma_cookie(domain, cookie, IOMMU_COOKIE_DMA_IOVA, 0);
+ 		mutex_unlock(&cookie->mutex);
+ 	}
+ 
+@@ -935,7 +938,7 @@ static int umd_kgsl_dmabuf_unmap(char __user *arg, struct umd_kgsl_data *kgsl_da
+ 			IOVA_ZERO : sg_dma_address(smap->sgt_ptr->sgl);
+ 
+ 	if (smap->is_fixed_map) {
+-		ret = kiumd_configure_dma_cookie(smap->dev, IOMMU_DMA_MSI_COOKIE,
++		ret = kiumd_configure_dma_cookie(smap->dev, IOMMU_COOKIE_DMA_MSI,
+ 									dma_addr);
+ 		if (ret)
+ 			return -ENODEV;
+@@ -1653,6 +1656,5 @@ static void __exit gpu_parent_module_exit(void)
+ module_init(gpu_parent_module_init);
+ module_exit(gpu_parent_module_exit);
  
 -MODULE_IMPORT_NS(DMA_BUF);
  MODULE_LICENSE("GPL");
@@ -565,8 +628,36 @@ index 1022ba0..45e4114 100644
  }
  
  static const struct of_device_id virq_of_match[] = {
+diff --git a/safelinux-modules/drivers/qcom_uscmi.c b/safelinux-modules/drivers/qcom_uscmi.c
+index f06864e..3908168 100644
+--- a/safelinux-modules/drivers/qcom_uscmi.c
++++ b/safelinux-modules/drivers/qcom_uscmi.c
+@@ -1527,13 +1527,13 @@ static int qcom_uscmi_probe(struct platform_device *pdev)
+ 	return 0;
+ }
+ 
+-static int qcom_uscmi_remove(struct platform_device *pdev)
++static void qcom_uscmi_remove(struct platform_device *pdev)
+ {
+ 	struct qcom_uscmi_dev *uscmi = platform_get_drvdata(pdev);
+ 	int i;
+ 
+ 	if (!uscmi)
+-		return 0;
++		return;
+ 
+ 	/* Remove debugfs entries first */
+ 	uscmi_debugfs_exit(uscmi);
+@@ -1560,7 +1560,6 @@ static int qcom_uscmi_remove(struct platform_device *pdev)
+ 	}
+ 
+ 	mutex_destroy(&uscmi->dev_lock);
+-	return 0;
+ }
+ 
+ /**
 diff --git a/safelinux-modules/drivers/qcom_vdev.c b/safelinux-modules/drivers/qcom_vdev.c
-index 6e89ae0..7eace37 100644
+index 3165d7b..c751951 100644
 --- a/safelinux-modules/drivers/qcom_vdev.c
 +++ b/safelinux-modules/drivers/qcom_vdev.c
 @@ -177,7 +177,7 @@ static int vdev_unmask_interrupt(struct vdev_data *vdev_data, u32 irq_index)
@@ -578,7 +669,7 @@ index 6e89ae0..7eace37 100644
  }
  
  /**
-@@ -601,13 +601,11 @@ static int qcom_vdev_probe(struct platform_device *pdev)
+@@ -611,13 +611,11 @@ static int qcom_vdev_probe(struct platform_device *pdev)
  	return 0;
  }
  
@@ -645,6 +736,19 @@ index 667c6f8..3e9f815 100644
 +MODULE_IMPORT_NS("DMA_BUF");
  MODULE_DESCRIPTION("Qualcomm Technologies, Inc. user interface SCM driver");
  MODULE_LICENSE("GPL v2");
+diff --git a/safelinux-modules/drivers/vendor_uscmi.c b/safelinux-modules/drivers/vendor_uscmi.c
+index 3079dd5..6308893 100644
+--- a/safelinux-modules/drivers/vendor_uscmi.c
++++ b/safelinux-modules/drivers/vendor_uscmi.c
+@@ -218,7 +218,7 @@ static struct platform_driver uscmi_vendor_drv = {
+ 		.suppress_bind_attrs = true,
+ 	},
+ 	.probe		= uscmi_vendor_probe,
+-	.remove_new	= uscmi_vendor_remove,
++	.remove	= uscmi_vendor_remove,
+ };
+ module_platform_driver(uscmi_vendor_drv);
+ 
 diff --git a/safelinux-modules/drivers/vfio_iommu_qcom.c b/safelinux-modules/drivers/vfio_iommu_qcom.c
 index e191273..031b95e 100644
 --- a/safelinux-modules/drivers/vfio_iommu_qcom.c
@@ -723,10 +827,10 @@ index e191273..031b95e 100644
  	return vfio_register_iommu_driver(&vfio_iommu_driver_ops_qcom);
  }
 diff --git a/safelinux-modules/include/linux/kiumd_common.h b/safelinux-modules/include/linux/kiumd_common.h
-index e1eaddd..f148ecc 100644
+index a80804e..8ccc8a7 100644
 --- a/safelinux-modules/include/linux/kiumd_common.h
 +++ b/safelinux-modules/include/linux/kiumd_common.h
-@@ -70,9 +70,21 @@ struct kiumd_smmu_kgsl_ctx {
+@@ -69,9 +69,21 @@ struct kiumd_smmu_kgsl_ctx {
  	int ptselect;
  };
  
@@ -751,7 +855,7 @@ index e1eaddd..f148ecc 100644
  };
  
  /*
-@@ -95,21 +107,25 @@ struct kiumd_dma_heap_attachment {
+@@ -94,21 +106,25 @@ struct kiumd_dma_heap_attachment {
   */
  
  struct kiumd_iommu_dma_cookie {
@@ -790,7 +894,7 @@ index e1eaddd..f148ecc 100644
  };
  
  /*
-@@ -131,6 +147,11 @@ struct kiumd_iommu_group {
+@@ -130,6 +146,11 @@ struct kiumd_iommu_group {
  	int id;
  	struct iommu_domain *default_domain;
  	struct iommu_domain *blocking_domain;
@@ -802,7 +906,7 @@ index e1eaddd..f148ecc 100644
  	struct iommu_domain *domain;
  	struct list_head entry;
  	unsigned int owner_cnt;
-@@ -393,15 +414,16 @@ int init_and_allocate_iova(struct kmem_cache *addr_cache, struct device *dev,
+@@ -355,15 +376,16 @@ int init_and_allocate_iova(struct kmem_cache *addr_cache, struct device *dev,
  			   unsigned long fixed_iova, bool is_fixed_map);
  
  int kiumd_configure_dma_cookie(struct device *dev,
@@ -824,7 +928,7 @@ index e1eaddd..f148ecc 100644
  
  struct arm_smmu_domain *kiumd_get_smmu_domain(struct device *dev);
  
-@@ -422,9 +444,11 @@ int kiumd_io_pgtable_hyp_assign_page(u32 *vmid, u64 page, u32 nr_acl_entries);
+@@ -384,9 +406,11 @@ int kiumd_io_pgtable_hyp_assign_page(u32 *vmid, u64 page, u32 nr_acl_entries);
  
  int kiumd_io_pgtable_hyp_unassign_page(u32 *vmid, u64 page, u32 nr_acl_entries);
  

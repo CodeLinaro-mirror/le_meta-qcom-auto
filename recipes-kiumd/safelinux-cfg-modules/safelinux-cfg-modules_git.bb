@@ -23,7 +23,7 @@ SRC_URI:append = " file://${UMD_LOAD_CONF}"
 
 SRCPROJECT = "git://review-android.quicinc.com:29418/platform/vendor/qcom-opensource/safelinux-cfg-modules"
 SRCBRANCH = "safe-services.lnx.1.0"
-SRCREV = "d90fb5b781b660dd186796486aeba7a7288a620e"
+SRCREV = "${AUTOREV}"
 
 # Yocto 6: avoid double slash, keep S aligned with where patches are applied
 S = "${UNPACKDIR}/safelinux-cfg-modules/safelinux-modules"
