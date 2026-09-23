@@ -40,4 +40,5 @@ SRC_URI:append = " file://0001-ksync-add-vmalloc-h.patch \
                    file://0002-ksync-remove-dma-fence-ops-value-str-members.patch \
                    file://0003-ksync-fence-remove-dma-fence-ops-value-str-members.patch \
                    file://0004-ksync-platform-remove-returns-void.patch \
+                   file://0005-ksync-fence-drop-signal-on-any-arg.patch \
                    file://0005-ksync-trace-adapt-assign-str-macro-signature.patch"
