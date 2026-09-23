@@ -9,11 +9,13 @@ DEPENDS += "${@bb.utils.contains('PREFERRED_PROVIDER_virtual/kernel', 'linux-ark
 # 0002-*.patch carries the secure-buffer stack (qcom_dma_heaps/qcom_secure_buffer/
 # mem_buf, for /dev/dma_heap/qcom,secure-pixel needed by kgsl) until Gerrit
 # CL 7060929 / 7060930 land on ${SRCBRANCH}; drop that patch line then.
+# 0003-*.patch aligns kiumd/qcom_sg_ops with the embedded-sg_table
+# dma_heap_attachment layout, adds GMU/KGSL ctrl-pending fixed-IOVA
+# staging, and fixes smmu_table registration/unmap pairing. Depends
+# on the secure-buffer stack (qcom_sg_ops.c/.h) landing separately.
 SRC_URI = "\
     ${PATH_TO_REPO}/vendor/qcom/opensource/safelinux-cfg-modules/.git;protocol=${PROTO};destsuffix=safelinux-cfg-modules;usehead=1 \
     file://0001-safelinux-cfg-modules-fix-remove-signature-for-6.18-.patch;patchdir=.. \
-    file://0002-qcom_vm_cpufreq-fix-thermal_of_cooling_device_regis.patch;patchdir=.. \
-    file://0004-safelinux-modules-iommu_faults-use-kzalloc-instead-o.patch;patchdir=.. \
     file://fix-kernel71.py \
 "
 
