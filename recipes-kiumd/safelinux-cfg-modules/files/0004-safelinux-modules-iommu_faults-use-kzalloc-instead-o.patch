@@ -1,0 +1,96 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Venkatakrishnaiah Pari <vpari@qti.qualcomm.com>
+Date: Wed, 9 Sep 2026 13:00:00 -0700
+Subject: [PATCH] safelinux-modules: iommu_faults: use kzalloc instead of
+ devm_kzalloc
+
+match_and_register_fault() is invoked from iommu_fault_init() via
+bus_for_each_dev() at module-load initcall time, for every platform
+device whose device-tree node carries the boolean property
+"iommu-faults" (e.g. sa8797's 9a00000.vfio_titan_base VFIO camera
+passthrough node). This runs entirely independent of, and well before,
+any driver ever probing or binding to that device.
+
+create_device_fault_info() attaches its per-device
+struct device_fault_info via devm_kzalloc(dev, ...). devm_* allocations
+are only released by devres_release_all(), which is only reached from
+device_unbind_cleanup() -- itself only called after a completed probe
+attempt (success + later unbind/reprobe, or probe failure) or a real
+driver unbind. None of those ever happen for a device this module
+merely walks via bus_for_each_dev() and never binds a driver to.
+
+The result is a devres entry that is permanently stuck on
+dev->devres_head. really_probe() in drivers/base/dd.c refuses to probe
+any device with a non-empty devres_head ("Resources present before
+probing"), so every later attempt -- manual sysfs bind or automatic --
+to bind e.g. vfio-platform to 9a00000.vfio_titan_base fails with -EBUSY:
+
+  platform 9a00000.vfio_titan_base: Resources present before probing
+  platform 9a00000.vfio_titan_base:   leftover devres: ... name=devm_kzalloc_release size=72 release=dr_node_release
+  platform 9a00000.vfio_titan_base: bind_store: device_driver_attach failed with -16
+
+Confirmed via a dump_stack() instrumented devm_kmalloc(): the
+allocation happens at boot, from modprobe loading iommu_faults.ko,
+through match_and_register_fault() -> devm_kmalloc(), before any bind
+attempt is ever made.
+
+Switch to a plain kzalloc()/kfree() on the error paths. This
+allocation is intentionally kept alive for the life of the
+fault-handler registration -- the module has no unload/teardown path
+either (iommu_fault_exit() is a no-op) -- so it does not need to be
+tied to a driver's devm lifecycle at all.
+
+Change-Id: Ib998f00660ef227c62df4b580815171cf8d31e1a
+Signed-off-by: Venkatakrishnaiah Pari <vpari@qti.qualcomm.com>
+---
+ safelinux-modules/drivers/iommu_faults.c | 20 +++++++++++++++++++-
+ 1 file changed, 19 insertions(+), 1 deletion(-)
+
+diff --git a/safelinux-modules/drivers/iommu_faults.c b/safelinux-modules/drivers/iommu_faults.c
+index 3795742..ff8ca21 100644
+--- a/safelinux-modules/drivers/iommu_faults.c
++++ b/safelinux-modules/drivers/iommu_faults.c
+@@ -172,7 +172,22 @@ static int create_device_fault_info(struct device *dev, void *data)
+ 	struct device_fault_info *dev_info;
+ 	struct iommu_domain *domain;
+ 
+-	dev_info = devm_kzalloc(dev, sizeof(struct device_fault_info), GFP_KERNEL);
++	/*
++	 * This module registers a fault handler on arbitrary platform
++	 * devices via bus_for_each_dev() at module load time, well before
++	 * (and independent of) any driver ever probing/binding to @dev.
++	 * devm_* allocations are only released via devres_release_all(),
++	 * which is only called from device_unbind_cleanup() on a probe
++	 * failure/retry or a real driver unbind -- neither of which occurs
++	 * for a device that was never probed. Using devm_kzalloc() here
++	 * therefore leaves a permanent entry on dev->devres_head, which
++	 * makes really_probe() reject every future manual/automatic bind
++	 * attempt for @dev with -EBUSY ("Resources present before probing").
++	 * Use a plain kzalloc() instead; this allocation is intentionally
++	 * kept alive for the life of the fault-handler registration (the
++	 * module has no unload/teardown path either).
++	 */
++	dev_info = kzalloc(sizeof(struct device_fault_info), GFP_KERNEL);
+ 	if (!dev_info)
+ 		return -ENOMEM;
+ 
+@@ -185,6 +200,7 @@ static int create_device_fault_info(struct device *dev, void *data)
+ 	domain = iommu_get_dma_domain(dev);
+ 	if (!domain) {
+ 		dev_err(dev, "%s:iommu domain is NULL\n", __func__);
++		kfree(dev_info);
+ 		return -EINVAL;
+ 	}
+ 
+@@ -192,6 +208,8 @@ static int create_device_fault_info(struct device *dev, void *data)
+ 
+ 	if (sysfs_create_file(device_obj, &(dev_info->fault_attr.attr))) {
+ 		dev_err(dev, "failed to create sysfs file in /sys/kernel/\n");
++		iommu_set_fault_handler(domain, NULL, NULL);
++		kfree(dev_info);
+ 		return -ENOMEM;
+ 	}
+ 
+-- 
+2.34.1
+
