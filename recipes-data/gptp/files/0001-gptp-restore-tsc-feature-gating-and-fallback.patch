@@ -1,0 +1,87 @@
+From 0f3d9762baf6d2d8eb0f9b49d7b1138a9f9ac8f3 Mon Sep 17 00:00:00 2001
+# This patch file is from Qualcomm Technologies, Inc.
+# and is provided under the following license:
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: BSD-3-Clause-Clear
+From: Ajender Reddy Mallikarjuna <ajenderr@qti.qualcomm.com>
+Date: Thu, 10 Sep 2026 12:30:00 +0530
+Subject: [PATCH] gptp: restore TSC_FEATURE gating and add safe timestamp
+ fallback
+
+Compared with 1.0, 2.0 removed TSC_FEATURE compile gating in gptp, which makes
+tsc_enable path always use HWTSTAMP_TX_EXTERNAL_TIME_SRC. On targets/drivers
+that do not support this mode, qgptp exits immediately and gptp.service enters
+restart storm then fails.
+
+This patch:
+1) Restores TSC_FEATURE compile gating in daemons/gptp/Makefile.
+2) Adds runtime fallback to HWTSTAMP_TX_ON when external timestamp source
+   configuration fails.
+
+Upstream-Status: Inappropriate [platform-specific bringup fix]
+
+Signed-off-by: Ajender Reddy Mallikarjuna <ajenderr@qti.qualcomm.com>
+---
+ daemons/gptp/Makefile             |  5 +++++
+ daemons/gptp/src/linux_hal_generic.cpp | 24 ++++++++++++++++++++----
+ 2 files changed, 25 insertions(+), 4 deletions(-)
+
+diff --git a/daemons/gptp/Makefile b/daemons/gptp/Makefile
+index 61bfe6f..dd28420 100644
+--- a/daemons/gptp/Makefile
++++ b/daemons/gptp/Makefile
+@@ -137,6 +137,11 @@ ifeq ($(GPTP_DSQB_ENABLED),1)
+     LDFLAGS_G += -lpm-client
+ endif
+ 
++ifeq ($(TSC_FEATURE),1)
++    CFLAGS_G += -DTSC_FEATURE
++    CPPFLAGS_G += -DTSC_FEATURE
++endif
++
+ LDFLAGS_G += -lpthread -lrt
+ 
+ CFLAGS_G += -DLOG_LIMIT
+diff --git a/daemons/gptp/src/linux_hal_generic.cpp b/daemons/gptp/src/linux_hal_generic.cpp
+index c934052..894024c 100644
+--- a/daemons/gptp/src/linux_hal_generic.cpp
++++ b/daemons/gptp/src/linux_hal_generic.cpp
+@@ -588,16 +588,28 @@ bool LinuxTimestamperGeneric::post_init( int ifindex, int sd,
+     memset( &hwconfig, 0, sizeof( hwconfig ));
+ 
+     hwconfig.rx_filter = HWTSTAMP_FILTER_PTP_V2_EVENT;
+-    if(tsc_enable){
+-    GPTP_LOG_INFO("TSC used:: HWTSTAMP_TX_EXTERNAL_TIME_SRC hw type set");
+-    hwconfig.tx_type = HWTSTAMP_TX_EXTERNAL_TIME_SRC;
+-   } else {
+-    hwconfig.tx_type = HWTSTAMP_TX_ON;
+-    GPTP_LOG_INFO("HWTSTAMP_TX_ON hw type set");
+-   }
+-    err = ioctl( sd, SIOCSHWTSTAMP, &device );
++    if (tsc_enable) {
++#ifdef TSC_FEATURE
++        GPTP_LOG_INFO("TSC used:: HWTSTAMP_TX_EXTERNAL_TIME_SRC hw type set");
++        hwconfig.tx_type = HWTSTAMP_TX_EXTERNAL_TIME_SRC;
++#else
++        GPTP_LOG_INFO("HWTSTAMP_TX_ON hw type set (non-GEN5 target)");
++        hwconfig.tx_type = HWTSTAMP_TX_ON;
++#endif
++    } else {
++        hwconfig.tx_type = HWTSTAMP_TX_ON;
++        GPTP_LOG_INFO("HWTSTAMP_TX_ON hw type set");
++    }
++    err = ioctl(sd, SIOCSHWTSTAMP, &device);
+     GPTP_LOG_INFO("post_init:: SIOCSHWTSTAMP ioctl called");
+ 
++    if (err == -1 && tsc_enable) {
++        GPTP_LOG_WARNING("External timestamp source not supported (%s), fallback to HWTSTAMP_TX_ON",
++                         strerror(errno));
++        hwconfig.tx_type = HWTSTAMP_TX_ON;
++        err = ioctl(sd, SIOCSHWTSTAMP, &device);
++    }
++
+     if ( err == -1 ) {
+         GPTP_LOG_ERROR
+         ("Failed to configure timestamping: %s", strerror(errno));
+-- 
+2.34.1
