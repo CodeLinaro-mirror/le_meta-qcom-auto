@@ -6,7 +6,7 @@ header:
   - base.yml
 
 bblayers_conf_header:
-  extras: |
+  shikra-evk-auto-extras: |
     BBMASK:append = " /meta-selinux/recipes-graphics/mesa/"
     BBMASK:append = " /meta-selinux/recipes-kernel/linux/linux-yocto"
 
@@ -81,5 +81,9 @@ local_conf_header:
     BBMASK:append = " /meta-qcom-auto/recipes-audio/spf/spf_git.bb"
     BBMASK:append = " /meta-qcom-auto/recipes-audio/system-media/system-media_git.bb"
     BBMASK:append = " /meta-qcom-auto/recipes-camera/"
+    BBMASK:append = " /meta-qcom-auto-extras/(?!recipes-core/time-genoff/|recipes-tools/can-firmware/)"
+
+  shikra-evk-auto-extras: |
+    IMAGE_INSTALL:append = " time-genoff mpc5746-firmware"
 
 machine: shikra-evk-auto
