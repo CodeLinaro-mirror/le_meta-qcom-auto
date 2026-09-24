@@ -5,6 +5,11 @@ header:
   includes:
   - base.yml
 
+repos:
+  meta-ai:
+    layers:
+      .: disabled
+
 bblayers_conf_header:
   extras: |
     BBMASK:append = " /meta-selinux/recipes-graphics/mesa/"
