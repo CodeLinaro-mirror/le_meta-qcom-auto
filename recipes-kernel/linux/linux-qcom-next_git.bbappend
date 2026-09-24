@@ -69,6 +69,7 @@ do_compile:prepend() {
 }
 
 do_deploy:append() {
+    install -m 0644 ${B}/vmlinux ${DEPLOYDIR}
     install -d ${DEPLOYDIR}/build-artifacts/dtb
     for dtb in ${KERNEL_MACHINE_DTB}; do
         if [ -f ${B}/$dtb ]; then
