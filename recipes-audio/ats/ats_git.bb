@@ -8,7 +8,7 @@ DEPENDS += "\
             acdb ar-osal glib-2.0 gsl diag \
 "
 SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/args.git;branch=audio-core-auto.lnx.2.0.r5-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/args/acdb/ats;subpath=acdb/ats"
-SRCREV = "71c353f0b4427f1d33a7a5e7da374c7be062d74d"
+SRCREV = "3bd8490decae7456de9bd07b4d0f4a718ce218ca"
 S = "${WORKDIR}/vendor/qcom/opensource/args/acdb/ats"
 
 inherit pkgconfig cmake

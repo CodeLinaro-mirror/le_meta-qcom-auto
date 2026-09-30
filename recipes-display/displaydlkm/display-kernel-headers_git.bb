@@ -6,9 +6,9 @@ LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/GPL-2.0-only;m
 
 SRC_URI = "${CLO_LE_GIT}/platform/vendor/opensource/display-drivers.git;branch=display-kernel.lnx.12.5.r18-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/display-drivers"
 SRC_URI:sa8775-flex = "${CLO_LE_GIT}/platform/vendor/opensource/gen4-5/display-drivers.git;branch=display-kernel_gen4-5.lnx.5.15.1.r2-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/display-drivers"
-SRCREV = "9e756ed0a7e89e66c15508d48a1324d7d090977e"
+SRCREV = "bcee6051fd99222d35d66145023a5ab58de24c15"
 
-SRCREV:sa8775-flex = "76924a6d16bc6a9d03fdfa0933e9db818b3627e5"
+SRCREV:sa8775-flex = "bb4d0c4063c4c869c65054d6e9ae5ba475d08be9"
 S = "${WORKDIR}/vendor/qcom/opensource/display-drivers/include/uapi"
 
 
@@ -28,7 +28,7 @@ MEDIA_UAPI_HEADERS = "\
 do_configure[noexec] = "1"
 do_compile[noexec] = "1"
 
-do_install[depends] += "virtual/kernel:do_shared_workdir"
+do_install[depends] += "virtual/kernel:do_shared_workdir make-mod-scripts:do_compile"
 
 do_install() {
    HEADER_INSTALL_TOOL=${STAGING_KERNEL_DIR}/scripts/headers_install.sh

@@ -19,7 +19,7 @@ DEPENDS += "\
 "
 
 SRC_URI = "${CLO_LA_GIT}/platform/vendor/qcom-opensource/gst-plugins-qti-oss.git;branch=gst-auto-tools-plugins.4.0.r14-rel;protocol=${OSS_PROTO};destsuffix=gstreamer/gst-plugins-qti-oss"
-SRCREV = "a7707fc52a27b191315116288942b768fb69df47"
+SRCREV = "f783693ef24a51229a567a92f72ec094d15b6f83"
 S = "${WORKDIR}/gstreamer/gst-plugins-qti-oss/gst-plugin-qvdeinterlace"
 
 inherit meson pkgconfig
@@ -30,7 +30,6 @@ CFLAGS += "\
 "
 
 EXTRA_OEMESON += "\
-    -Dmmmcolorfmt=true \
     ${@bb.utils.contains('MACHINE_FEATURES', 'qti-umd', '-Duseumd=true', '', d)} \
 "
 

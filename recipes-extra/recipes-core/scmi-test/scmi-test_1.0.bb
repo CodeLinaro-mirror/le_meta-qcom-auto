@@ -7,7 +7,7 @@ LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/BSD-3-Clause-C
 DEPENDS += "safelinux-cfg-modules virtual/kernel-headers glib-2.0"
 
 SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/safelinux-services.git;branch=safe-services.lnx.1.0.r24-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/safelinux-services"
-SRCREV = "a12de5f8eac6a56bc2c36b16dcf3e33df19aaa4d"
+SRCREV = "148038b08b4a8669794482a6a0b115dd29492e35"
 
 S = "${WORKDIR}/vendor/qcom/opensource/safelinux-services/scmi-test"
 

@@ -6,7 +6,7 @@ LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/${LICENSE};md5
 
 DEPENDS += "vmm-lib"
 SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/vm-tools.git;branch=auto-vmm.lnx.1.0.r29-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/vm-tools"
-SRCREV = "36a86167c63220e0862206631908304d30d50e90"
+SRCREV = "cda8436db8744b939d9035d7e2513715bb6836cb"
 S = "${WORKDIR}/vendor/qcom/opensource/vm-tools/vm-powerctl"
 RDEPENDS:${PN} = "vmm-lib"
 

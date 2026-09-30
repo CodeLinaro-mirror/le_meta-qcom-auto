@@ -7,7 +7,7 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/${LICENSE};md5=7a434440b651f4a4
 
 DEPENDS += "bootkpi-logging tinyalsa-new glib-2.0 agm"
 
-SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/audio-ar-service.git;branch=auto-audio-lrh.lnx.2.0.r5-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/audio-ar-service/ar_init_service;subpath=ar_init_service"
+SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/audio-ar-service.git;branch=auto-audio-lrh.lnx.2.0.r5-rel;protocol=https;destsuffix=vendor/qcom/opensource/audio-ar-service/ar_init_service;subpath=ar_init_service"
 SRCREV = "2c7ab8382615650f3e9e154aa6377951a2b5a2e0"
 
 S = "${WORKDIR}/vendor/qcom/opensource/audio-ar-service/ar_init_service"

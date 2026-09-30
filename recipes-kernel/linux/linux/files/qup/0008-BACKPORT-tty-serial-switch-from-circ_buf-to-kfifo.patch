@@ -1,7 +1,7 @@
-From 163353e71df83a03cf4ea95e23103d958fd4a54c Mon Sep 17 00:00:00 2001
-From: Praveen Talari <praveen.talari@oss.qualcomm.com>
-Date: Sat, 13 Sep 2025 16:35:24 +0530
-Subject: [PATCH 08/19] BACKPORT: tty: serial: switch from circ_buf to kfifo
+From 27267b74deb01abe8c90d4fd0573e53f21c9dcf7 Mon Sep 17 00:00:00 2001
+From: Chiluka Harish <chiluka.harish@oss.qualcomm.com>
+Date: Fri, 24 Jul 2026 16:00:10 +0530
+Subject: [PATCH] BACKPORT: tty: serial: switch from circ_buf to kfifo
 
 Switch from struct circ_buf to proper kfifo. kfifo provides much better
 API, esp. when wrap-around of the buffer needs to be taken into account.
@@ -28,18 +28,19 @@ Signed-off-by: Jiri Slaby (SUSE) <jirislaby@kernel.org>
 Link: https://lore.kernel.org/r/20240405060826.2521-13-jirislaby@kernel.org
 Signed-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>
 Signed-off-by: Praveen Talari <praveen.talari@oss.qualcomm.com>
+Signed-off-by: Chiluka Harish <chiluka.harish@oss.qualcomm.com>
 ---
- drivers/tty/serial/qcom_geni_serial.c | 43 ++++++++++----------
- drivers/tty/serial/serial_core.c      | 57 ++++++++++-----------------
+ drivers/tty/serial/qcom_geni_serial.c | 58 +++++++++++++--------------
+ drivers/tty/serial/serial_core.c      | 57 ++++++++++----------------
  drivers/tty/serial/serial_port.c      |  2 +-
  include/linux/serial_core.h           | 48 +++++++++++++++++-----
- 4 files changed, 82 insertions(+), 68 deletions(-)
+ 4 files changed, 89 insertions(+), 76 deletions(-)
 
 diff --git a/drivers/tty/serial/qcom_geni_serial.c b/drivers/tty/serial/qcom_geni_serial.c
-index 5f7f97e57e83..fcd9e55393ce 100644
+index 5a91c54333c2..f7dc7c5921b5 100644
 --- a/drivers/tty/serial/qcom_geni_serial.c
 +++ b/drivers/tty/serial/qcom_geni_serial.c
-@@ -535,7 +535,7 @@ static void qcom_geni_serial_console_write(struct console *co, const char *s,
+@@ -553,7 +553,7 @@ static void qcom_geni_serial_console_write(struct console *co, const char *s,
  		 */
  		qcom_geni_serial_poll_tx_done(uport);
  
@@ -48,7 +49,7 @@ index 5f7f97e57e83..fcd9e55393ce 100644
  			irq_en = readl(uport->membase + SE_GENI_M_IRQ_EN);
  			writel(irq_en | M_TX_FIFO_WATERMARK_EN,
  					uport->membase + SE_GENI_M_IRQ_EN);
-@@ -652,9 +652,9 @@ static void qcom_geni_serial_stop_tx_dma(struct uart_port *uport)
+@@ -670,9 +670,9 @@ static void qcom_geni_serial_stop_tx_dma(struct uart_port *uport)
  static void qcom_geni_serial_start_tx_dma(struct uart_port *uport)
  {
  	struct qcom_geni_serial_port *port = to_dev_port(uport);
@@ -60,7 +61,7 @@ index 5f7f97e57e83..fcd9e55393ce 100644
  	bool pin_state;
  	int ret;
  
-@@ -662,10 +662,11 @@ static void qcom_geni_serial_start_tx_dma(struct uart_port *uport)
+@@ -680,10 +680,11 @@ static void qcom_geni_serial_start_tx_dma(struct uart_port *uport)
  	if (port->tx_dma_addr)
  		return;
  
@@ -74,7 +75,7 @@ index 5f7f97e57e83..fcd9e55393ce 100644
  
  	if (uport->rs485.flags & SER_RS485_ENABLED) {
  		/* For RS485 mode, the RTS can be set/cleared before transmission */
-@@ -674,18 +675,18 @@ static void qcom_geni_serial_start_tx_dma(struct uart_port *uport)
+@@ -692,18 +693,18 @@ static void qcom_geni_serial_start_tx_dma(struct uart_port *uport)
  	}
  	qcom_geni_serial_setup_tx(uport, xmit_size);
  
@@ -98,7 +99,7 @@ index 5f7f97e57e83..fcd9e55393ce 100644
  	}
  	port->tx_remaining = xmit_size;
  }
-@@ -910,18 +911,16 @@ static void qcom_geni_serial_send_chunk_fifo(struct uart_port *uport,
+@@ -928,18 +929,16 @@ static void qcom_geni_serial_send_chunk_fifo(struct uart_port *uport,
  					     unsigned int chunk)
  {
  	struct qcom_geni_serial_port *port = to_dev_port(uport);
@@ -121,7 +122,7 @@ index 5f7f97e57e83..fcd9e55393ce 100644
  
  		iowrite32_rep(uport->membase + SE_GENI_TX_FIFOn, buf, 1);
  
-@@ -934,7 +933,7 @@ static void qcom_geni_serial_handle_tx_fifo(struct uart_port *uport,
+@@ -952,7 +951,7 @@ static void qcom_geni_serial_handle_tx_fifo(struct uart_port *uport,
  					    bool done, bool active)
  {
  	struct qcom_geni_serial_port *port = to_dev_port(uport);
@@ -130,7 +131,7 @@ index 5f7f97e57e83..fcd9e55393ce 100644
  	size_t avail;
  	size_t pending;
  	u32 status;
-@@ -947,7 +946,7 @@ static void qcom_geni_serial_handle_tx_fifo(struct uart_port *uport,
+@@ -965,7 +964,7 @@ static void qcom_geni_serial_handle_tx_fifo(struct uart_port *uport,
  	if (active)
  		pending = port->tx_remaining;
  	else
@@ -139,7 +140,7 @@ index 5f7f97e57e83..fcd9e55393ce 100644
  
  	/* All data has been transmitted and acknowledged as received */
  	if (!pending && !status && done) {
-@@ -990,24 +989,24 @@ static void qcom_geni_serial_handle_tx_fifo(struct uart_port *uport,
+@@ -1008,37 +1007,36 @@ static void qcom_geni_serial_handle_tx_fifo(struct uart_port *uport,
  					uport->membase + SE_GENI_M_IRQ_EN);
  	}
  
@@ -152,9 +153,29 @@ index 5f7f97e57e83..fcd9e55393ce 100644
  {
  	struct qcom_geni_serial_port *port = to_dev_port(uport);
 -	struct circ_buf *xmit = &uport->state->xmit;
+-	unsigned int circ_pending = uart_circ_chars_pending(xmit);
 +	struct tty_port *tport = &uport->state->port;
++	unsigned int fifo_len = kfifo_len(&tport->xmit_fifo);
  
- 	uart_xmit_advance(uport, port->tx_remaining);
+ 	/*
+-	 * Only advance the circ_buf if it still contains the bytes that were
++	 * Only advance the kfifo if it still contains the bytes that were
+ 	 * transferred. uart_flush_buffer() may have run before this IRQ
+-	 * fired: it calls uart_circ_clear() under the port lock, making
+-	 * uart_circ_chars_pending() = 0 while tx_remaining remains non-zero.
+-	 * Calling uart_xmit_advance() in that case would advance xmit->tail
+-	 * past xmit->head (which was zeroed by the clear), causing
+-	 * uart_circ_chars_pending() to return UART_XMIT_SIZE - tx_remaining
++	 * fired: it calls kfifo_reset() under the port lock, making
++	 * fifo_len = 0 while tx_remaining remains non-zero. Calling
++	 * uart_xmit_advance() in that case would underflow kfifo->out past
++	 * kfifo->in, making kfifo_len() wrap to UART_XMIT_SIZE - tx_remaining
+ 	 * and triggering a spurious large DMA transfer of stale data.
+ 	 */
+-	if (circ_pending >= port->tx_remaining)
++	if (fifo_len >= port->tx_remaining)
+ 		uart_xmit_advance(uport, port->tx_remaining);
+ 
  	geni_se_tx_dma_unprep(&port->se, port->tx_dma_addr, port->tx_remaining);
  	port->tx_dma_addr = 0;
  	port->tx_remaining = 0;
@@ -169,7 +190,7 @@ index 5f7f97e57e83..fcd9e55393ce 100644
  }
  
 diff --git a/drivers/tty/serial/serial_core.c b/drivers/tty/serial/serial_core.c
-index 1712d36aa62f..5c20d1c6cc4f 100644
+index 8f659f081c63..6d50d6d7645e 100644
 --- a/drivers/tty/serial/serial_core.c
 +++ b/drivers/tty/serial/serial_core.c
 @@ -272,9 +272,10 @@ static int uart_port_startup(struct tty_struct *tty, struct uart_state *state,
@@ -313,7 +334,7 @@ index 1712d36aa62f..5c20d1c6cc4f 100644
  
  	free_page((unsigned long)buf);
 diff --git a/drivers/tty/serial/serial_port.c b/drivers/tty/serial/serial_port.c
-index 469ad26cde48..1426a3bf6143 100644
+index a871acc51c70..49146b372c67 100644
 --- a/drivers/tty/serial/serial_port.c
 +++ b/drivers/tty/serial/serial_port.c
 @@ -23,7 +23,7 @@
@@ -326,7 +347,7 @@ index 469ad26cde48..1426a3bf6143 100644
  
  static int serial_port_runtime_resume(struct device *dev)
 diff --git a/include/linux/serial_core.h b/include/linux/serial_core.h
-index 052df85dfd59..6f5a3ae255ca 100644
+index 6de3d7aab17d..81adf2fa7bcf 100644
 --- a/include/linux/serial_core.h
 +++ b/include/linux/serial_core.h
 @@ -98,7 +98,6 @@ struct gpio_desc;
@@ -337,7 +358,7 @@ index 052df85dfd59..6f5a3ae255ca 100644
   *
   * @start_tx: ``void ()(struct uart_port *port)``
   *
-@@ -721,10 +720,33 @@ struct uart_state {
+@@ -748,10 +747,33 @@ struct uart_state {
   */
  static inline void uart_xmit_advance(struct uart_port *up, unsigned int chars)
  {
@@ -373,7 +394,7 @@ index 052df85dfd59..6f5a3ae255ca 100644
  }
  
  struct module;
-@@ -762,7 +784,7 @@ enum UART_TX_FLAGS {
+@@ -789,7 +811,7 @@ enum UART_TX_FLAGS {
  		       for_test, for_post)				      \
  ({									      \
  	struct uart_port *__port = (uport);				      \
@@ -382,7 +403,7 @@ index 052df85dfd59..6f5a3ae255ca 100644
  	unsigned int pending;						      \
  									      \
  	for (; (for_test) && (tx_ready); (for_post), __port->icount.tx++) {   \
-@@ -770,26 +792,34 @@ enum UART_TX_FLAGS {
+@@ -797,26 +819,34 @@ enum UART_TX_FLAGS {
  			(ch) = __port->x_char;				      \
  			(put_char);					      \
  			__port->x_char = 0;				      \

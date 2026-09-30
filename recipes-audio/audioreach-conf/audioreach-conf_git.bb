@@ -6,7 +6,7 @@ LICENSE = "BSD-3-Clause-Clear"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/${LICENSE};md5=7a434440b651f4a472ca93716d01033a"
 
 SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/audioreach-conf.git;branch=audio-core-auto.lnx.2.0.r5-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/audioreach-conf"
-SRCREV = "f39a5fd09d12686087b16423334f7d85059dcbf3"
+SRCREV = "1dd4024343ef762fdaf46ad251791dc7d3650773"
 S = "${WORKDIR}/vendor/qcom/opensource/audioreach-conf"
 
 EXTRA_OECONF += "--with-qcom"

@@ -11,6 +11,8 @@ SYSTEMD_SERVICE:${PN} = "\
 SRC_URI = "\
     file://modules-load-late.service"
 
+SRCREV = "${AUTOREV}"
+
 S = "${WORKDIR}"
 
 inherit systemd useradd

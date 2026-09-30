@@ -13,7 +13,7 @@ PV = "3.0"
 
 SRC_URI = "${CLO_LE_GIT}/abl/tianocore/edk2.git;branch=uefi.lnx.4.0.r89-rel;protocol=${OSS_PROTO};destsuffix=bootable/bootloader/edk2"
 
-SRCREV = "9326eb7971827b9aa42c0a3a04dc822272f54f62"
+SRCREV = "34c2e5c781a55922a221c0071380aa28e2c00401"
 
 S = "${WORKDIR}/bootable/bootloader/edk2"
 

@@ -18,4 +18,3 @@ SRCREV = "e8bf00215cb2175a87c38deb9ae3ff5a441ffd18"
 S = "${WORKDIR}/git"
 
 inherit autotools pkgconfig
-

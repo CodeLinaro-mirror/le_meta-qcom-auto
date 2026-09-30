@@ -9,7 +9,7 @@ DEPENDS += "gunyah-drivers"
 
 SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/mmhab-drv.git;branch=mmhab-drv.lnx.1.0.r15-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/mmhab-drv"
 
-SRCREV = "c93a4e7934b5a5bbbd9d2d6a2ab1b5e8f54775fd"
+SRCREV = "7cd9fe2ec4bbffc6f6173a405f01bb66cd2cf453"
 
 S = "${WORKDIR}/vendor/qcom/opensource/mmhab-drv"
 

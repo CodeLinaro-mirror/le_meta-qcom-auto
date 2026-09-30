@@ -7,7 +7,7 @@ LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/${LICENSE};md5
 DEPENDS += "bison-native dtc-native virtual/kernel"
 
 SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/safelinux-system-cfg.git;branch=safe-services.lnx.1.0.r24-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/safelinux-system-cfg"
-SRCREV = "7a2e1dac32deb864180733bd9f2b41805650c7b1"
+SRCREV = "1412d4af1711fa0bc08e916589db8e20404d9a47"
 
 S = "${WORKDIR}/vendor/qcom/opensource/safelinux-system-cfg/devicetree"
 OVERLAYED_OOT_DTBS_OUT = "${S}/out"

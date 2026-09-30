@@ -6,7 +6,7 @@ DEPENDS = "kmod util-linux"
 
 SRC_URI = "${CLO_LE_GIT}/platform/vendor/opensource/early-ramdisk-init.git;branch=lv-blast.lnx.1.1.r63-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/early-ramdisk-init"
 SRC_URI:append = "${@bb.utils.contains("MACHINE_FEATURES", "qti-umd", " file://vfio_param.conf", "", d)}"
-SRCREV = "fff4a1f288c72dff634b52150b2bb6794d21906b"
+SRCREV = "c3fc79ed43adb997b19e47c1b07d1247bab84055"
 
 S = "${WORKDIR}/vendor/qcom/opensource/early-ramdisk-init"
 

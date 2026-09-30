@@ -10,7 +10,7 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/${LICENSE};md5=7a434440b651f4a4
 DEPENDS += "glib-2.0 libcutils audio-headers-export audio-utils ar-util libkiumd diag-lsm virtual/kernel-headers safelinux-cfg-modules system-core common-headers"
 
 SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/args.git;branch=audio-core-auto.lnx.2.0.r5-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/args/ar_osal;subpath=ar_osal"
-SRCREV = "71c353f0b4427f1d33a7a5e7da374c7be062d74d"
+SRCREV = "3bd8490decae7456de9bd07b4d0f4a718ce218ca"
 
 S = "${WORKDIR}/vendor/qcom/opensource/args/ar_osal"
 

@@ -18,7 +18,7 @@ UMD_LOAD_CONF ?= "umd_load_sa8797.conf"
 UMD_LOAD_CONF:sa8775 = "umd_load_sa8775.conf"
 UMD_LOAD_CONF:sa7255 = "umd_load_sa8775.conf"
 
-SRCREV = "51c2851ee8954fa706ec6a94f18e7dd18c06831e"
+SRCREV = "c19987f99c39eacf865848b791c1ce7792cb6b06"
 
 S = "${WORKDIR}/vendor/qcom/opensource/safelinux-cfg-modules/safelinux-modules"
 

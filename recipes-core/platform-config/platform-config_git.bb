@@ -11,7 +11,7 @@ DEPENDS += "systemd minini"
 DEPENDS:append:gen5 = " libsoftsku"
 
 SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/safelinux-system-cfg.git;branch=safe-services.lnx.1.0.r24-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/safelinux-system-cfg"
-SRCREV = "7a2e1dac32deb864180733bd9f2b41805650c7b1"
+SRCREV = "1412d4af1711fa0bc08e916589db8e20404d9a47"
 S = "${WORKDIR}/vendor/qcom/opensource/safelinux-system-cfg/platform-config"
 
 EXTRA_OECMAKE:append:sa8775-flex = " -D PVM_CPUS:STRING=0-3 -D GVM_CPUS:STRING=4-7"
@@ -36,6 +36,7 @@ do_install:append:gen5() {
     install -m 0444 ${S}/plat-config-generator/nord/safe_ivi.ini -D ${D}/etc/nord/safe_ivi.ini
     install -m 0444 ${S}/plat-config-generator/nord/nonsafe_ivi.ini -D ${D}/etc/nord/nonsafe_ivi.ini
     install -m 0444 ${S}/plat-config-generator/nord/flex.ini -D ${D}/etc/nord/flex.ini
+    install -m 0444 ${S}/plat-config-generator/nord/qclgvm.ini -D ${D}/etc/nord/qclgvm.ini
     install -m 0444 ${S}/plat-config-generator/nord/adas.ini -D ${D}/etc/nord/adas.ini
 
     install -m 0444 ${S}/plat-config-generator/seca/safe_ivi.ini -D ${D}/etc/seca/safe_ivi.ini

@@ -8,7 +8,8 @@ LIC_FILES_CHKSUM = "\
 
 SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/base-devicetree.git;branch=auto-kernel.qclinux.1.0.r13-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/base-devicetree"
 
-SRCREV = "39c6d885995bec784d0e888e3878e822d7584172"
+SRCREV = "649dc8f4e4d421a0f0129dc453023c427ca02c33"
+SRCREV:sa8775-flex = "fb22d631b0fd178f2658f772e68fac81f3f98d01"
 
 S = "${WORKDIR}/vendor/qcom/opensource/base-devicetree"
 

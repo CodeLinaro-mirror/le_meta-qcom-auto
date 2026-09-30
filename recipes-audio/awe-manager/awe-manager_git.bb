@@ -19,7 +19,6 @@ SRC_URI = "git://git.codelinaro.org/clo/yocto-mirrors/awe-manager.git;protocol=h
 do_unpack[depends] += "git-lfs-native:do_populate_sysroot"
 
 SRCREV = "5faef3ff1e77f4f477ad6beaa65c691b84510c3a"
-
 S = "${WORKDIR}/git"
 
 inherit cmake pkgconfig

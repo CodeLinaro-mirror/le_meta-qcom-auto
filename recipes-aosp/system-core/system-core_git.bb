@@ -12,7 +12,7 @@ DEPENDS += "${@bb.utils.contains('MACHINE_FEATURES', 'qti-hypervisor', '', 'vmm-
 PR = "r19"
 
 SRC_URI = "${CLO_LE_GIT}/platform/system/core.git;branch=lv-blast.lnx.1.1.r63-rel;protocol=${OSS_PROTO};destsuffix=system/core"
-SRCREV = "e407a64ace2ee2d2b77ce3d659edbf9f92254ef6"
+SRCREV = "e1ff195e2d007b85996c4dd6e61d571ee982496a"
 
 S = "${WORKDIR}/system/core"
 
@@ -21,7 +21,7 @@ inherit autotools pkgconfig systemd useradd
 COMPOSITION = "901D"
 
 SYSTEMD_PACKAGES = "${PN}-dlkm"
-SYSTEMD_PACKAGES += "${@bb.utils.contains('MACHINE_FEATURES', 'qti-gvm', '${PN}-mount-ab', '', d)}"
+SYSTEMD_PACKAGES += "${@bb.utils.contains('MACHINE_FEATURES', 'qti-hypervisor', '${PN}-mount-ab', '', d)}"
 SYSTEMD_SERVICE:${PN}-dlkm = "dlkm.service"
 SYSTEMD_SERVICE:${PN}-mount-ab = "mount_ab.service"
 
@@ -99,7 +99,7 @@ do_install:append() {
                 ${D}${systemd_unitdir}/system/multi-user.target.wants/disksymlink.service
         fi
 
-        if ${@bb.utils.contains('MACHINE_FEATURES', 'qti-gvm', 'true', 'false', d)}; then
+        if ${@bb.utils.contains('MACHINE_FEATURES', 'qti-hypervisor', 'true', 'false', d)}; then
             install -m 0750 ${S}/rootdir/etc/mount_ab.sh -D ${D}${sysconfdir}/initscripts/mount_ab
             install -m 0644 ${S}/rootdir/etc/mount_ab.service -D ${D}${systemd_unitdir}/system/mount_ab.service
         fi
@@ -127,7 +127,7 @@ do_install:append() {
 
 PACKAGES =+ "${PN}-usb ${PN}-dlkm ${PN}-post-boot ${PN}-leprop"
 PACKAGES =+ "${@bb.utils.contains('MACHINE_FEATURES', 'qti-hypervisor', '', '${PN}-disksymlink', d)}"
-PACKAGES =+ "${@bb.utils.contains('MACHINE_FEATURES', 'qti-gvm', '${PN}-mount-ab', '', d)}"
+PACKAGES =+ "${@bb.utils.contains('MACHINE_FEATURES', 'qti-hypervisor', '${PN}-mount-ab', '', d)}"
 
 FILES:${PN}-usb += "\
     ${base_sbindir}/usb_composition \

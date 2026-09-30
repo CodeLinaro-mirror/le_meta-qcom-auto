@@ -9,7 +9,7 @@ DEPENDS += "virtual/kernel-headers libstd systemd libkiumd power-utils libpil-cl
 DEPENDS += "${@bb.utils.contains('MACHINE_FEATURES', 'qti-umd', 'safelinux-cfg-modules', '', d)}"
 
 SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/safelinux-services.git;branch=safe-services.lnx.1.0.r24-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/safelinux-services"
-SRCREV = "a12de5f8eac6a56bc2c36b16dcf3e33df19aaa4d"
+SRCREV = "148038b08b4a8669794482a6a0b115dd29492e35"
 S = "${WORKDIR}/vendor/qcom/opensource/safelinux-services/notify_aop"
 
 inherit systemd cmake pkgconfig sleep-notify-service

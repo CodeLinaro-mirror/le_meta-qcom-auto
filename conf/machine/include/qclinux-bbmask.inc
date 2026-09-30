@@ -19,7 +19,33 @@ BBMASK:append = " meta-qti-realtime/recipes-kernel/images/linux-qcom-uki.bbappen
 BBMASK:append = " meta-qti-realtime/recipes-products/images/qcom-guestvm-image.bbappend"
 BBMASK:append = " meta-qcom-realtime/recipes-core/packagegroups/packagegroup-qcom-initscripts.bbappend"
 BBMASK:append = " meta-qcom-realtime/recipes-kernel/images/linux-qcom-uki.bbappend"
-BBMASK:append = " meta-qcom-hwe/"
+BBMASK:append = " meta-qcom-hwe/recipes-kernel/images/initramfs-qcom-image.bbappend"
+BBMASK:append = " meta-qcom-hwe/recipes-support/pd-mapper/pd-mapper_git.bbappend"
+BBMASK:append = " meta-qcom-hwe/recipes-edgegateway/parser/parser_0.1.bb"
+BBMASK:append = " meta-qcom-hwe/recipes-bsp/ab-update/qcom-abctl_1.0.bb"
+BBMASK:append = " meta-qcom-hwe/recipes-bsp/ab-update/qcom-libgpt_1.0.bb"
+BBMASK:append = " meta-qcom-hwe/recipes-bsp/u-boot/u-boot-tools_2025.01.bb"
+BBMASK:append = " meta-qcom-hwe/recipes-connectivity/bluez5/"
+BBMASK:append = " meta-qcom-hwe/recipes-core/uutils-coreutils/uutils-coreutils_%.bbappend"
+BBMASK:append = " meta-qcom-hwe/recipes-kernel"
+BBMASK:append = " meta-qcom-hwe/recipes-firmware/firmware"
+BBMASK:append = " meta-qcom-hwe/recipes-multimedia/fastrpc/fastrpc_git.bbappend"
+BBMASK:append = " meta-qcom-hwe/recipes-graphics/msm_be/msm_be.bb"
+BBMASK:append = " meta-qcom-hwe/recipes-graphics/libgbm/gbm_21.1.1.bb"
+BBMASK:append = " meta-qcom-hwe/recipes-graphics/adreno/qcom-adreno_1.855.2.bb"
+BBMASK:append = " meta-qcom-hwe/dynamic-layers/openembedded-layer/recipes-devtools/rsyslog/rsyslog_%.bbappend"
+# Mask all meta-qcom-hwe recipes except subsystem ramdump parity recipe.
+BBMASK:append = " meta-qcom-hwe/(?!recipes-bsp/ss-restart/qcom-subsystem-ramdump_git\\.bb$).*(\\.bb|\\.bbappend)$"
+BBMASK:append:gen5 = " meta-qcom-auto-extras/recipes-audio/ar-osal/ar-osal_git.bb"
+BBMASK:append:gen5 = " meta-qcom-auto-extras/recipes-audio/ar-util/ar-util_git.bb"
+BBMASK:append:gen5 = " meta-qcom-auto-extras/recipes-audio/ats/ats_git.bb"
+BBMASK:append:gen5 = " meta-qcom-auto-extras/recipes-audio/gsl/gsl_git.bb"
+BBMASK:append:gen5 = " meta-qcom-auto-extras/recipes-audio/audio-plugin-intf/audio-plugin-intf_git.bb"
+BBMASK:append = " meta-qcom-hwe/recipes-connectivity/iw/iw_5.19.qcom.bb"
+BBMASK:append:gen5 = " meta-qcom-hwe/recipes-graphics/wayland/weston-launch.bb"
+BBMASK:append:sa8775 = " meta-qcom-hwe/recipes-graphics/wayland/weston-launch.bb"
+BBMASK:append:gen5 = " meta-qcom-hwe/recipes-graphics/wayland/weston_13.0.1.bbappend"
+BBMASK:append:sa8775 = " meta-qcom-hwe/recipes-graphics/wayland/weston_13.0.1.bbappend"
 
 # BBMASK drops some recipe that checksum file not found
 BBMASK:append = " ${MISSING_RECIPE_SRCLIST}"
@@ -27,6 +53,7 @@ BBMASK:append = " ${MISSING_RECIPE_SRCLIST}"
 # List of recipes to be masked for sa8797dc
 LEDC10_MASK_RECIPES += "\
                        meta-qti-bsp/recipes-kernel/perf/perf.bbappend \
+                       meta-qcom-hwe/recipes-kernel/perf/perf.bbappend \
                        meta-qcom-auto/recipes-security/ \
 "
 
@@ -46,8 +73,8 @@ MISSING_RECIPE_SRCLIST += "\
     meta-qcom-auto/recipes-audio/agm-sndparser/agm-sndparser_git.bb \
     meta-qcom-auto/recipes-audio/agm-test/agm-test_git.bb \
     meta-qcom-auto/recipes-audio/agm-tinyalsa-plugin/agm-tinyalsa-plugin_git.bb \
-    meta-qcom-auto/recipes-audio/ar-audiodlkm/ar-audiodlkm_git.bb \
     meta-qcom-auto/recipes-audio/ar-pal/ar-pal_git.bb \
+    meta-qcom-auto/recipes-audio/ar-audiodlkm/ar-audiodlkm_git.bb \
     meta-qcom-auto/recipes-audio/audiodlkm/audiodlkm_git.bb \
     meta-qcom-auto/recipes-audio/pal-control-plugin/pal-control-plugin_git.bb \
     meta-qcom-auto/recipes-audio/pulseaudio-module-acdb/pulseaudio-module-acdb_git.bb \
@@ -84,13 +111,14 @@ MISSING_RECIPE_SRCLIST += "\
     meta-qcom-auto/recipes-kernel/linux-msm/qcom-dtc-native.bb \
     meta-qcom-auto/recipes-kernel/linux-msm/soc-modules_6.12.bb \
     meta-qcom-auto/recipes-kernel/linux/soc-repo.bb \
+    meta-qcom-auto/recipes-aosp/libdmabufheap/libdmabufheap_git.bb \
+    meta-qcom-auto-extras/recipes-multimedia/adsprpc/adsprpc_git.bb \
 "
 
 # Missing recipes in baseline LY.AU.0.1.1 (used by gen5)
 MISSING_RECIPE_SRCLIST_BASELINE_LY011 += "\
     meta-qcom-auto/recipes-kernel/kernel-aosp-tools/kernel-aosp-tools-native.bb \
     meta-qcom-auto-extras/recipes-qcvirtio/qcvirtio-devices/qcvirtio-devices_git.bb \
-    meta-qcom-auto/recipes-audio/ar-audiodlkm/ar-audiodlkm_git.bb \
     meta-qcom-auto/recipes-audio/ar-pal/ar-pal_git.bb \
     meta-qcom-auto/recipes-audio/audiodlkm/audiodlkm_git.bb \
     meta-qcom-auto/recipes-audio/init-audio/init-audio_git.bb \
@@ -105,8 +133,6 @@ MISSING_RECIPE_SRCLIST_BASELINE_LY011 += "\
     meta-qcom-auto/recipes-camera/cameradlkm/cameradlkm_0.2.bb \
     meta-qcom-auto/recipes-connectivity/setup-network/setup-network_1.0.bb \
     meta-qcom-auto/recipes-core/early-init/early-init.bb \
-    meta-qcom-auto/recipes-core/modules-load-late/modules-load-late_git.bb \
-    meta-qcom-auto/recipes-core/notify_aop/notify-aop_git.bb \
     meta-qcom-auto/recipes-core/reboot-daemon/reboot-daemon_2.0.bb \
     meta-qcom-auto/recipes-core/resize-service/resize-service_1.0.bb \
     meta-qcom-auto/recipes-core/sec-config/sec-config_1.0.bb \
@@ -117,14 +143,12 @@ MISSING_RECIPE_SRCLIST_BASELINE_LY011 += "\
     meta-qcom-auto/recipes-data/hsi2s/hsi2s-qmi-test_git.bb \
     meta-qcom-auto/recipes-data/hsi2s/hsi2s-test_0.1.bb \
     meta-qcom-auto/recipes-data/hsi2s/hsi2s_git.bb \
-    meta-qcom-auto/recipes-data/netlink-service-infra/netlink-service-infra_git.bb \
     meta-qcom-auto/recipes-data/open-avb/open-avb_0.1.bb \
     meta-qcom-auto/recipes-data/ptp-virtual/ptp-virtual_git.bb \
     meta-qcom-auto/recipes-display/displaydlkm/displaydlkm_git.bb \
     meta-qcom-auto/recipes-display/displaydlkm/umd-power.bb \
     meta-qcom-auto/recipes-graphics/graphics-driver/graphicsdlkm_git.bb \
     meta-qcom-auto/recipes-graphics/wayland/weston-udev.bb \
-    meta-qcom-auto/recipes-kiumd/gvm-net-config/gvm-net-config_git.bb \
     meta-qcom-auto/recipes-multimedia/codec2/codec2-app_git.bb \
     meta-qcom-auto/recipes-multimedia/codec2/codec2_git.bb \
     meta-qcom-auto/recipes-multimedia/dsp-kernel/dsp-kernel_git.bb \
@@ -153,7 +177,6 @@ MISSING_RECIPE_SRCLIST_BASELINE_LY011 += "\
     meta-qcom-auto/recipes-qcvirtio/qcvirtio-vhost-usb-gadget-driver-linux/qcvirtio-vhost-usb-gadget-driver-linux_git.bb \
     meta-qcom-auto/recipes-qcvirtio/qcvirtio-vhost-usb-gadget-driver-linux/qcvirtio-vhost-usb-gadget-driver-linux-headers_git.bb \
     meta-qcom-auto/recipes-aosp/libion/libion_git.bb \
-    meta-qcom-auto/recipes-aosp/libdmabufheap/libdmabufheap_git.bb \
     meta-qcom-auto/recipes-security/securemsm-devicetree/securemsm-devicetree.bb \
 "
 
@@ -206,7 +229,6 @@ MISSING_RECIPE_SRCLIST_BASELINE_LY020 += "\
     meta-qcom-auto/recipes-qcvirtio/qcvirtio-vhost-usb-gadget-driver-linux/qcvirtio-vhost-usb-gadget-driver-linux_git.bb \
     meta-qcom-auto/recipes-security/securemsm-devicetree/securemsm-devicetree.bb \
     meta-qcom-auto/recipes-aosp/libion/libion_git.bb \
-    meta-qcom-auto/recipes-aosp/libdmabufheap/libdmabufheap_git.bb \
 "
 
 # Keep non-Nord WLAN variants masked; Gen5 Nord uses HSP/HMT only.
@@ -217,4 +239,14 @@ BBMASK += " \
     meta-qcom-auto/recipes-wlan/wlan/qcacld32-ll-hasting-cnss2_git.bb \
     meta-qcom-auto/recipes-wlan/wlan/qcacld32-ll-hasting_git.bb \
     meta-qcom-auto/recipes-wlan/wlan/qcacld32-ll-rome_git.bb \
+    meta-qcom-auto/recipes-multimedia/gstreamer/gstreamer1.0-plugins-codec2-lemans.bb \
+    meta-qcom-auto/recipes-qcvirtio/adbd-linux/adbd-linux_git.bb \
+    meta-qcom-auto/recipes-multimedia/gstreamer/gstreamer1.0-plugins-codec2-monaco.bb \
+    meta-qcom-auto/recipes-multimedia/gstreamer/drm-player-example.bb \
+    meta-qcom-auto/recipes-multimedia/gstreamer/gstreamer1.0-plugins-qvdeinterlace.bb \
+    meta-qcom-auto/recipes-kernel/linux/vms-devicetree.bb \
+    meta-qcom-auto/recipes-multimedia/virtio-video/virtio-video_git.bb \
+    meta-qcom-auto/recipes-multimedia/gstreamer/gstreamer1.0-plugins-vesdeliver.bb \
+    meta-qcom-auto/recipes-multimedia/gstreamer/gstreamer1.0-plugins-codec2-gen5.bb \
+    meta-qcom-auto/recipes-multimedia/gstreamer/gstreamer1.0-plugins-drmdecryptor.bb \
 "

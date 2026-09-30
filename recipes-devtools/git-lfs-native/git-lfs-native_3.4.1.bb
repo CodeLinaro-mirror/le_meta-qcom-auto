@@ -2,7 +2,7 @@ SUMMARY = "Git Large File Storage (LFS) extension"
 DESCRIPTION = "git-lfs allows Git to handle large files via a pointer mechanism"
 HOMEPAGE = "https://git-lfs.github.com"
 LICENSE = "MIT"
-LIC_FILES_CHKSUM = "file://LICENSE.md;md5=3d26ad67cccc4a96ae13e957c57fdc6c"
+LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 
 PV = "3.4.1"
 

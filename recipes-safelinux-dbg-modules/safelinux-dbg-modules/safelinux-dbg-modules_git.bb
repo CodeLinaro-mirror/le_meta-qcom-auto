@@ -8,7 +8,7 @@ SYSTEMD_SERVICE:${PN} = "qcom-dcc.service"
 SYSTEMD_AUTO_ENABLE:${PN} = "enable"
 
 SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/safelinux-dbg-modules.git;branch=safe-services.lnx.1.0.r24-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/safelinux-dbg-modules"
-SRCREV = "910a0e64f10301fa419a19d11db35182384f4b4a"
+SRCREV = "f270ba8cb295c49c1cddf9db86e7bdbaf1a14ff9"
 
 S = "${WORKDIR}/vendor/qcom/opensource/safelinux-dbg-modules"
 
@@ -16,6 +16,7 @@ TECHPACK_MODULES = "minidump/minidump.ko \
                     kaslr_store/kaslr_store.ko \
                     memory_dump_v2/memory_dump_v2.ko \
                     nhlos_log/dump_boot_log.ko \
+                    cpuss_log/qcom_cpuss_log.ko \
                     firmware_vm_mini_dump/firmware_vm_mini_dump.ko \
 "
 TECHPACK_MODULES:append:gen5 = " memory_dump_v21/memory_dump_v21.ko"
@@ -47,6 +48,7 @@ RPROVIDES:${PN} += "${@'kernel-module-kaslr_store-${KERNEL_VERSION}'.replace('_'
 RPROVIDES:${PN} += "${@'kernel-module-memory_dump_v21-${KERNEL_VERSION}'.replace('_', '-')}"
 RPROVIDES:${PN} += "${@'kernel-module-memory_dump_v2-${KERNEL_VERSION}'.replace('_', '-')}"
 RPROVIDES:${PN} += "${@'kernel-module-dump_boot_log-${KERNEL_VERSION}'.replace('_', '-')}"
+RPROVIDES:${PN} += "${@'kernel-module-qcom_cpuss_log-${KERNEL_VERSION}'.replace('_', '-')}"
 RPROVIDES:${PN} += "${@'kernel-module-firmware_vm_mini_dump-${KERNEL_VERSION}'.replace('_', '-')}"
 
 FILES:${PN} += "${bindir}/*"

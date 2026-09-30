@@ -1,0 +1,97 @@
+From 2147d07339da7a2a5b92ed26d5538111579d17b4 Mon Sep 17 00:00:00 2001
+From: Xiaoning Ma <mxiaonin@qti.qualcomm.com>
+Date: Mon, 3 Aug 2026 16:07:40 +0530
+Subject: [PATCH 2/2] Bluetooth: hci_qca: Fix duplicate dump and add uevent for
+ SSR
+
+Fix two issues with BT SSR:
+
+1. Duplicate dump collection: qca_hw_error() was resetting memdump_state
+   to IDLE immediately after dump collection, causing qca_cmd_timeout()
+   to trigger a second dump collection. Keep memdump_state as COLLECTED
+   until recovery completes to prevent duplicate dumps.
+
+2. Uevent timing: Add uevent notification after dump collection completes
+   to allow userspace to perform proper power cycling through
+   btpower.ko/rfkill. The uevent is sent when memdump_state is either
+   COLLECTED or TIMEOUT, which correctly indicates dump completion.
+
+Change-Id: I9ce4a92bf5f02d72b0061b3ce15da254197abed9
+Signed-off-by: Xiaoning Ma <mxiaonin@qti.qualcomm.com>
+---
+ drivers/bluetooth/hci_qca.c | 38 ++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 37 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/bluetooth/hci_qca.c b/drivers/bluetooth/hci_qca.c
+index 197a169131e8..a6262a36d227 100644
+--- a/drivers/bluetooth/hci_qca.c
++++ b/drivers/bluetooth/hci_qca.c
+@@ -1618,6 +1618,35 @@ static int qca_send_crashbuffer(struct hci_uart *hu)
+ 	return 0;
+ }
+ 
++/**
++ * qca_send_ssr_uevent() - Send uevent to userspace for SSR recovery
++ * @hu: HCI UART device pointer
++ *
++ * Sends a uevent to notify userspace that SSR dump collection has completed
++ * and power cycling is needed. Userspace services can listen for this event
++ * and restart bt_module_load.service to perform proper power cycle.
++ */
++static void qca_send_ssr_uevent(struct hci_uart *hu)
++{
++	struct qca_data *qca = hu->priv;
++	char *envp[] = {
++		"BT_EVENT=SSR_POWER_CYCLE_REQUEST",
++		"BT_DEVICE=hci0",
++		NULL
++	};
++
++	if (!hu->hdev) {
++		BT_ERR("hdev is NULL, cannot send uevent");
++		return;
++	}
++
++	bt_dev_info(hu->hdev, "SSR dump complete, sending power cycle request to userspace");
++	kobject_uevent_env(&hu->hdev->dev.kobj, KOBJ_CHANGE, envp);
++
++	/* Wait for userspace to complete power cycle */
++	msleep(1000);
++}
++
+ static void qca_wait_for_dump_collection(struct hci_dev *hdev)
+ {
+ 	struct hci_uart *hu = hci_get_drvdata(hdev);
+@@ -1673,6 +1702,8 @@ static void qca_hw_error(struct hci_dev *hdev, u8 code)
+ 	    qca->memdump_state == QCA_MEMDUMP_COLLECTED) {
+ 		cancel_work_sync(&qca->ctrl_memdump_evt);
+ 		skb_queue_purge(&qca->rx_memdump_q);
++
++		qca_send_ssr_uevent(hu);
+ 	}
+ 
+ 	clear_bit(QCA_HW_ERROR_EVENT, &qca->flags);
+@@ -1700,7 +1731,6 @@ static void qca_hw_error(struct hci_dev *hdev, u8 code)
+ 				  msecs_to_jiffies(qca->tx_idle_delay));
+ 
+ 		qca->tx_ibs_state = HCI_IBS_TX_AWAKE;
+-		qca->memdump_state = QCA_MEMDUMP_IDLE;
+ 		msleep(50);
+ 	}
+ }
+@@ -1923,6 +1953,12 @@ static int qca_setup(struct hci_uart *hu)
+ 	if (ret)
+ 		return ret;
+ 
++	/* Reset memdump state after successful recovery */
++	if (qca->memdump_state == QCA_MEMDUMP_COLLECTED ||
++	    qca->memdump_state == QCA_MEMDUMP_TIMEOUT)
++		qca->memdump_state = QCA_MEMDUMP_IDLE;
++
++
+ 	clear_bit(QCA_ROM_FW, &qca->flags);
+ 	/* Patch downloading has to be done without IBS mode */
+ 	set_bit(QCA_IBS_DISABLED, &qca->flags);
+-- 
+2.34.1
+

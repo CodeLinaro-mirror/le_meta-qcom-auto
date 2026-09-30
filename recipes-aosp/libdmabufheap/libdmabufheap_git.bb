@@ -10,8 +10,8 @@ ${LICENSE};md5=89aea4e17d99a7cacdbeed46a0096b10"
 
 DEPENDS += "libbase libion virtual/kernel-headers"
 
-SRC_URI = "${PATH_TO_REPO}/src/system/memory/libdmabufheap/.git;protocol=${PROTO};destsuffix=src/system/memory/libdmabufheap;usehead=1"
-SRCREV = "${AUTOREV}"
+SRC_URI = "${CLO_LE_GIT}/platform/system/memory/libdmabufheap.git;branch=memory-le-apps.lnx.1.0.r35-rel;protocol=${OSS_PROTO};destsuffix=src/system/memory/libdmabufheap"
+SRCREV = "42ee7943f7ea71588dea3a507fd0e13b7230e472"
 
 S = "${WORKDIR}/src/system/memory/libdmabufheap"
 
@@ -22,4 +22,3 @@ CPPFLAGS += "-I${STAGING_INCDIR}/ion_headers"
 EXTRA_OECONF:append = " --with-sanitized-headers=${STAGING_INCDIR}/${PREFERRED_PROVIDER_virtual/kernel}/"
 
 PACKAGE_ARCH = "${MACHINE_ARCH}"
-

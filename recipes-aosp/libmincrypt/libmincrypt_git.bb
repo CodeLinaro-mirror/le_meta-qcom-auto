@@ -6,7 +6,7 @@ LICENSE = "BSD-3-Clause"
 LIC_FILES_CHKSUM = "file://NOTICE;md5=c19179f3430fd533888100ab6616e114"
 
 SRC_URI = "${CLO_LE_GIT}/platform/system/core.git;branch=lv-blast.lnx.1.1.r63-rel;protocol=${OSS_PROTO};destsuffix=system/core"
-SRCREV = "e407a64ace2ee2d2b77ce3d659edbf9f92254ef6"
+SRCREV = "e1ff195e2d007b85996c4dd6e61d571ee982496a"
 
 S = "${WORKDIR}/system/core/libmincrypt"
 

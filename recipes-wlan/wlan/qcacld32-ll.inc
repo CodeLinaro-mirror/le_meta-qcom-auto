@@ -1,6 +1,6 @@
 PROVIDES_NAME = "kernel-module-${_MODNAME}"
 
-DEPENDS += "wlan-platform-dlkm virtual/kernel python3-native"
+DEPENDS += "wlan-platform-dlkm virtual/kernel"
 inherit autotools-brokensep module qperf module-sign
 
 WLAN_PLATFORM_PATH = "${STAGING_INCDIR}/wlan-platform"
@@ -17,16 +17,16 @@ WLAN_PLATFORM_CFG = "\
                    "
 EXTRA_OEMAKE:append = " ${WLAN_PLATFORM_CFG} "
 
-_LINUX_BUILD_TOP = "${WORKDIR}/${TARGET_DIR}wlan"
+_LINUX_BUILD_TOP = "${WORKDIR}/wlan"
 
 do_unpack[deptask] = "do_populate_sysroot"
-
-qcacld_prepare_kbuild() {
-    sed -i 's/python -c/python3 -c/g' ${S}/Kbuild
-}
-do_configure[prefuncs] += "qcacld_prepare_kbuild"
-
 do_compile:prepend() {
+    # Some kernel/Kbuild helper paths still invoke plain "python".
+    # Provide a local python -> python3-native shim in task PATH.
+    install -d ${B}/host-python-bin
+    ln -sf ${STAGING_BINDIR_NATIVE}/python3-native/python3 ${B}/host-python-bin/python
+    export PATH="${B}/host-python-bin:${PATH}"
+
     #Add gnu99 for compiler compatible issues
     sed -i '$a\ccflags-y += -std=gnu99' ${S}/Kbuild
     #In yocto system, get build tag by 'git log' in wlan src dir instead of 'git reflog' in work dir

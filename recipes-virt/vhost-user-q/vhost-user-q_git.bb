@@ -68,7 +68,7 @@ DEPENDS += "systemd"
 DEPENDS += "compute-resmgr"
 
 SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/vhost-user.git;branch=vhost-user.lnx.2.0.r18-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/vhost-user"
-SRCREV = "0c1f46aa45a72b775e895dde8158099cbbfd7917"
+SRCREV = "bce52120013d994befb9b99e9c7bf5bcb0109b0d"
 
 S = "${WORKDIR}/vendor/qcom/opensource/vhost-user"
 

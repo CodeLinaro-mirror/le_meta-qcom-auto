@@ -165,9 +165,11 @@ SRC_URI:append:gen5 = " \
     file://qup/0045-ccu-Add-FUSA-error-handling-and-recovery-support-for.patch \
     file://qup/0046-ccu-Fix-multiple-security-and-stability-issues-in-QU.patch \
     file://qup/0047-qcom_ccu_qup-Fix-NULL-pointer-dereference-and-add-in.patch \
+    file://qup/0048-ccu-Fix-NULL-pointer-dereference-caused-by-shared-st.patch \
     file://0001-PENDING-iommu-arm-smmu-v3-Support-inter-device-SID-s.patch \
     ${@bb.utils.contains('DISTRO_FEATURES', 'qti-rumi', 'file://rumi.cfg', '', d)} \
     file://bluetooth/0001-Bluetooth-qca-add-support-for-QCA-automotive-BT-chip.patch \
+    file://bluetooth/0002-Bluetooth-hci_qca-Fix-duplicate-dump-and-add-uevent-.patch \
 "
 
 SRC_URI:remove:gen5 = " \
@@ -193,5 +195,3 @@ KERNEL_CONFIG_FRAGMENTS:append = " ${@bb.utils.contains_any('VARIANT', 'perf use
 # ensure rumi.cfg is positioned last as it serves as the final overwrite configurarion
 KERNEL_CONFIG_FRAGMENTS:append:gen5 = " ${@bb.utils.contains('DISTRO_FEATURES', 'qti-rumi', '${WORKDIR}/rumi.cfg', '', d)}"
 KERNEL_CONFIG_FRAGMENTS:append = " ${@bb.utils.contains('DISTRO_FEATURES', 'qti-qcvirtio', '${WORKDIR}/gpio-sim.cfg', '', d)}"
-
-KERNEL_DEVICETREE:remove = "${KERNEL_DEVICETREE:pn-linux-qcom-custom}"

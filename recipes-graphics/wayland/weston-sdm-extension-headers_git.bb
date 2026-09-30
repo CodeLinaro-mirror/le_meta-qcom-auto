@@ -12,8 +12,8 @@ CODE_DIR:sa7255 = "graphics/weston-sdm-extension"
 
 SRC_URI = "${CLO_LE_GIT}/graphics/weston-sdm-extension.git;branch=display-le.lnx.6.5.r8-rel;protocol=${OSS_PROTO};destsuffix=${CODE_DIR}"
 SRC_URI:sa8775-flex = "${CLO_LE_GIT}/graphics/gen4-5/weston-sdm-extension.git;branch=display-userspace_gen4-5.lnx.3.2.r2-rel;protocol=${OSS_PROTO};destsuffix=${CODE_DIR}"
-SRCREV = "e3a228821c772f7e8e2e3a04a46ee9b182e20cf2"
-SRCREV:sa8775-flex = "a4eefe71996d8a712b3ed4cf59c4360b42e7d69e"
+SRCREV = "ad8df4d7a9ed0a3e8bea2c0d3d754d16c6f2f9a5"
+SRCREV:sa8775-flex = "467a4a30cb25cf3d9b50619ac76a5f88c33a8011"
 S = "${WORKDIR}/${CODE_DIR}"
 
 PREBUILT = "1"
