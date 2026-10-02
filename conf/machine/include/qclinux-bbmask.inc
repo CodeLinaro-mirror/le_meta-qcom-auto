@@ -133,6 +133,7 @@ MISSING_RECIPE_SRCLIST_BASELINE_LY020 += "\
     meta-qcom-auto/recipes-audio/ar2-audio-service/ar2-audio-service_git.bb \
     meta-qcom-auto/recipes-audio/ats/ats_git.bb \
     meta-qcom-auto/recipes-audio/audio-device-manager/audio-device-manager_git.bb \
+    meta-qcom-auto/recipes-audio/audio-log-util/audio-log-util_git.bb \
     meta-qcom-auto/recipes-audio/audio-plugin-intf/audio-plugin-intf_git.bb \
     meta-qcom-auto/recipes-audio/audio-utils/audio-utils_git.bb \
     meta-qcom-auto/recipes-audio/audiodlkm/audiodlkm_git.bb \
@@ -206,6 +207,7 @@ MISSING_RECIPE_SRCLIST_BASELINE_LV060 += "\
     meta-qcom-auto/recipes-audio/ar2-audio-service/ar2-audio-service_git.bb \
     meta-qcom-auto/recipes-audio/ats/ats_git.bb \
     meta-qcom-auto/recipes-audio/audio-device-manager/audio-device-manager_git.bb \
+    meta-qcom-auto/recipes-audio/audio-log-util/audio-log-util_git.bb \
     meta-qcom-auto/recipes-audio/audio-plugin-intf/audio-plugin-intf_git.bb \
     meta-qcom-auto/recipes-audio/audio-utils/audio-utils_git.bb \
     meta-qcom-auto/recipes-audio/audiolite-dlkm/audiolite-devicetree_git.bb \
@@ -284,6 +286,7 @@ MISSING_RECIPE_SRCLIST_BASELINE_LV053 += "\
     meta-qcom-auto/recipes-audio/ar2-audio-service/ar2-audio-service_git.bb \
     meta-qcom-auto/recipes-audio/ats/ats_git.bb \
     meta-qcom-auto/recipes-audio/audio-device-manager/audio-device-manager_git.bb \
+    meta-qcom-auto/recipes-audio/audio-log-util/audio-log-util_git.bb \
     meta-qcom-auto/recipes-audio/audio-plugin-intf/audio-plugin-intf_git.bb \
     meta-qcom-auto/recipes-audio/audio-utils/audio-utils_git.bb \
     meta-qcom-auto/recipes-audio/audiolite-dlkm/audiolite-devicetree_git.bb \
