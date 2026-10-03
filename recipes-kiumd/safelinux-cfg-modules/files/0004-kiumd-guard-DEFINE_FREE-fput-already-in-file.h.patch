@@ -1,0 +1,23 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: pengy <pengy@qti.qualcomm.com>
+Date: Wed, 01 Oct 2026 00:00:00 +0000
+Subject: [PATCH] kiumd: guard DEFINE_FREE(fput) already in linux/file.h
+
+Kernel 7.x linux/file.h already defines DEFINE_FREE(fput).
+
+Upstream-Status: Inappropriate [out-of-tree module compat fix]
+Signed-off-by: Ajender Reddy Mallikarjuna <ajenderr@qti.qualcomm.com>
+---
+ safelinux-modules/drivers/kiumd.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/safelinux-modules/drivers/kiumd.c b/safelinux-modules/drivers/kiumd.c
+--- a/safelinux-modules/drivers/kiumd.c
++++ b/safelinux-modules/drivers/kiumd.c
+@@ -25,6 +25,8 @@
+  */
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 12, 0)
+ DEFINE_FREE(fput, struct file *, if (_T) fput(_T))
++#endif
+ 
+ /**

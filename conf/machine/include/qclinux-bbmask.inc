@@ -37,6 +37,9 @@ MISSING_RECIPE_SRCLIST:append:gvm-gen5 = " ${MISSING_RECIPE_SRCLIST_BASELINE_LV0
 
 # Missing recipes globally
 MISSING_RECIPE_SRCLIST += "\
+    meta-qcom-auto/recipes-audio/agl-audio-plugin/agl-audio-plugin_0.1.bb \
+    meta-qcom-auto/recipes-audio/agl-audio-plugin/agl-audio-plugin_0.1.bbappend \
+    meta-qcom-auto/recipes-audio/msm-virtio-snd/msm-virtio-snd.bb \
     meta-qcom-auto/recipes-bsp/abctl/abctl_1.0.bb \
     meta-qcom-auto/recipes-bsp/libgpt/libgpt_1.0.bb \
     meta-qcom-auto/recipes-camera/cameradlkm/cameradlkm_0.1.bb \
@@ -45,7 +48,10 @@ MISSING_RECIPE_SRCLIST += "\
     meta-qcom-auto/recipes-data/avb-utils/avb-utils_1.0.bb \
     meta-qcom-auto/recipes-data/dataeth-dlkm/dataeth-dlkm_git.bb \
     meta-qcom-auto/recipes-data/emac-dwc-eqos/emac-dwc-eqos_git.bb \
+    meta-qcom-auto/recipes-graphics/graphics-driver/graphicsdlkm_git.bb \
+    meta-qcom-auto/recipes-graphics/graphics-hgsl/graphics-hgsldlkm_git.bb \
     meta-qcom-auto/recipes-multimedia/media/media_0.1.bb \
+    meta-qcom-auto/recipes-security/securemsm-devicetree/securemsm-devicetree.bb \
 "
 
 # Missing recipes in baseline LY.AU.0.1.1 (used by gen5)

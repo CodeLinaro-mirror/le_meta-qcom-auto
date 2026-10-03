@@ -13,6 +13,7 @@ SRC_URI = "\
     ${PATH_TO_REPO}/vendor/qcom/opensource/safelinux-cfg-modules/.git;protocol=${PROTO};destsuffix=safelinux-cfg-modules;usehead=1 \
     file://0001-safelinux-cfg-modules-fix-remove-signature-for-6.18-.patch;patchdir=.. \
     file://0003-safelinux-cfg-modules-fix-thermal-cooling-api.patch;patchdir=.. \
+    file://0004-kiumd-guard-DEFINE_FREE-fput-already-in-file.h.patch;patchdir=.. \
     file://fix-kernel71.py \
 "
 
