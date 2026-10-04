@@ -19,7 +19,9 @@ TECHPACK_MODULES = "minidump/minidump.ko \
                     cpuss_log/qcom_cpuss_log.ko \
                     firmware_vm_mini_dump/firmware_vm_mini_dump.ko \
 "
+TECHPACK_MODULES:remove:gen5 = "memory_dump_v2/memory_dump_v2.ko cpuss_log/qcom_cpuss_log.ko"
 TECHPACK_MODULES:append:gen5 = " memory_dump_v21/memory_dump_v21.ko"
+TECHPACK_MODULES:remove:sa8775-flex = "cpuss_log/qcom_cpuss_log.ko"
 
 inherit qti-techpack systemd
 EXTRA_OEMAKE += "KDIR=${STAGING_KERNEL_DIR}"

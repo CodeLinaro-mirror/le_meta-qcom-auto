@@ -33,6 +33,7 @@ BBMASK:append = " meta-qcom-hwe/recipes-multimedia/fastrpc/fastrpc_git.bbappend"
 BBMASK:append = " meta-qcom-hwe/recipes-graphics/msm_be/msm_be.bb"
 BBMASK:append = " meta-qcom-hwe/recipes-graphics/libgbm/gbm_21.1.1.bb"
 BBMASK:append = " meta-qcom-hwe/recipes-graphics/adreno/qcom-adreno_1.855.2.bb"
+BBMASK:append = " meta-qcom-hwe/recipes-graphics/drm/libdrm_%.bbappend"
 BBMASK:append = " meta-qcom-hwe/dynamic-layers/openembedded-layer/recipes-devtools/rsyslog/rsyslog_%.bbappend"
 # Mask all meta-qcom-hwe recipes except subsystem ramdump parity recipe.
 BBMASK:append = " meta-qcom-hwe/(?!recipes-bsp/ss-restart/qcom-subsystem-ramdump_git\\.bb$).*(\\.bb|\\.bbappend)$"
