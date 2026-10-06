@@ -1,0 +1,7 @@
+header:
+  version: 14
+
+overrides:
+  repos:
+    bitbake:
+      commit: 0ad6c1c34a5e07a5f8dd66ab248c1e7b37b69fa9
