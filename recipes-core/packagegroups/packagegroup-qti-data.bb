@@ -13,7 +13,7 @@ ALLOW_EMPTY:${PN} = "1"
 RDEPENDS:${PN} += "\
     bridge-utils \
     ${@bb.utils.contains('MACHINE_FEATURES', 'qti-hypervisor', 'setup-network', '', d)} \
-    setup-network-host \
+    ${@bb.utils.contains('MACHINE_FEATURES', 'qti-umd', 'setup-network-host', '', d)} \
     net-tools \
     ethtool \
     iperf2 \
@@ -25,6 +25,7 @@ RDEPENDS:${PN} += "\
     phytool \
     vlan \
     ${@bb.utils.contains_any('LAYERSERIES_CORENAMES', 'scarthgap wrynose blacksail', '', 'netkit-telnet', d)} \
+    tcp-wrappers \
     ${@bb.utils.contains('MACHINE_FEATURES', 'qti-hypervisor', '', 'proftpd', d)} \
     ${@bb.utils.contains_any('MACHINE_FEATURES', 'qti-umd', 'setup-qos', '', d)} \
     ${@bb.utils.contains_any('MACHINE_FEATURES', 'qti-umd', 'early-eth', '', d)} \
@@ -33,6 +34,7 @@ RDEPENDS:${PN} += "\
 RDEPENDS:${PN}:append:gen5 = " \
     gvm-net-configure \
     ${@bb.utils.contains_any('MACHINE_FEATURES', 'qti-umd', 'setup-network-param', '', d)} \
+    ${@bb.utils.contains('MACHINE_FEATURES', 'qti-vmm', 'data-eth', '', d)} \
 "
 
 RDEPENDS:${PN}:append:sa8775 = " ${@bb.utils.contains_any('MACHINE_FEATURES', 'qti-umd', 'netlink-service-infra', '', d)}"

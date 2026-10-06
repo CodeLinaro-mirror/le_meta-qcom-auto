@@ -5,13 +5,18 @@ SRC_URI:append = " \
     file://0001-systemd-avoid-active-seat-change-to-NULL.patch \
     file://60-misc.rules \
     file://0001-systemd-config-linger-for-root-user.patch \
+    file://0001-sd-bus-drop-half-registered-vtable-members-on-failur.patch \
 "
 
+SRC_URI:append = " ${@bb.utils.contains('MACHINE_FEATURES', 'qti-hypervisor', 'file://0033-systemd-Make-root-s-home-directory-configurable-2.patch', '', d)}"
+
+SRC_URI:append:gvm-gen5 = " file://60-vblk.rules"
+SRC_URI:append:qclinux-gvm-gen5 = " file://60-vblk.rules"
+SRC_URI:append:gvm-gen4-5 = " file://60-vblk.rules"
 SRC_URI:append:sa81x5 = " file://0001-systemd-add-slotselect-support-in-fstab.patch"
 
-SRC_URI:append = " ${@bb.utils.contains("PREFERRED_VERSION_linux-msm", "5.15", "file://platform_load.conf", "", d)}"
-
-SRC_URI:append = " ${@bb.utils.contains('MACHINE_FEATURES', 'qti-hypervisor', 'file://0033-systemd-Make-root-s-home-directory-configurable-2.patch', '', d)} "
+SRC_URI:append = " ${@bb.utils.contains("PREFERRED_VERSION_linux-msm", "6.12", "file://linux-msm-6.12_modules_load.conf", "", d)}"
+SRC_URI:append:qclinux-gvm-gen5 = " ${@bb.utils.contains("PREFERRED_VERSION_linux-qcom-custom-rt", "6.6", "file://linux-qcom-gvm-6.6_modules_load.conf", "", d)}"
 
 SRC_URI:append = " ${@bb.utils.contains('MACHINE_FEATURES', 'qti-umd', 'file://0035-systemd-Make-systemd-init-run-in-high-priority.patch', '', d)} "
 
@@ -105,14 +110,15 @@ do_install:append () {
     rm ${D}${nonarch_base_libdir}/udev/rules.d/60-persistent-v4l.rules
 
     # Add platform_load.conf to /etc/modules-load.d/, systemd will load modules in this file.
-    if ${@bb.utils.contains("PREFERRED_VERSION_linux-msm", "5.15", "true", "false", d)}; then
-        install -m 0664 ${UNPACKDIR}/platform_load.conf ${D}${sysconfdir}/modules-load.d/
-    fi
 
     # Create by-partlabel symlink for la/lv/bluetooth/modem/dsp devices in disksymlink-service service, remove these operations from plain udev rules
     # Note: udev rules live under ${nonarch_base_libdir}/udev in systemd 259.5;
     # the old ${rootlibexecdir} no longer resolves (var dropped upstream), so use nonarch_base_libdir.
     sed -i 's#ENV{ID_PART_ENTRY_SCHEME}=="gpt", ENV{ID_PART_ENTRY_NAME}=="?\*", SYMLINK+="disk/by-partlabel/$env{ID_PART_ENTRY_NAME}"#ENV{ID_PART_ENTRY_SCHEME}=="gpt", ENV{ID_PART_ENTRY_NAME}=="?\*", ENV{ID_PART_ENTRY_NAME}!="la_*", ENV{ID_PART_ENTRY_NAME}!="lv_*", ENV{ID_PART_ENTRY_NAME}!="bluetooth*", ENV{ID_PART_ENTRY_NAME}!="modem*", ENV{ID_PART_ENTRY_NAME}!="dsp*", SYMLINK+="disk/by-partlabel/$env{ID_PART_ENTRY_NAME}"#' ${D}${nonarch_base_libdir}/udev/rules.d/60-persistent-storage.rules
+
+    if ${@bb.utils.contains("PREFERRED_VERSION_linux-msm", "6.12", "true", "false", d)}; then
+        install -m 0664 ${WORKDIR}/linux-msm-6.12_modules_load.conf ${D}${sysconfdir}/modules-load.d/
+    fi
 
     # Mask serial-getty on hvc0 to prevent auto getty on hypervisor console
     ln -sf /dev/null ${D}${sysconfdir}/systemd/system/serial-getty@hvc0.service
@@ -120,4 +126,17 @@ do_install:append () {
     # Set OOMScoreAdjust=0 on serial-getty (moved from systemd-serialgetty.bbappend:
     # serial-getty@.service is installed by this main systemd package, not systemd-serialgetty)
     sed -i -e '/SendSIGHUP=yes/a OOMScoreAdjust=0' ${D}${systemd_system_unitdir}/serial-getty@.service
+}
+
+do_install:append:gvm-gen5() {
+    install -m 0644 ${WORKDIR}/60-vblk.rules ${D}${sysconfdir}/udev/rules.d/
+}
+
+do_install:append:qclinux-gvm-gen5() {
+    install -m 0644 ${WORKDIR}/60-vblk.rules ${D}${sysconfdir}/udev/rules.d/
+    install -m 0664 ${WORKDIR}/linux-qcom-gvm-6.6_modules_load.conf ${D}${sysconfdir}/modules-load.d/
+}
+
+do_install:append:gvm-gen4-5() {
+    install -m 0644 ${WORKDIR}/60-vblk.rules ${D}${sysconfdir}/udev/rules.d/
 }

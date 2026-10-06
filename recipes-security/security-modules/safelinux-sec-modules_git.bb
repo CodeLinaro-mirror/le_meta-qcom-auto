@@ -52,11 +52,6 @@ do_install:append() {
         install -m 0755 ${S}/modules-load/qtee_shmbridge.conf -D ${D}${sysconfdir}/modules-load.d/qtee_shmbridge.conf
         install -m 0644 ${S}/Module.symvers ${D}${includedir}/safelinux-sec-modules
     fi
-
-    if ${@bb.utils.contains('MACHINE_FEATURES', 'qti-gunyah', 'false', 'true', d)}; then
-        install -m 0755 ${S}/modules-load/tz_log.conf -D ${D}${sysconfdir}/modules-load.d/tz_log.conf
-    fi
-
 }
 
 RPROVIDES:${PN} += "kernel-module-tz-log-${KERNEL_VERSION}"

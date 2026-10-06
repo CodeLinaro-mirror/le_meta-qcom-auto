@@ -10,6 +10,7 @@ LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/BSD-3-Clause;m
 
 SRC_URI = "\
            file://init_qti_wlan_auto.service \
+           file://init_qti_wlan_auto_legacy.service \
            file://init.qti.wlan_on.sh \
            file://init.qti.wlan_off.sh \
            "
@@ -31,9 +32,20 @@ do_install() {
     install -D -m 0755 ${UNPACKDIR}/init.qti.wlan_off.sh ${D}${bindir}/init.qti.wlan_off.sh
     install -d ${D}${systemd_unitdir}/system/
     install -m 0644 ${UNPACKDIR}/init_qti_wlan_auto.service -D ${D}${systemd_unitdir}/system/init_qti_wlan_auto.service
+}
+
+do_install:append:sa8255-ivi() {
+    install -m 0644 ${WORKDIR}/init_qti_wlan_auto_legacy.service -D ${D}${systemd_unitdir}/system/init_qti_wlan_auto.service
+}
+
+do_install:append:sa7255-ivi() {
+    install -m 0644 ${WORKDIR}/init_qti_wlan_auto_legacy.service -D ${D}${systemd_unitdir}/system/init_qti_wlan_auto.service
+}
+
+do_install:append() {
     if ${@bb.utils.contains('DISTRO_FEATURES', 'smack', 'true', 'false', d)}; then
         #Add CAP_MAC_OVERRIDE capability for init_qti_wlan_auto.service to ignore Smack checks
-         sed -i "/^AmbientCapabilities/s/$/ CAP_MAC_OVERRIDE/" ${D}${systemd_unitdir}/system/init_qti_wlan_auto.service
+        sed -i "/^AmbientCapabilities/s/$/ CAP_MAC_OVERRIDE/" ${D}${systemd_unitdir}/system/init_qti_wlan_auto.service
     fi
 }
 

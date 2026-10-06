@@ -9,7 +9,6 @@ DEPENDS += "\
     codec2 \
     glib-2.0 \
     gstreamer1.0 \
-    gstreamer1.0-plugins-bad \
     gstreamer1.0-plugins-base \
     libdrm \
     libxml2 \
@@ -60,7 +59,6 @@ CFLAGS:append:quin-gvm-lemans = " -I${STAGING_INCDIR}/${PREFERRED_PROVIDER_virtu
 CXXFLAGS:append:quin-gvm-lemans = " -I${STAGING_INCDIR}/${PREFERRED_PROVIDER_virtual/kernel}/display"
 EXTRA_OEMESON:append:quin-gvm-lemans = " \
     -Dav1-dec=enabled \
-    -Dmmmcolorfmt=true \
     -Dqprange_option=op1 \
     -Dreport_frame_qp_option=op1 \
 "
@@ -69,7 +67,6 @@ CFLAGS:append:quin-gvm-monaco = " -I${STAGING_INCDIR}/${PREFERRED_PROVIDER_virtu
 CXXFLAGS:append:quin-gvm-monaco = " -I${STAGING_INCDIR}/${PREFERRED_PROVIDER_virtual/kernel}/display"
 EXTRA_OEMESON:append:quin-gvm-monaco = " \
     -Dav1-dec=enabled \
-    -Dmmmcolorfmt=true \
     -Dqprange_option=op1 \
     -Dreport_frame_qp_option=op1 \
 "

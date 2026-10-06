@@ -5,7 +5,7 @@ LICENSE = "BSD-3-Clause"
 LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/${LICENSE};md5=550794465ba0ec5312d6919e203a55f9"
 DEPENDS += "tinyalsa-new tinycompress expat dbus \
     glib-2.0 spf gsl ats \
-    audioreach-conf \
+    audioreach-conf alsa-lib\
 "
 
 FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
@@ -30,7 +30,7 @@ RM_WORK_EXCLUDE += "${PN}"
 inherit autotools pkgconfig
 
 EXTRA_OECONF += "\
-    --with-glib \
+    --with-glib --enable-alsalib\
 "
 EXTRA_OECONF += "--with-syslog=yes --with-agm_log_debug_enable=yes --with-dbus=yes \
     --with-no_tinycompress=yes --with-use_default_acdb_path=yes --with-automotive=yes \
@@ -59,3 +59,4 @@ FILES:${PN}-dev += "/usr/lib/ar/pkgconfig /usr/lib/ar/pkgconfig/*.pc"
 CFLAGS:append = " -Wno-int-conversion -Wno-incompatible-pointer-types -Wno-implicit-function-declaration -Wno-deprecated-declarations -Wno-return-type -D_GNU_SOURCE"
 TARGET_CFLAGS:append = " -Wno-poison-system-directories"
 
+FILES:${PN} += "${libdir}/alsa-lib/*"

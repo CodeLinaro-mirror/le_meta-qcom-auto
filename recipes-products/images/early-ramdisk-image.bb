@@ -8,6 +8,8 @@ DEPENDS += "virtual/kernel"
 # safelinux-cfg-modules RPROVIDEs the fusa/kiumd/uscmi modules in EARLY_RAMDISK_KERNEL_MODULES;
 # needed as a build dep so its ipk reaches the rootfs feed (matches QLI1.0).
 DEPENDS += "${@bb.utils.contains('MACHINE_FEATURES', 'qti-umd', 'safelinux-sec-modules safelinux-cfg-modules ', '', d)}"
+DEPENDS:qclinux-gvm-gen5:append = " soc-repo"
+DEPENDS:append = " ${@bb.utils.contains('PREFERRED_PROVIDER_virtual/kernel', 'linux-ack', 'soc-modules', '', d)}"
 
 IMAGE_CLASSES:remove = "qimage qimage-boot"
 
@@ -33,6 +35,7 @@ IMAGE_INSTALL = "\
     ${EARLY_RAMDISK_KERNEL_MODULES} \
 "
 do_rootfs[depends] += "virtual/kernel:do_shared_workdir"
+do_rootfs[depends] += "${@bb.utils.contains('MACHINE_FEATURES', 'qti-hypervisor', 'platformdlkm:do_packagedata', ' ', d)}"
 
 python do_rootfs:prepend() {
     import re
