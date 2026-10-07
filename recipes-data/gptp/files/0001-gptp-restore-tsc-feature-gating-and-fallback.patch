@@ -6,12 +6,20 @@ Subject: [PATCH] gptp: add safe timestamp fallback when external source fails
 Add runtime fallback to HWTSTAMP_TX_ON when external timestamp source
 configuration fails via ioctl SIOCSHWTSTAMP.
 
+Also guard the compile-time use of HWTSTAMP_TX_EXTERNAL_TIME_SRC with
+defined(HWTSTAMP_TX_EXTERNAL_TIME_SRC), since this kernel UAPI enum
+value is not defined by the kernel headers used in this build even
+when TSC_FEATURE is enabled (gen5 targets). Falls back to
+HWTSTAMP_TX_ON at compile time, same as the existing non-GEN5
+codepath, mirroring the runtime fallback above.
+
 Upstream-Status: Inappropriate [platform-specific bringup fix]
 
 Signed-off-by: Ajender Reddy Mallikarjuna <ajenderr@qti.qualcomm.com>
+Signed-off-by: Venkatakrishnaiah Pari <vpari@qti.qualcomm.com>
 ---
- daemons/gptp/src/linux_hal_generic.cpp | 13 +++++++++++++
- 1 file changed, 13 insertions(+)
+ daemons/gptp/src/linux_hal_generic.cpp | 15 ++++++++++++++-
+ 1 file changed, 14 insertions(+), 1 deletion(-)
 
 diff --git a/daemons/gptp/src/linux_hal_generic.cpp b/daemons/gptp/src/linux_hal_generic.cpp
 index d5b6647..88effdb 100644
@@ -27,6 +35,15 @@ index d5b6647..88effdb 100644
  /******************************************************************************
 
    Copyright (c) 2009-2012, Intel Corporation
+@@ -600,7 +606,7 @@ bool LinuxTimestamperGeneric::post_init( int ifindex, int sd,
+
+     hwconfig.rx_filter = HWTSTAMP_FILTER_PTP_V2_EVENT;
+     if(tsc_enable){
+-#ifdef TSC_FEATURE
++#if defined(TSC_FEATURE) && defined(HWTSTAMP_TX_EXTERNAL_TIME_SRC)
+     GPTP_LOG_INFO("TSC used:: HWTSTAMP_TX_EXTERNAL_TIME_SRC hw type set");
+     hwconfig.tx_type = HWTSTAMP_TX_EXTERNAL_TIME_SRC;
+ #else
 @@ -608,6 +614,13 @@ bool LinuxTimestamperGeneric::post_init( int ifindex, int sd,
      err = ioctl( sd, SIOCSHWTSTAMP, &device );
      GPTP_LOG_INFO("post_init:: SIOCSHWTSTAMP ioctl called");
