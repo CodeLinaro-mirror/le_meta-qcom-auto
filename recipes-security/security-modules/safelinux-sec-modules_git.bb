@@ -32,6 +32,10 @@ python do_apply_kernel7_fixes () {
     drvsrc = os.path.join(s, 'drivers')
     driver_names = ['dice_vm', 'tz_ffi', 'scm_user_intf_sec', 'smcinvoke', 'qtee_shmbridge', 'tz_log']
     paths = [os.path.join(drvsrc, n + '.c') for n in driver_names if os.path.isfile(os.path.join(drvsrc, n + '.c'))]
+    # Also fix trace event headers
+    incdir = os.path.join(s, 'include', 'trace', 'events')
+    header_names = ['dice_vm']
+    paths += [os.path.join(incdir, n + '.h') for n in header_names if os.path.isfile(os.path.join(incdir, n + '.h'))]
     if paths and os.path.isfile(fixscript):
         subprocess.call(['python3', fixscript] + paths)
 }

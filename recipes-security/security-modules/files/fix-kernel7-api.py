@@ -43,6 +43,10 @@ for path in sys.argv[1:]:
         result.append(line)
     txt = ''.join(result)
 
+    if basename == 'dice_vm.h':
+        # Kernel 6.10+: __assign_str(field, src) -> __assign_str(field)
+        txt = re.sub(r'__assign_str\((\w+),\s*\w+\)', r'__assign_str(\1)', txt)
+
     if basename == 'dice_vm.c':
         txt = txt.replace('.llseek = no_llseek', '.llseek = noop_llseek')
 
