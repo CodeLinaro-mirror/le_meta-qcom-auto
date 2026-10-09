@@ -36,6 +36,12 @@ IMAGE_FEATURES:append = " package-management"
 
 INCOMPATIBLE_LICENSE = "GPL-3.0* LGPL-3.0* AGPL-3.0*"
 
+# The SDK intentionally contains compiler, debugger, development and source
+# packages that are not installed in the target image. Keep the target image
+# license policy intact while allowing those packages in do_populate_sdk, as
+# in the QLI 1.0 SDK flow.
+INCOMPATIBLE_LICENSE:task-populate-sdk = ""
+
 # Add libgomp support
 IMAGE_INSTALL += "libgomp"
 
