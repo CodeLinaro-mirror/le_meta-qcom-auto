@@ -14,6 +14,7 @@ PACKAGE_INSTALL = "\
     udev \
     safelinux-cfg-modules \
     safelinux-system-cfg \
+    safelinux-dbg-modules \
     libkiumd \
     kernel-modules \
 "

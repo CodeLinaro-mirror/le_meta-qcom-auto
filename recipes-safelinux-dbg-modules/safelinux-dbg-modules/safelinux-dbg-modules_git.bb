@@ -16,15 +16,20 @@ TECHPACK_MODULES = "minidump/minidump.ko \
                     kaslr_store/kaslr_store.ko \
                     memory_dump_v2/memory_dump_v2.ko \
                     nhlos_log/dump_boot_log.ko \
-                    cpuss_log/qcom_cpuss_log.ko \
                     firmware_vm_mini_dump/firmware_vm_mini_dump.ko \
 "
+TECHPACK_MODULES:remove:gen5 = "memory_dump_v2/memory_dump_v2.ko"
 TECHPACK_MODULES:append:gen5 = " memory_dump_v21/memory_dump_v21.ko"
+TECHPACK_MODULES:append:gen5 = " cpuss_log/qcom_cpuss_log.ko"
 
 inherit qti-techpack systemd
 EXTRA_OEMAKE += "KDIR=${STAGING_KERNEL_DIR}"
 
-EXTRA_OEMAKE:append:gen5 = " CONFIG_QCOM_MEMORY_DUMP_V21=y"
+export CONFIG_QCOM_MEMORY_DUMP_V21
+CONFIG_QCOM_MEMORY_DUMP_V21:gen5 = "y"
+
+export CONFIG_QCOM_CPUSS_LOG
+CONFIG_QCOM_CPUSS_LOG:gen5 = "y"
 
 QCOM_DCC_CONF ?= "qcom_dcc_sa8775.conf"
 QCOM_DCC_CONF:gen5 = "qcom_dcc_sa8797.conf"
@@ -45,11 +50,12 @@ do_install:append() {
 
 RPROVIDES:${PN} += "${@'kernel-module-minidump-${KERNEL_VERSION}'.replace('_', '-')}"
 RPROVIDES:${PN} += "${@'kernel-module-kaslr_store-${KERNEL_VERSION}'.replace('_', '-')}"
-RPROVIDES:${PN} += "${@'kernel-module-memory_dump_v21-${KERNEL_VERSION}'.replace('_', '-')}"
 RPROVIDES:${PN} += "${@'kernel-module-memory_dump_v2-${KERNEL_VERSION}'.replace('_', '-')}"
 RPROVIDES:${PN} += "${@'kernel-module-dump_boot_log-${KERNEL_VERSION}'.replace('_', '-')}"
-RPROVIDES:${PN} += "${@'kernel-module-qcom_cpuss_log-${KERNEL_VERSION}'.replace('_', '-')}"
 RPROVIDES:${PN} += "${@'kernel-module-firmware_vm_mini_dump-${KERNEL_VERSION}'.replace('_', '-')}"
+RPROVIDES:${PN}:remove:gen5 = "${@'kernel-module-memory_dump_v2-${KERNEL_VERSION}'.replace('_', '-')}"
+RPROVIDES:${PN}:append:gen5 = " ${@'kernel-module-memory_dump_v21-${KERNEL_VERSION}'.replace('_', '-')}"
+RPROVIDES:${PN}:append:gen5 = " ${@'kernel-module-qcom_cpuss_log-${KERNEL_VERSION}'.replace('_', '-')}"
 
 FILES:${PN} += "${bindir}/*"
 FILES:${PN} += "${sysconfdir}/qcom_dcc/*"

@@ -1,0 +1,30 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Sankalp Negi <snegi@qti.qualcomm.com>
+Date: Wed, 7 Oct 2026 04:45:26 -0700
+Subject: [PATCH 1/2] PENDING: kallsyms: Export kallsyms_lookup_name
+
+Export kallsyms_lookup_name() to allow legitimate in-kernel users
+(such as minidump and debug infrastructure) to resolve core kernel
+symbols that are not explicitly exported.
+
+This avoids the need to export multiple individual symbols and
+provides a unified, controlled mechanism to look up internal kernel
+symbols when required.
+
+Signed-off-by: Sankalp Negi <snegi@qti.qualcomm.com>
+---
+ kernel/kallsyms.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/kernel/kallsyms.c b/kernel/kallsyms.c
+index aec2f06858af..7d36613c3479 100644
+--- a/kernel/kallsyms.c
++++ b/kernel/kallsyms.c
+@@ -239,6 +239,7 @@ unsigned long kallsyms_lookup_name(const char *name)
+ 
+ 	return module_kallsyms_lookup_name(name);
+ }
++EXPORT_SYMBOL_GPL(kallsyms_lookup_name);
+ 
+ /*
+  * Iterate over all symbols in vmlinux.  For symbols from modules use

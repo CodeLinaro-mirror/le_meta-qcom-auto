@@ -1,0 +1,58 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Sankalp Negi <snegi@qti.qualcomm.com>
+Date: Wed, 7 Oct 2026 04:45:26 -0700
+Subject: [PATCH 2/2] PENDING: printk, sched: Export internal symbols required
+ by indirect module users
+
+Some exported helper APIs used by modules indirectly depend
+on internal symbols that are not exported. For example:
+
+  - printk_deferred() internally calls _printk_deferred()
+  - register_trace_sched_switch() callbacks use sched_switch
+  - cpu_rq() / cpu_curr() require access to runqueues[]
+
+Export the required internal symbols so that indirect
+module callers reliably resolve:
+
+  - EXPORT_SYMBOL_GPL(_printk_deferred)
+  - EXPORT_TRACEPOINT_SYMBOL_GPL(sched_switch)
+  - EXPORT_PER_CPU_SYMBOL_GPL(runqueues)
+
+Signed-off-by: Sankalp Negi <snegi@qti.qualcomm.com>
+---
+ kernel/printk/printk.c | 1 +
+ kernel/sched/core.c    | 2 ++
+ 2 files changed, 3 insertions(+)
+
+diff --git a/kernel/printk/printk.c b/kernel/printk/printk.c
+index 6d3d18a50da7..968d14eefb67 100644
+--- a/kernel/printk/printk.c
++++ b/kernel/printk/printk.c
+@@ -4729,6 +4729,7 @@ int _printk_deferred(const char *fmt, ...)
+ 
+ 	return r;
+ }
++EXPORT_SYMBOL_GPL(_printk_deferred);
+ 
+ /*
+  * printk rate limiting, lifted from the networking subsystem.
+diff --git a/kernel/sched/core.c b/kernel/sched/core.c
+index f78275192036..c170eb9fc2c3 100644
+--- a/kernel/sched/core.c
++++ b/kernel/sched/core.c
+@@ -101,6 +101,7 @@
+ 
+ EXPORT_TRACEPOINT_SYMBOL_GPL(ipi_send_cpu);
+ EXPORT_TRACEPOINT_SYMBOL_GPL(ipi_send_cpumask);
++EXPORT_TRACEPOINT_SYMBOL_GPL(sched_switch);
+ 
+ /*
+  * Export tracepoints that act as a bare tracehook (ie: have no trace event
+@@ -128,6 +129,7 @@ EXPORT_TRACEPOINT_SYMBOL_GPL(sched_dl_server_start_tp);
+ EXPORT_TRACEPOINT_SYMBOL_GPL(sched_dl_server_stop_tp);
+ 
+ DEFINE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
++EXPORT_PER_CPU_SYMBOL_GPL(runqueues);
+ DEFINE_PER_CPU(struct rnd_state, sched_rnd_state);
+ 
+ #ifdef CONFIG_SCHED_PROXY_EXEC

@@ -25,5 +25,4 @@ RDEPENDS:${PN} = "\
 # NOTE: This section will be removed once the blocked recipes are unblocked.
 # =============================================================================
 # scmi-test: masked in qclinux-bbmask.inc[gvm-gen5] — cannot unmask via BBMASK:remove
-# safelinux-dbg-modules: soc/qcom/secure_buffer.h removed in kernel 7.0; needs kernel team fix
-RDEPENDS:${PN}:remove = "scmi-test safelinux-dbg-modules"
+RDEPENDS:${PN}:remove = "scmi-test"
