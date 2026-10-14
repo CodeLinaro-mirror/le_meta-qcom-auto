@@ -1,0 +1,16 @@
+#Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+#SPDX-License-Identifier: BSD-3-Clause-Clear
+
+# Pointer-only file; no duplicated content.
+# Named to match shikra-evk-auto.yml so kas applies this machine-specific
+# lock file only. Other board configs that include base.yml continue
+# tracking the live wrynose/2.18 branches.
+#
+# This file simply includes the lock file from meta-qcom via repo: include,
+# making meta-qcom the single source of truth for pinned revisions and
+# avoiding lock-file drift.
+header:
+  version: 14
+  includes:
+  - repo: meta-qcom
+    file: ci/base.lock.yml
