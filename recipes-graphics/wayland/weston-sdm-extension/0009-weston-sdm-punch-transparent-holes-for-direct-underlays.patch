@@ -1,0 +1,83 @@
+From cd59008f413deb3cd0020f2446543a85f1a4b7c2 Mon Sep 17 00:00:00 2001
+From: Sulav Lal Shrestha <sshresth@qti.qualcomm.com>
+Date: Mon, 19 Oct 2026 13:41:47 -0400
+Subject: [PATCH] weston-sdm: punch transparent holes for direct underlays
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Port the SDM direct-underlay handling to Weston 15’s paint-node model.
+
+When SDM assigns a client layer for DPU composition, the GPU
+framebuffer target (the desktop background) is appended above it. The
+framebuffer must therefore contain a transparent hole over the direct
+layer; otherwise, the desktop background covers video.
+
+Add a logical SDM underlay plane below the primary renderer plane and
+move DPU-composition paint nodes onto it. Mark those nodes with
+need_hole so Weston renders a transparent RGBA (0,0,0,0) solid into
+the DMA target. Clear stale need_hole state each assignment pass and
+release the logical plane during output teardown.
+
+Change-Id: I7cc3ac25677ff248de649f82d290f28cc8481fd1
+Signed-off-by: Sulav Lal Shrestha <sshresth@qti.qualcomm.com>
+
+diff --git a/include/compositor-sdm-output.h b/include/compositor-sdm-output.h
+index 98e5204..f8112d0 100644
+--- a/include/compositor-sdm-output.h
++++ b/include/compositor-sdm-output.h
+@@ -248,6 +248,7 @@ struct drm_fb {
+ 
+ struct drm_output {
+   struct weston_output   base;
++  struct weston_plane underlay_plane;
+   int display_id;
+ 
+   uint32_t view_count;
+diff --git a/sdm-backend/compositor-sdm.c b/sdm-backend/compositor-sdm.c
+index e5fbed0..7080333 100644
+--- a/sdm-backend/compositor-sdm.c
++++ b/sdm-backend/compositor-sdm.c
+@@ -1523,6 +1523,13 @@ assign_planes(struct weston_output *output_base, bool is_virtual_output)
+ 		struct weston_surface *es = ev->surface;
+ 		struct gbm_buffer *gbm_buf = NULL;
+ 
++		/*
++		 * Clear a hole requested for this node in the previous real-output frame.
++		 * The capture pass reuses these nodes, so it must preserve this state.
++		 */
++		if (!is_virtual_output)
++			pnode->need_hole = false;
++
+ 		drm_debug(b, "\t\t\t[view] evaluating view %p for output %s (%lu)\n",
+ 			ev, output->base.name,
+ 			(unsigned long) output->base.id);
+@@ -1623,8 +1629,9 @@ assign_planes(struct weston_output *output_base, bool is_virtual_output)
+ 				drm_debug(b, "\t\t\t\t[view] view %p will be placed on the overlay plane\n", ev);
+ 				/* Composed by Display Hardware directly */
+ 				ev->psf_flags = WP_PRESENTATION_FEEDBACK_KIND_ZERO_COPY;
+-				/* Set the view's plane back to NULL so that it is not composed by GPU */
+-				sdm_layer->pnode->plane = NULL;
++				/* Keep direct SDM layers below the renderer target. */
++				weston_paint_node_move_to_plane(sdm_layer->pnode, &output->underlay_plane);
++				sdm_layer->pnode->need_hole = true;
+ 			}
+ 		}
+ 	}
+@@ -1767,6 +1774,7 @@ drm_output_destroy(struct weston_output *output_base)
+ 	drm_output_disable_pageflip(output);
+ #endif
+ 
++	weston_plane_release(&output->underlay_plane);
+ 	weston_output_release(&output->base);
+ 
+ 	free(output);
+@@ -2967,6 +2975,8 @@ drm_output_create(struct weston_backend *backend, const char *name)
+ 
+ 	weston_output_init(&output->base, b->compositor, name);
+ 
++	weston_plane_init(&output->underlay_plane, b->compositor);
++	weston_compositor_stack_plane(b->compositor, &output->underlay_plane, &output->base.primary_plane);
+ 	output->base.enable = drm_output_enable;
+ 	output->base.destroy = drm_output_destroy;
+ 	output->base.disable = drm_output_disable;
