@@ -67,7 +67,10 @@ DEPENDS += "${@bb.utils.contains("MACHINE_FEATURES", "qti-umd", "msmhab", "", d)
 DEPENDS += "systemd"
 DEPENDS += "compute-resmgr"
 
-SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/vhost-user/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/vhost-user;usehead=1"
+SRC_URI = "\
+    ${PATH_TO_REPO}/vendor/qcom/opensource/vhost-user/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/vhost-user;usehead=1 \
+    file://0001-Remove-SELinuxContext-from-vm3-services.patch;patchdir=${S} \
+"
 SRCREV = "${AUTOREV}"
 
 S = "${UNPACKDIR}/vendor/qcom/opensource/vhost-user"

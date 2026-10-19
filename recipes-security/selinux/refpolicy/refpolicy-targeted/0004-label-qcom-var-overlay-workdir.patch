@@ -1,0 +1,996 @@
+From 3ebd7d4a1b46032521c7f1b84d56664a44192cb3 Mon Sep 17 00:00:00 2001
+From: Jie Ma <mjie@qti.qualcomm.com>
+Date: Wed, 9 Sep 2026 10:00:00 +0200
+Subject: [PATCH] refpolicy: label runtime mount paths
+
+On systems where /var is mounted as an overlay with:
+
+  lowerdir=/persist,upperdir=/data/var_upper,workdir=/data/var_work
+
+With refpolicy-targeted in enforcing mode, the /var overlay backing
+paths fall back to default_t.  During overlay setup, mount_t must clean
+and recreate the internal work directory, and the access to default_t is
+denied.  The kernel then mounts /var read-only, which causes follow-on
+failures for services that need writable state under /var or /var/lib.
+
+The DSP firmware mount also uses a fixed SELinux context:
+
+  context=system_u:object_r:dsp_file_t:s0
+
+When dsp_file_t is not defined in policy, the kernel cannot resolve the
+mount context and the mount fails with EINVAL before any AVC denial is
+reported.
+
+Label the platform overlay workdir in the files module, place the
+related file contexts in their owner modules, and route cross-module access
+through interfaces.  Also add file context substitutions so the persistent
+lowerdir and upperdir can be relabelled with the same contexts they expose
+through /var.  Define the DSP firmware file type in the files module so
+the /vendor/dsp mount context can be resolved by SELinux.
+
+Upstream-Status: Pending
+
+Signed-off-by: Jie Ma <mjie@qti.qualcomm.com>
+---
+diff --git a/config/file_contexts.subs_dist b/config/file_contexts.subs_dist
+index 8aaf368..5f6ef3d 100644
+--- a/config/file_contexts.subs_dist
++++ b/config/file_contexts.subs_dist
+@@ -49,3 +49,8 @@
+ # The genhomedircon.py will expand /root home directory to /home/root
+ # Add an aliase for it
+ /root /home/root
++
++# /var overlay backing stores.
++# Relabel these paths as the /var hierarchy they back.
++/persist /var
++/data/var_upper /var
+diff --git a/policy/modules/admin/logrotate.if b/policy/modules/admin/logrotate.if
+index dd8e01a..c460b49 100644
+--- a/policy/modules/admin/logrotate.if
++++ b/policy/modules/admin/logrotate.if
+@@ -120,3 +120,41 @@ interface(`logrotate_read_tmp_files',`
+ 	files_search_tmp($1)
+ 	allow $1 logrotate_tmp_t:file read_file_perms;
+ ')
++
++########################################
++## <summary>
++##	Manage logrotate state files.
++## </summary>
++## <param name="domain">
++##	<summary>
++##	Domain allowed access.
++##	</summary>
++## </param>
++#
++interface(`logrotate_manage_var_lib_files',`
++	gen_require(`
++		type logrotate_var_lib_t;
++	')
++
++	files_search_var_lib($1)
++	manage_files_pattern($1, logrotate_var_lib_t, logrotate_var_lib_t)
++')
++
++########################################
++## <summary>
++##	Relabel logrotate state files.
++## </summary>
++## <param name="domain">
++##	<summary>
++##	Domain allowed access.
++##	</summary>
++## </param>
++#
++interface(`logrotate_relabel_var_lib_files',`
++	gen_require(`
++		type logrotate_var_lib_t;
++	')
++
++	files_search_var_lib($1)
++	allow $1 logrotate_var_lib_t:file relabel_file_perms;
++')
+diff --git a/policy/modules/kernel/files.fc b/policy/modules/kernel/files.fc
+index f98e9d0..6a9e080 100644
+--- a/policy/modules/kernel/files.fc
++++ b/policy/modules/kernel/files.fc
+@@ -50,6 +50,11 @@
+ #
+ /etc			-d	gen_context(system_u:object_r:etc_t,s0)
+ /etc/.*				gen_context(system_u:object_r:etc_t,s0)
++# Runtime mount/config paths.
++/etc/build\.prop	--	gen_context(system_u:object_r:runtime_etc_t,s0)
++/etc/gptp_cfg\.ini	--	gen_context(system_u:object_r:runtime_etc_t,s0)
++/etc/usb(/.*)?			gen_context(system_u:object_r:runtime_etc_t,s0)
++
+ /etc/\.fstab\.hal\..+	--	gen_context(system_u:object_r:etc_runtime_t,s0)
+ /etc/blkid(/.*)?		gen_context(system_u:object_r:etc_runtime_t,s0)
+ /etc/cmtab		--	gen_context(system_u:object_r:etc_runtime_t,s0)
+@@ -233,6 +233,12 @@ ifndef(`distro_redhat',`
+ #
+ # /var
+ #
++/data/var_work		-d	gen_context(system_u:object_r:var_overlay_work_t,s0)
++/data/var_work/.*		gen_context(system_u:object_r:var_overlay_work_t,s0)
++
++# DSP firmware mount.
++/vendor/dsp(/.*)?		gen_context(system_u:object_r:dsp_file_t,s0)
++
+ /var			-d	gen_context(system_u:object_r:var_t,s0)
+ /var/.*				gen_context(system_u:object_r:var_t,s0)
+ /var/\.journal			<<none>>
+diff --git a/policy/modules/kernel/files.if b/policy/modules/kernel/files.if
+index 79ea217..67bf452 100644
+--- a/policy/modules/kernel/files.if
++++ b/policy/modules/kernel/files.if
+@@ -5140,6 +5140,120 @@ interface(`files_manage_generic_tmp_files',`
+ 	allow $1 tmp_t:lnk_file read_lnk_file_perms;
+ ')
+ 
++########################################
++## <summary>
++##	Relabel symbolic links in /tmp.
++## </summary>
++## <param name="domain">
++##	<summary>
++##	Domain allowed access.
++##	</summary>
++## </param>
++#
++interface(`files_relabel_generic_tmp_symlinks',`
++	gen_require(`
++		type tmp_t;
++	')
++
++	allow $1 tmp_t:lnk_file relabel_lnk_file_perms;
++')
++
++########################################
++## <summary>
++##	Relabel from symbolic links in /tmp.
++## </summary>
++## <param name="domain">
++##	<summary>
++##	Domain allowed access.
++##	</summary>
++## </param>
++#
++interface(`files_relabelfrom_generic_tmp_symlinks',`
++	gen_require(`
++		type tmp_t;
++	')
++
++	allow $1 tmp_t:lnk_file relabelfrom_lnk_file_perms;
++')
++
++########################################
++## <summary>
++##	Manage symbolic links in /tmp.
++## </summary>
++## <param name="domain">
++##	<summary>
++##	Domain allowed access.
++##	</summary>
++## </param>
++#
++interface(`files_manage_generic_tmp_symlinks',`
++	gen_require(`
++		type tmp_t;
++	')
++
++	manage_lnk_files_pattern($1, tmp_t, tmp_t)
++')
++
++########################################
++## <summary>
++##	Manage runtime files and directories under /etc.
++## </summary>
++## <param name="domain">
++##	<summary>
++##	Domain allowed access.
++##	</summary>
++## </param>
++#
++interface(`files_manage_runtime_etc',`
++	gen_require(`
++		type etc_t, runtime_etc_t;
++	')
++
++	manage_dirs_pattern($1, etc_t, runtime_etc_t)
++	manage_files_pattern($1, etc_t, runtime_etc_t)
++	allow $1 runtime_etc_t:dir relabel_dir_perms;
++	allow $1 runtime_etc_t:file relabel_file_perms;
++')
++
++########################################
++## <summary>
++##	Mount on runtime files and directories under /etc.
++## </summary>
++## <param name="domain">
++##	<summary>
++##	Domain allowed access.
++##	</summary>
++## </param>
++#
++interface(`files_mounton_runtime_etc',`
++	gen_require(`
++		type runtime_etc_t;
++	')
++
++	allow $1 runtime_etc_t:dir mounton;
++	allow $1 runtime_etc_t:file mounton;
++')
++
++########################################
++## <summary>
++##	Create runtime /etc objects with automatic type transitions.
++## </summary>
++## <param name="domain">
++##	<summary>
++##	Domain allowed access.
++##	</summary>
++## </param>
++#
++interface(`files_runtime_etc_filetrans',`
++	gen_require(`
++		type etc_t, runtime_etc_t;
++	')
++
++	filetrans_pattern($1, etc_t, runtime_etc_t, file, "build.prop")
++	filetrans_pattern($1, etc_t, runtime_etc_t, file, "gptp_cfg.ini")
++	filetrans_pattern($1, etc_t, runtime_etc_t, dir, "usb")
++')
++
+ ########################################
+ ## <summary>
+ ##	Read symbolic links in the tmp directory (/tmp).
+@@ -6239,6 +6275,24 @@ interface(`files_manage_var_files',`
+ 	manage_files_pattern($1, var_t, var_t)
+ ')
+ 
++########################################
++## <summary>
++##	relabelto/from files in the /var directory.
++## </summary>
++## <param name="domain">
++##	<summary>
++##	Domain allowed access.
++##	</summary>
++## </param>
++#
++interface(`files_relabel_var_files',`
++	gen_require(`
++		type var_t;
++	')
++
++	allow $1 var_t:file relabel_file_perms;
++')
++
+ ########################################
+ ## <summary>
+ ##	Read symbolic links in the /var directory.
+@@ -6276,6 +6330,62 @@ interface(`files_manage_var_symlinks',`
+ 	manage_lnk_files_pattern($1, var_t, var_t)
+ ')
+ 
++########################################
++## <summary>
++##	relabelto/from symbolic links in the /var directory.
++## </summary>
++## <param name="domain">
++##	<summary>
++##	Domain allowed access.
++##	</summary>
++## </param>
++#
++interface(`files_relabel_var_symlinks',`
++	gen_require(`
++		type var_t;
++	')
++
++	allow $1 var_t:lnk_file relabel_lnk_file_perms;
++')
++
++########################################
++## <summary>
++##	relabel from symbolic links in the /var directory.
++## </summary>
++## <param name="domain">
++##	<summary>
++##	Domain allowed access.
++##	</summary>
++## </param>
++#
++interface(`files_relabelfrom_var_symlinks',`
++	gen_require(`
++		type var_t;
++	')
++
++	allow $1 var_t:lnk_file relabelfrom_lnk_file_perms;
++')
++
++########################################
++## <summary>
++##	Manage /var overlay workdir content.
++## </summary>
++## <param name="domain">
++##	<summary>
++##	Domain allowed access.
++##	</summary>
++## </param>
++#
++interface(`files_manage_var_overlay_work',`
++	gen_require(`
++		type var_overlay_work_t;
++	')
++
++	manage_dirs_pattern($1, var_overlay_work_t, var_overlay_work_t)
++	manage_files_pattern($1, var_overlay_work_t, var_overlay_work_t)
++	manage_chr_files_pattern($1, var_overlay_work_t, var_overlay_work_t)
++')
++
+ ########################################
+ ## <summary>
+ ##	Delete character device nodes in
+@@ -6842,6 +6952,44 @@ interface(`files_manage_generic_locks',`
+ 	manage_files_pattern($1, var_lock_t, var_lock_t)
+ ')
+ 
++########################################
++## <summary>
++##	Manage generic lock symbolic links.
++## </summary>
++## <param name="domain">
++##	<summary>
++##	Domain allowed access.
++##	</summary>
++## </param>
++#
++interface(`files_manage_generic_lock_symlinks',`
++	gen_require(`
++		type var_t, var_lock_t;
++	')
++
++	allow $1 var_t:dir search_dir_perms;
++	manage_lnk_files_pattern($1, var_lock_t, var_lock_t)
++')
++
++########################################
++## <summary>
++##	Relabel generic lock symbolic links.
++## </summary>
++## <param name="domain">
++##	<summary>
++##	Domain allowed access.
++##	</summary>
++## </param>
++#
++interface(`files_relabel_generic_lock_symlinks',`
++	gen_require(`
++		type var_t, var_lock_t;
++	')
++
++	allow $1 var_t:dir search_dir_perms;
++	allow $1 var_lock_t:lnk_file relabel_lnk_file_perms;
++')
++
+ ########################################
+ ## <summary>
+ ##	Delete all lock files.
+@@ -7884,6 +8032,25 @@ interface(`files_manage_generic_spool_dirs',`
+ 	manage_dirs_pattern($1, var_spool_t, var_spool_t)
+ ')
+ 
++########################################
++## <summary>
++##	Relabel generic spool directories.
++## </summary>
++## <param name="domain">
++##	<summary>
++##	Domain allowed access.
++##	</summary>
++## </param>
++#
++interface(`files_relabel_generic_spool_dirs',`
++	gen_require(`
++		type var_t, var_spool_t;
++	')
++
++	allow $1 var_t:dir search_dir_perms;
++	allow $1 var_spool_t:dir relabel_dir_perms;
++')
++
+ ########################################
+ ## <summary>
+ ##	Read generic spool files.
+diff --git a/policy/modules/kernel/files.te b/policy/modules/kernel/files.te
+index 8de238d..a396d55 100644
+--- a/policy/modules/kernel/files.te
++++ b/policy/modules/kernel/files.te
+@@ -64,6 +64,13 @@ files_type(etc_t)
+ 	init_mountpoint(etc_t)
+ ')
+ 
++#
++# runtime_etc_t is the type for runtime mount/config paths under /etc.
++#
++type runtime_etc_t, configfile;
++files_type(runtime_etc_t)
++files_mountpoint(runtime_etc_t)
++
+ #
+ # etc_runtime_t is the type of various
+ # files in /etc that are automatically
+@@ -161,6 +161,19 @@ files_mountpoint(usr_t)
+ type var_t;
+ files_mountpoint(var_t)
+ 
++#
++# dsp_file_t is the type for DSP firmware mount content.
++#
++type dsp_file_t;
++files_type(dsp_file_t)
++files_mountpoint(dsp_file_t)
++
++#
++# var_overlay_work_t is the type for /var overlay workdir.
++#
++type var_overlay_work_t;
++files_type(var_overlay_work_t)
++
+ #
+ # var_lib_t is the type of /var/lib
+ #
+diff --git a/policy/modules/kernel/filesystem.if b/policy/modules/kernel/filesystem.if
+index b380912..faf3bc7 100644
+--- a/policy/modules/kernel/filesystem.if
++++ b/policy/modules/kernel/filesystem.if
+@@ -2405,6 +2405,24 @@ interface(`fs_manage_configfs_files',`
+ 	manage_files_pattern($1, configfs_t, configfs_t)
+ ')
+ 
++########################################
++## <summary>
++##	Mount on configfs directories.
++## </summary>
++## <param name="domain">
++##	<summary>
++##	Domain allowed access.
++##	</summary>
++## </param>
++#
++interface(`fs_mounton_configfs',`
++	gen_require(`
++		type configfs_t;
++	')
++
++	allow $1 configfs_t:dir mounton;
++')
++
+ ########################################
+ ## <summary>
+ ##	Do not audit attempts to remount a configfs
+@@ -6460,6 +6460,24 @@ interface(`fs_relabelfrom_tmpfs_sockets',`
+ 	allow $1 tmpfs_t:sock_file relabelfrom_sock_file_perms;
+ ')
+ 
++########################################
++## <summary>
++##	Get attributes of tmpfs sockets.
++## </summary>
++## <param name="domain">
++##	<summary>
++##	Domain allowed access.
++##	</summary>
++## </param>
++#
++interface(`fs_getattr_tmpfs_sockets',`
++	gen_require(`
++		type tmpfs_t;
++	')
++
++	getattr_sock_files_pattern($1, tmpfs_t, tmpfs_t)
++')
++
+ ########################################
+ ## <summary>
+ ##	Relabelfrom tmpfs link files.
+diff --git a/policy/modules/kernel/kernel.if b/policy/modules/kernel/kernel.if
+index 4aa27ce..f73eba9 100644
+--- a/policy/modules/kernel/kernel.if
++++ b/policy/modules/kernel/kernel.if
+@@ -3267,6 +3267,24 @@ interface(`kernel_manage_unlabeled_symlinks',`
+ 	allow $1 unlabeled_t:lnk_file manage_lnk_file_perms;
+ ')
+ 
++########################################
++## <summary>
++##	Read unlabeled symbolic links.
++## </summary>
++## <param name="domain">
++##	<summary>
++##	Domain allowed access.
++##	</summary>
++## </param>
++#
++interface(`kernel_read_unlabeled_symlinks',`
++	gen_require(`
++		type unlabeled_t;
++	')
++
++	read_lnk_files_pattern($1, unlabeled_t, unlabeled_t)
++')
++
+ ########################################
+ ## <summary>
+ ##	Do not audit attempts by caller to get the
+diff --git a/policy/modules/services/cron.if b/policy/modules/services/cron.if
+index eef6a2d..5295167 100644
+--- a/policy/modules/services/cron.if
++++ b/policy/modules/services/cron.if
+@@ -663,6 +663,44 @@ interface(`cron_search_spool',`
+ 	allow $1 cron_spool_t:dir search_dir_perms;
+ ')
+ 
++########################################
++## <summary>
++##	Manage cron spool directories.
++## </summary>
++## <param name="domain">
++##	<summary>
++##	Domain allowed access.
++##	</summary>
++## </param>
++#
++interface(`cron_manage_spool_dirs',`
++	gen_require(`
++		type cron_spool_t;
++	')
++
++	files_search_spool($1)
++	allow $1 cron_spool_t:dir manage_dir_perms;
++')
++
++########################################
++## <summary>
++##	Relabel cron spool directories.
++## </summary>
++## <param name="domain">
++##	<summary>
++##	Domain allowed access.
++##	</summary>
++## </param>
++#
++interface(`cron_relabel_spool_dirs',`
++	gen_require(`
++		type cron_spool_t;
++	')
++
++	files_search_spool($1)
++	allow $1 cron_spool_t:dir relabel_dir_perms;
++')
++
+ ########################################
+ ## <summary>
+ ##	Execute anacron in the cron
+diff --git a/policy/modules/services/dbus.if b/policy/modules/services/dbus.if
+index 861c926..2632612 100644
+--- a/policy/modules/services/dbus.if
++++ b/policy/modules/services/dbus.if
+@@ -481,6 +481,46 @@ interface(`dbus_manage_lib_files',`
+ 	manage_files_pattern($1, system_dbusd_var_lib_t, system_dbusd_var_lib_t)
+ ')
+ 
++########################################
++## <summary>
++##	Manage system dbus lib directories and symlinks.
++## </summary>
++## <param name="domain">
++##	<summary>
++##	Domain allowed access.
++##	</summary>
++## </param>
++#
++interface(`dbus_manage_lib_dirs_symlinks',`
++	gen_require(`
++		type system_dbusd_var_lib_t;
++	')
++
++	files_search_var_lib($1)
++	manage_dirs_pattern($1, system_dbusd_var_lib_t, system_dbusd_var_lib_t)
++	manage_lnk_files_pattern($1, system_dbusd_var_lib_t, system_dbusd_var_lib_t)
++')
++
++########################################
++## <summary>
++##	Relabel system dbus lib files and symlinks.
++## </summary>
++## <param name="domain">
++##	<summary>
++##	Domain allowed access.
++##	</summary>
++## </param>
++#
++interface(`dbus_relabel_lib_files_symlinks',`
++	gen_require(`
++		type system_dbusd_var_lib_t;
++	')
++
++	files_search_var_lib($1)
++	allow $1 system_dbusd_var_lib_t:file relabel_file_perms;
++	allow $1 system_dbusd_var_lib_t:lnk_file relabel_lnk_file_perms;
++')
++
+ ########################################
+ ## <summary>
+ ##	Allow a application domain to be
+diff --git a/policy/modules/system/authlogin.if b/policy/modules/system/authlogin.if
+index db1fcc3..c4a695d 100644
+--- a/policy/modules/system/authlogin.if
++++ b/policy/modules/system/authlogin.if
+@@ -1132,6 +1132,45 @@ interface(`auth_manage_lastlog',`
+ 	logging_rw_generic_log_dirs($1)
+ ')
+ 
++########################################
++## <summary>
++##	Manage lastlog directories.
++## </summary>
++## <param name="domain">
++##	<summary>
++##	Domain allowed access.
++##	</summary>
++## </param>
++#
++interface(`auth_manage_lastlog_dirs',`
++	gen_require(`
++		type lastlog_t;
++	')
++
++	allow $1 lastlog_t:dir manage_dir_perms;
++	logging_search_logs($1)
++')
++
++########################################
++## <summary>
++##	Relabel lastlog directories and files.
++## </summary>
++## <param name="domain">
++##	<summary>
++##	Domain allowed access.
++##	</summary>
++## </param>
++#
++interface(`auth_relabel_lastlog_dirs_files',`
++	gen_require(`
++		type lastlog_t;
++	')
++
++	allow $1 lastlog_t:dir relabel_dir_perms;
++	allow $1 lastlog_t:file relabel_file_perms;
++	logging_search_logs($1)
++')
++
+ ########################################
+ ## <summary>
+ ##	Execute pam programs in the pam domain.
+diff --git a/policy/modules/system/init.if b/policy/modules/system/init.if
+index b38e972..129afd9 100644
+--- a/policy/modules/system/init.if
++++ b/policy/modules/system/init.if
+@@ -1486,6 +1486,25 @@ interface(`init_relabel_var_lib_dirs',`
+ 	allow $1 init_var_lib_t:dir relabel_dir_perms;
+ ')
+ 
++########################################
++## <summary>
++##	Manage dirs in /var/lib/systemd/.
++## </summary>
++## <param name="domain">
++##	<summary>
++##	Domain allowed access.
++##	</summary>
++## </param>
++#
++interface(`init_manage_var_lib_dirs',`
++	gen_require(`
++		type init_var_lib_t;
++	')
++
++	manage_dirs_pattern($1, init_var_lib_t, init_var_lib_t)
++	files_search_var_lib($1)
++')
++
+ ########################################
+ ## <summary>
+ ##	Create, read, write, and delete the
+@@ -1529,6 +1548,43 @@ interface(`init_manage_var_lib_files',`
+ 	files_search_var_lib($1)
+ ')
+ 
++########################################
++## <summary>
++##	Relabel files in /var/lib/systemd/.
++## </summary>
++## <param name="domain">
++##	<summary>
++##	Domain allowed access.
++##	</summary>
++## </param>
++#
++interface(`init_relabel_var_lib_files',`
++	gen_require(`
++		type init_var_lib_t;
++	')
++
++	allow $1 init_var_lib_t:file relabel_file_perms;
++	files_search_var_lib($1)
++')
++
++########################################
++## <summary>
++##	Get the attributes of runtime fifo files.
++## </summary>
++## <param name="domain">
++##	<summary>
++##	Domain allowed access.
++##	</summary>
++## </param>
++#
++interface(`init_getattr_runtime_fifo_files',`
++	gen_require(`
++		type initrc_runtime_t;
++	')
++
++	getattr_fifo_files_pattern($1, initrc_runtime_t, initrc_runtime_t)
++')
++
+ ########################################
+ ## <summary>
+ ##	Create files in /var/lib/systemd
+diff --git a/policy/modules/system/logging.fc b/policy/modules/system/logging.fc
+index e1261d1..b41f214 100644
+--- a/policy/modules/system/logging.fc
++++ b/policy/modules/system/logging.fc
+@@ -55,6 +55,7 @@ ifdef(`distro_suse', `
+ /var/log		-d	gen_context(system_u:object_r:var_log_t,s0-mls_systemhigh)
+ /var/log		-l	gen_context(system_u:object_r:var_log_t,s0)
+ /var/log/.*			gen_context(system_u:object_r:var_log_t,s0)
++/var/volatile/log(/.*)?	gen_context(system_u:object_r:var_log_t,s0)
+ /var/log/dmesg		--	gen_context(system_u:object_r:var_log_t,s0)
+ /var/log/syslog		--	gen_context(system_u:object_r:var_log_t,s0)
+ /var/log/boot\.log	--	gen_context(system_u:object_r:var_log_t,mls_systemhigh)
+diff --git a/policy/modules/system/logging.if b/policy/modules/system/logging.if
+index 7d10870..573e7ce 100644
+--- a/policy/modules/system/logging.if
++++ b/policy/modules/system/logging.if
+@@ -1180,6 +1180,26 @@ interface(`logging_manage_generic_log_dirs',`
+ 	allow $1 var_log_t:lnk_file read_lnk_file_perms;
+ ')
+ 
++########################################
++## <summary>
++##	Manage generic log symbolic links.
++## </summary>
++## <param name="domain">
++##	<summary>
++##	Domain allowed access.
++##	</summary>
++## </param>
++## <rolecap/>
++#
++interface(`logging_manage_generic_log_symlinks',`
++	gen_require(`
++		type var_log_t;
++	')
++
++	files_search_var($1)
++	manage_lnk_files_pattern($1, var_log_t, var_log_t)
++')
++
+ ########################################
+ ## <summary>
+ ##	Relabel from and to generic log directory type.
+@@ -1201,6 +1221,26 @@ interface(`logging_relabel_generic_log_dirs',`
+ 	allow $1 var_log_t:lnk_file read_lnk_file_perms;
+ ')
+ 
++########################################
++## <summary>
++##	Relabel generic log symbolic links.
++## </summary>
++## <param name="domain">
++##	<summary>
++##	Domain allowed access.
++##	</summary>
++## </param>
++## <rolecap/>
++#
++interface(`logging_relabel_generic_log_symlinks',`
++	gen_require(`
++		type var_log_t;
++	')
++
++	files_search_var($1)
++	allow $1 var_log_t:lnk_file relabel_lnk_file_perms;
++')
++
+ ########################################
+ ## <summary>
+ ##	Read generic log files.
+diff --git a/policy/modules/system/mount.te b/policy/modules/system/mount.te
+index 319ddd2..d64af61 100644
+--- a/policy/modules/system/mount.te
++++ b/policy/modules/system/mount.te
+@@ -45,7 +45,7 @@ application_domain(unconfined_mount_t, mount_exec_t)
+ #
+ 
+ # setuid/setgid needed to mount cifs
+-allow mount_t self:capability { chown dac_override dac_read_search ipc_lock setgid setuid sys_admin sys_rawio sys_tty_config };
++allow mount_t self:capability { chown dac_override dac_read_search fowner fsetid ipc_lock setgid setuid sys_admin sys_rawio sys_tty_config };
+ dontaudit mount_t self:capability { kill net_admin };
+ dontaudit mount_t self:process setrlimit;
+ 
+@@ -106,6 +106,59 @@ files_list_all_mountpoints(mount_t)
+ files_dontaudit_write_all_mountpoints(mount_t)
+ files_dontaudit_setattr_all_mountpoints(mount_t)
+ 
++# /var overlay setup accesses backing stores through mount_t.
++files_manage_var_overlay_work(mount_t)
++files_manage_var_dirs(mount_t)
++files_relabel_var_dirs(mount_t)
++files_manage_var_files(mount_t)
++files_relabel_var_files(mount_t)
++files_read_var_symlinks(mount_t)
++files_relabel_generic_tmp_symlinks(mount_t)
++files_relabelfrom_generic_tmp_symlinks(mount_t)
++files_manage_generic_tmp_symlinks(mount_t)
++files_manage_var_lib_dirs(mount_t)
++files_relabel_var_lib_dirs(mount_t)
++files_manage_generic_spool_dirs(mount_t)
++files_relabel_generic_spool_dirs(mount_t)
++files_manage_generic_lock_symlinks(mount_t)
++files_relabel_generic_lock_symlinks(mount_t)
++files_manage_all_runtime_symlinks(mount_t)
++files_relabel_all_runtime_symlinks(mount_t)
++
++init_manage_var_lib_dirs(mount_t)
++init_relabel_var_lib_dirs(mount_t)
++init_manage_var_lib_files(mount_t)
++init_relabel_var_lib_files(mount_t)
++
++auth_manage_lastlog_dirs(mount_t)
++auth_manage_lastlog(mount_t)
++auth_relabel_lastlog_dirs_files(mount_t)
++
++optional_policy(`
++	cron_manage_spool_dirs(mount_t)
++	cron_relabel_spool_dirs(mount_t)
++')
++
++optional_policy(`
++	dbus_manage_lib_dirs_symlinks(mount_t)
++	dbus_relabel_lib_dirs(mount_t)
++	dbus_manage_lib_files(mount_t)
++	dbus_relabel_lib_files_symlinks(mount_t)
++')
++
++optional_policy(`
++	logrotate_manage_var_lib_files(mount_t)
++	logrotate_relabel_var_lib_files(mount_t)
++')
++
++logging_manage_generic_log_symlinks(mount_t)
++logging_relabel_generic_log_symlinks(mount_t)
++
++systemd_manage_relabel_var_backing(mount_t)
++files_manage_runtime_etc(mount_t)
++files_mounton_runtime_etc(mount_t)
++files_runtime_etc_filetrans(mount_t)
++
+ fs_getattr_all_fs(mount_t)
+ fs_getattr_all_dirs(mount_t)
+ fs_mount_all_fs(mount_t)
+@@ -119,6 +172,7 @@ fs_rw_tmpfs_chr_files(mount_t)
+ fs_read_tmpfs_symlinks(mount_t)
+ fs_dontaudit_write_tmpfs_dirs(mount_t)
+ fs_search_configfs_dirs(mount_t)
++fs_mounton_configfs(mount_t)
+ fs_read_all_image_files(mount_t)
+ fs_dontaudit_write_all_image_files(mount_t)
+ 
+diff --git a/policy/modules/system/systemd.fc b/policy/modules/system/systemd.fc
+index 130c623..087380e 100644
+--- a/policy/modules/system/systemd.fc
++++ b/policy/modules/system/systemd.fc
+@@ -138,3 +138,4 @@ HOME_ROOT/.+\.home	--	gen_context(system_u:object_r:systemd_homed_storage_t,s0)
+ /run/userdb(/.*)?	gen_context(system_u:object_r:systemd_userdbd_runtime_t,s0)
+ 
+ /var/log/journal(/.*)?		gen_context(system_u:object_r:systemd_journal_t,mls_systemhigh)
++/var/volatile/log/journal(/.*)?	gen_context(system_u:object_r:systemd_journal_t,mls_systemhigh)
+diff --git a/policy/modules/system/systemd.if b/policy/modules/system/systemd.if
+index 4e3ec2b..42f258e 100644
+--- a/policy/modules/system/systemd.if
++++ b/policy/modules/system/systemd.if
+@@ -2285,6 +2285,38 @@ interface(`systemd_relabelto_journal_files',`
+ 	allow $1 systemd_journal_t:file relabelto_file_perms;
+ ')
+ 
++########################################
++## <summary>
++##	Manage and relabel systemd /var backing store content.
++## </summary>
++## <param name="domain">
++##	<summary>
++##	Domain allowed access.
++##	</summary>
++## </param>
++#
++interface(`systemd_manage_relabel_var_backing',`
++	gen_require(`
++		type systemd_coredump_var_lib_t, systemd_journal_t;
++		type systemd_logind_var_lib_t, systemd_networkd_var_lib_t;
++		type systemd_update_run_t;
++	')
++
++	allow $1 {
++		systemd_coredump_var_lib_t
++		systemd_journal_t
++		systemd_logind_var_lib_t
++		systemd_networkd_var_lib_t
++	}:dir { manage_dir_perms relabel_dir_perms };
++	allow $1 {
++		systemd_coredump_var_lib_t
++		systemd_journal_t
++		systemd_logind_var_lib_t
++		systemd_update_run_t
++	}:file { manage_file_perms relabel_file_perms };
++	allow $1 systemd_journal_t:file map;
++')
++
+ ########################################
+ ## <summary>
+ ##	Connect to systemd-networkd over
+diff --git a/policy/modules/system/systemd.te b/policy/modules/system/systemd.te
+index af54a0e..69d5945 100644
+--- a/policy/modules/system/systemd.te
++++ b/policy/modules/system/systemd.te
+@@ -2248,8 +2248,11 @@ files_relabel_config_symlinks(systemd_tmpfiles_t)
+ files_relabel_all_locks(systemd_tmpfiles_t)
+ files_relabel_all_runtime_dirs(systemd_tmpfiles_t)
+ files_relabel_all_tmp_dirs(systemd_tmpfiles_t)
++files_read_var_symlinks(systemd_tmpfiles_t)
+ files_relabel_var_dirs(systemd_tmpfiles_t)
++files_relabelfrom_var_symlinks(systemd_tmpfiles_t)
+ files_relabel_var_lib_dirs(systemd_tmpfiles_t)
++files_relabel_generic_tmp_symlinks(systemd_tmpfiles_t)
+ files_relabelfrom_home(systemd_tmpfiles_t)
+ files_relabelto_home(systemd_tmpfiles_t)
+ files_relabelto_etc_dirs(systemd_tmpfiles_t)
+@@ -2260,6 +2263,7 @@ files_manage_etc_symlinks(systemd_tmpfiles_t)
+ fs_getattr_cgroup(systemd_tmpfiles_t)
+ fs_list_tmpfs(systemd_tmpfiles_t)
+ fs_relabelfrom_tmpfs_dirs(systemd_tmpfiles_t)
++fs_getattr_tmpfs_sockets(systemd_tmpfiles_t)
+ fs_getattr_all_fs(systemd_tmpfiles_t)
+ fs_search_auto_mountpoints(systemd_tmpfiles_t)
+ fs_search_cgroup_dirs(systemd_tmpfiles_t)
+@@ -2284,6 +2288,7 @@ init_manage_utmp(systemd_tmpfiles_t)
+ init_manage_var_lib_files(systemd_tmpfiles_t)
+ # for /proc/1/environ
+ init_read_state(systemd_tmpfiles_t)
++init_getattr_runtime_fifo_files(systemd_tmpfiles_t)
+ 
+ init_relabel_utmp(systemd_tmpfiles_t)
+ init_relabel_var_lib_dirs(systemd_tmpfiles_t)
+@@ -2292,6 +2297,7 @@ init_read_runtime_files(systemd_tmpfiles_t)
+ kernel_relabelfrom_unlabeled_dirs(systemd_tmpfiles_t)
+ kernel_relabelfrom_unlabeled_files(systemd_tmpfiles_t)
+ kernel_relabelfrom_unlabeled_symlinks(systemd_tmpfiles_t)
++kernel_read_unlabeled_symlinks(systemd_tmpfiles_t)
+ kernel_relabelfrom_unlabeled_pipes(systemd_tmpfiles_t)
+ kernel_relabelfrom_unlabeled_sockets(systemd_tmpfiles_t)
+ kernel_relabelfrom_unlabeled_blk_devs(systemd_tmpfiles_t)
+-- 
+2.43.0
