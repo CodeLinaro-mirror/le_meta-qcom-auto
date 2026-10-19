@@ -13,7 +13,7 @@ DEPENDS += "\
 
 SRC_URI = "${PATH_TO_REPO}/gstreamer/gst-plugins-qti-oss/.git;protocol=${PROTO};destsuffix=gstreamer/gst-plugins-qti-oss;usehead=1"
 SRCREV = "${AUTOREV}"
-S = "${WORKDIR}/gstreamer/gst-plugins-qti-oss/gst-qv-codec-test"
+S = "${UNPACKDIR}/gstreamer/gst-plugins-qti-oss/gst-qv-codec-test"
 
 inherit pkgconfig meson
 
