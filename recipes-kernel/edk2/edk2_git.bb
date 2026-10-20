@@ -118,7 +118,7 @@ do_deploy() {
 do_deploy[dirs] = "${S} ${DEPLOYDIR}"
 do_deploy[nostamp] = "1"
 
-addtask deploy before do_build after do_install
+addtask deploy before do_build after do_install do_package
 
 INCSUFFIX = "${@bb.utils.contains('QTI_BASE_PROP', "Y", 'edk2', 'none',d)}"
 include ${INCSUFFIX}.inc
