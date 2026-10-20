@@ -94,6 +94,9 @@ SRC_URI:append = " \
     file://files/ethernet/0018-phy-qcom-add-SCMI-managed-SGMII-SerDes-PHY-driver.patch \
 "
 
+# Enable SELinux kernel config only when SELinux is enabled in DISTRO_FEATURES.
+SRC_URI:append = " ${@bb.utils.contains('DISTRO_FEATURES', 'selinux', 'file://selinux-lsm.cfg', '', d)}"
+
 # Pin to a specific commit once you know it
 SRCREV = "da28394e5c5b0a590086385484d3ea2453ec825e"
 
