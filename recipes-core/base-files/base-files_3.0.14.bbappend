@@ -5,6 +5,7 @@ DEPENDS += "base-passwd"
 SRC_URI:append = " \
     file://fstab \
     ${@bb.utils.contains('DISTRO_FEATURES', 'selinux', ' file://sh_login', '', d)} \
+    ${@bb.utils.contains('DISTRO_FEATURES', 'selinux', ' file://qcom-var-overlay.conf file://qcom-var-overlay-setup.service file://qcom-var-overlay-relabel.service', '', d)} \
 "
 
 SRC_URI:append:gvm-gen4-5 = " \
@@ -51,6 +52,15 @@ do_install:append(){
     if ${@bb.utils.contains('DISTRO_FEATURES', 'selinux', 'true', 'false', d)}; then
         install -m 0755 ${UNPACKDIR}/sh_login ${D}${base_bindir}/sh_login
         echo '/bin/sh_login' >> ${D}${sysconfdir}/shells
+        install -d ${D}${libdir}/tmpfiles.d
+        install -m 0644 ${UNPACKDIR}/qcom-var-overlay.conf ${D}${libdir}/tmpfiles.d/qcom-var-overlay.conf
+        install -d ${D}${systemd_system_unitdir}
+        install -m 0644 ${UNPACKDIR}/qcom-var-overlay-setup.service ${D}${systemd_system_unitdir}/qcom-var-overlay-setup.service
+        install -m 0644 ${UNPACKDIR}/qcom-var-overlay-relabel.service ${D}${systemd_system_unitdir}/qcom-var-overlay-relabel.service
+        install -d ${D}${systemd_system_unitdir}/local-fs.target.wants
+        ln -sf ../qcom-var-overlay-setup.service ${D}${systemd_system_unitdir}/local-fs.target.wants/qcom-var-overlay-setup.service
+        install -d ${D}${systemd_system_unitdir}/sysinit.target.wants
+        ln -sf ../qcom-var-overlay-relabel.service ${D}${systemd_system_unitdir}/sysinit.target.wants/qcom-var-overlay-relabel.service
     fi
 }
 
@@ -80,3 +90,10 @@ do_install:append:gvm-gen4-5() {
 do_install:append:gvm-gen5() {
     install_uni_fstab
 }
+FILES:${PN}:append = " \
+    ${libdir}/tmpfiles.d/qcom-var-overlay.conf \
+    ${systemd_system_unitdir}/qcom-var-overlay-setup.service \
+    ${systemd_system_unitdir}/qcom-var-overlay-relabel.service \
+    ${systemd_system_unitdir}/local-fs.target.wants/qcom-var-overlay-setup.service \
+    ${systemd_system_unitdir}/sysinit.target.wants/qcom-var-overlay-relabel.service \
+"

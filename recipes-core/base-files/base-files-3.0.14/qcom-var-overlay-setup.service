@@ -1,0 +1,15 @@
+[Unit]
+Description=Prepare QCOM /var overlay backing store
+Documentation=man:tmpfiles.d(5) man:systemd-tmpfiles(8)
+DefaultDependencies=no
+RequiresMountsFor=/data /persist
+Before=var.mount local-fs.target
+ConditionPathExists=/etc/selinux/config
+
+[Service]
+Type=oneshot
+ExecStart=systemd-tmpfiles --create --boot --prefix=/data/var_upper --prefix=/data/var_work --prefix=/persist /usr/lib/tmpfiles.d/qcom-var-overlay.conf
+RemainAfterExit=yes
+
+[Install]
+WantedBy=local-fs.target
