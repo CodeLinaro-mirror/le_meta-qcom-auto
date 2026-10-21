@@ -1,0 +1,61 @@
+From 4c3bd60aab877b811f8fe1ea11f22c32f2af9d92 Mon Sep 17 00:00:00 2001
+From: Jie Ma <mjie@qti.qualcomm.com>
+Date: Wed, 21 Oct 2026 12:00:00 +0200
+Subject: [PATCH] named_dmabuf: align with Linux 7.x APIs
+
+Linux 7.x no longer provides no_llseek or the dma_map_attrs member in
+struct dma_buf_attachment. It also defines platform_driver::remove as a
+void callback.
+
+Use noop_llseek, stop accessing the removed attachment member, and update
+the remove callback signature. Keep peer-to-peer mapping enabled for the
+no-map carveout.
+
+Signed-off-by: Jie Ma <mjie@qti.qualcomm.com>
+---
+ drivers/named_dmabuf.c | 7 +++----
+ 1 file changed, 3 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/named_dmabuf.c b/drivers/named_dmabuf.c
+index 57a3502..342699e 100644
+--- a/drivers/named_dmabuf.c
++++ b/drivers/named_dmabuf.c
+@@ -279,7 +279,7 @@ static const struct file_operations named_cdev_fops = {
+ 	.open		= named_dmabuf_cdev_open,
+ 	.release	= named_dmabuf_cdev_release,
+ 	.mmap		= named_dmabuf_cdev_mmap,
+-	.llseek		= no_llseek,
++	.llseek		= noop_llseek,
+ };
+ 
+ /* Core create / destroy */
+@@ -409,7 +409,6 @@ static int named_dmabuf_validate_carveout(struct named_dmabuf_inst *inst,
+ 	 * cache-sync that would also dereference the unmapped VA.
+ 	 */
+ 	attach->peer2peer      = true;
+-	attach->dma_map_attrs |= DMA_ATTR_SKIP_CPU_SYNC;
+ 
+ 	sgt = dma_buf_map_attachment_unlocked(attach, DMA_BIDIRECTIONAL);
+ 	if (IS_ERR(sgt)) {
+@@ -862 +861 @@ static const struct file_operations named_dmabuf_ctrl_fops = {
+-	.llseek		= no_llseek,
++	.llseek		= noop_llseek,
+@@ -968,7 +967,7 @@ err_chrdev:
+  * Drops the driver's dmabuf ref for each remaining buffer so the underlying
+  * memory can be freed even if consumers still hold fds.
+  */
+-static int named_dmabuf_remove(struct platform_device *pdev)
++static void named_dmabuf_remove(struct platform_device *pdev)
+ {
+ 	struct named_dmabuf_inst *inst = platform_get_drvdata(pdev);
+ 	struct named_dmabuf *b, *tmp;
+@@ -1003,7 +1002,6 @@ static int named_dmabuf_remove(struct platform_device *pdev)
+ 	ida_free(&inst->minor_ida, inst->ctrl_minor);
+ 	unregister_chrdev_region(inst->devt, NAMED_DMABUF_MAX_MINORS);
+ 	ida_destroy(&inst->minor_ida);
+-	return 0;
+ }
+ 
+ static const struct of_device_id named_dmabuf_of_match[] = {
+-- 
+2.43.0

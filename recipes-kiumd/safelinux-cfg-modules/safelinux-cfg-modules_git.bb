@@ -14,6 +14,7 @@ SRC_URI = "\
     file://0001-safelinux-cfg-modules-fix-remove-signature-for-6.18-.patch;patchdir=.. \
     file://0003-safelinux-cfg-modules-fix-thermal-cooling-api.patch;patchdir=.. \
     file://0003-kiumd-align-drivers-with-linux-6_18-rebased.patch;patchdir=.. \
+    file://0005-named-dmabuf-align-with-linux-7.x-APIs.patch;apply=no \
     file://fix-kernel71.py \
 "
 
@@ -39,6 +40,41 @@ TECHPACK_MAKE_ARGS = "${@bb.utils.contains('PREFERRED_PROVIDER_virtual/kernel', 
 # Kbuild gates qcom_secure_buffer/mem_buf/qcom_dma_heaps behind QLI2_SECURE_DMABUF=1;
 # without this they're silently skipped even though TECHPACK_MODULES/RPROVIDES list them.
 TECHPACK_MAKE_ARGS:append = " QLI2_SECURE_DMABUF=1"
+
+# named_dmabuf was added after the revision pinned by the release manifest.
+# Apply its kernel 7.x compatibility fix only when building a newer source tip
+# that contains the driver, while keeping the pinned older revision buildable.
+python do_patch:append() {
+    import os
+    import re
+    import subprocess
+
+    source = os.path.join(d.getVar("S"), "drivers", "named_dmabuf.c")
+    patch = os.path.join(
+        d.getVar("UNPACKDIR"),
+        "0005-named-dmabuf-align-with-linux-7.x-APIs.patch",
+    )
+
+    if not os.path.isfile(source):
+        bb.note("named_dmabuf.c is not present; skipping kernel 7.x compatibility patch")
+        return
+
+    with open(source, "r", encoding="utf-8") as source_file:
+        contents = source_file.read()
+
+    if re.search(r"[.]llseek\s*=\s*no_llseek", contents):
+        bb.note("Applying named_dmabuf kernel 7.x compatibility patch")
+        with open(patch, "rb") as patch_file:
+            subprocess.run(
+                ["patch", "--batch", "-d", d.getVar("S"), "-p1"],
+                stdin=patch_file,
+                check=True,
+            )
+    elif re.search(r"[.]llseek\s*=\s*noop_llseek", contents):
+        bb.note("named_dmabuf kernel 7.x compatibility patch is already applied")
+    else:
+        bb.fatal("Unable to determine named_dmabuf kernel API state")
+}
 
 # qcom_io_mem.c hunk 3 shifted 327 lines in our workspace vs QLI-2.0-AUTO —
 # apply the two remaining changes (platform_driver.remove void, MODULE_IMPORT_NS string) via sed
