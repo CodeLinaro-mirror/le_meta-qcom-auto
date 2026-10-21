@@ -173,12 +173,8 @@ MISSING_RECIPE_SRCLIST_BASELINE_LY020 += "\
     meta-qcom-auto/recipes-multimedia/gstreamer/gstreamer1.0-plugins-codec2.bb \
     meta-qcom-auto/recipes-multimedia/gstreamer/gstreamer1.0-plugins-extpoolsink.bb \
     meta-qcom-auto/recipes-multimedia/gstreamer/gstreamer1.0-plugins-qcarcamsrc_git.bb \
-    meta-qcom-auto/recipes-multimedia/gstreamer/gstreamer1.0-plugins-qscreencapsrc_1.0.0.bb \
-    meta-qcom-auto/recipes-multimedia/gstreamer/gstreamer1.0-plugins-qvblend_1.0.bb \
     meta-qcom-auto/recipes-multimedia/gstreamer/gstreamer1.0-plugins-qvconv.bb \
     meta-qcom-auto/recipes-multimedia/gstreamer/gstreamer1.0-plugins-qvrate_git.bb \
-    meta-qcom-auto/recipes-multimedia/gstreamer/mm-vdec-omx-test-lite_0.1.bb \
-    meta-qcom-auto/recipes-multimedia/gstreamer/mm-venc-omx-test-lite_0.1.bb \
     meta-qcom-auto/recipes-multimedia/gstreamer/drm-player-example.bb \
     meta-qcom-auto/recipes-multimedia/gstreamer/gstreamer1.0-plugins-codec2-gen5.bb \
     meta-qcom-auto/recipes-multimedia/gstreamer/gstreamer1.0-plugins-drmdecryptor.bb \
