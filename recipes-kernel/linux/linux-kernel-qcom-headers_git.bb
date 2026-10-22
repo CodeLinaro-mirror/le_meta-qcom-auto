@@ -3,8 +3,8 @@ DESCRIPTION = "Installs QCOM kernel headers required to build userspace. \
 These headers are installed in ${includedir}/linux-qcom path."
 HOMEPAGE = "https://git.codelinaro.org"
 SECTION = "kernel"
-LICENSE = "GPLv2.0-with-linux-syscall-note"
-LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/${LICENSE};md5=801f80980d171dd6425610833a22dbe6"
+LICENSE = "GPL-2.0-with-Linux-syscall-note"
+LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/${LICENSE};md5=0bad96c422c41c3a94009dcfe1bff992"
 
 DEPENDS += "bison-native rsync-native unifdef-native"
 
@@ -24,7 +24,6 @@ do_unpack[noexec] = "1"
 do_patch[noexec] = "1"
 do_configure[noexec] = "1"
 do_compile[noexec] = "1"
-do_populate_lic[noexec] = "1"
 do_install() {
     # Generate kernel headers
     rm -rf ${B}
