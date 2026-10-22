@@ -50,6 +50,8 @@ do_compile() {
     rm -f "${OOT_LINK}" "${OOT_INC_LINK}"
 }
 
+do_compile[lockfiles] += "${TMPDIR}/qti-techpack.lock"
+
 do_stage_mmvfio_dtbo() {
     :
 }
