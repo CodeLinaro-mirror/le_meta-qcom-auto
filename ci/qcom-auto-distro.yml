@@ -5,6 +5,11 @@ header:
 
 distro: qcom-auto-distro
 
+local_conf_header:
+  sdk-opkg-force-overwrite: |
+    # Keep the SDK package installation behavior used by the QLI 1.0 setup.
+    OPKG_ARGS:append = " --force-overwrite"
+
 defaults:
   repos:
     branch: wrynose
