@@ -102,10 +102,13 @@ do_make_dtb[depends] += "${@bb.utils.contains('MACHINE_FEATURES', 'qti-umd', 'oo
 do_make_dtb[depends] += "${@bb.utils.contains_any('SOC_FAMILY', 'gen5', bb.utils.contains_any('MACHINE_FEATURES', 'qti-multimedia qti-display qti-audio qti-graphics qti-camera', 'mm-vfio-devicetree:do_deploy', '', d), '', d)}"
 do_make_dtb[depends] += "${@bb.utils.contains('COMBINED_FEATURES', 'qti-audio-aw', 'audiolite-devicetree:do_deploy', '', d)}"
 do_make_dtb[depends] += "${@bb.utils.contains_any('COMBINED_FEATURES', 'qti-audio qti-audio-ar', bb.utils.contains('MACHINE_FEATURES', 'qti-gunyah qti-umd', 'audiolite-devicetree:do_deploy', '', d), '', d)}"
+# gvm-omnix's base DTB/DTBO come from devicetree-qcom-gvm.bb (recipes-kernel/linux-ominix),
+# the same artifact gvm-gen5 gets via qti-image-boot.bb's do_merge_dtbs depends.
+do_make_dtb[depends] += "${@bb.utils.contains('MACHINE_FEATURES', 'qti-hypervisor', 'devicetree-qcom-gvm:do_deploy', '', d)}"
 
 addtask do_make_dtb after do_image before do_makeboot
 
-BOOT_RAMDISK_IMG ?= "${@bb.utils.contains('MACHINE_FEATURES', 'early-ramdisk-init', 'early-ramdisk-image-${PRODUCT}.cpio.lz4', '/dev/null', d)}"
+BOOT_RAMDISK_IMG ?= "${@bb.utils.contains('MACHINE_FEATURES', 'early-ramdisk-init', '${DEPLOY_DIR_IMAGE}/early-ramdisk-image-${PRODUCT}.rootfs.cpio.gz', '/dev/null', d)}"
 
 do_makeboot () {
     if [ "${KERNEL_IMAGE_HEADER_VERSION}" = "2" ]; then
@@ -233,3 +236,6 @@ addtask do_sign_boot_img after do_makeboot before do_build
 do_rootfs[noexec] = "1"
 do_image[noexec] = "1"
 do_image_complete[noexec] = "1"
+do_create_rootfs_spdx[noexec] = "1"
+do_create_image_sbom_spdx[noexec] = "1"
+do_create_image_spdx[noexec] = "1"

@@ -1,10 +1,10 @@
 SUMMARY = "Qualcomm devicetree for qclinux-gvm-gen5"
 DESCRIPTION = "To provide devicetree attributes for gvm kernel"
 HOMEPAGE = "https://www.codelinaro.org"
-LICENSE = "GPLv2.0-with-linux-syscall-note"
-LIC_FILES_CHKSUM = "file://COPYING;md5=6bc538ed5bd9a7fc9398086aedcd7e46"
+LICENSE = "GPL-2.0-with-Linux-syscall-note"
+LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/${LICENSE};md5=0bad96c422c41c3a94009dcfe1bff992"
 
-COMPATIBLE_MACHINE = "qclinux-gvm-gen5"
+COMPATIBLE_MACHINE = "gvm-omnix"
 
 SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/soc-modules/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/soc-modules;usehead=1"
 SRCREV = "${AUTOREV}"
@@ -18,13 +18,18 @@ inherit qti-techpack
 TECHPACK_DTBS = "sa8797p-v2-gunyah-vm-qclv-qam.dtb"
 TECHPACK_DTBOS = "sa8797p-gunyah-vm-lv-qam-overlay.dtbo"
 
-# The devicetree/qcom/Makefile already exists in the source tree.
-# No configure step needed.
-do_configure[noexec] = "1"
-
-# Depend on soc-repo:do_configure to ensure kernel headers and auto.conf
-# are fully prepared before DTB compilation reads them.
-do_compile[depends] += "soc-repo:do_configure"
+# The devicetree/qcom/Makefile already exists in the source tree, so the only
+# configure work needed is overlaying soc-modules' own dt-bindings headers
+# (e.g. dt-bindings/arm/msm/qcom_dma_heap_dt_constants.h) into the kernel's
+# include search path, which the DTS/DTSI preprocessor needs but the mainline
+# kernel tree doesn't ship. Do this directly instead of depending on
+# soc-repo:do_configure, since soc-repo also builds unrelated OOT modules.
+do_configure() {
+    soc_modules_dir=$(dirname ${S})
+    if [ -d ${soc_modules_dir}/include ]; then
+        cp -rf ${soc_modules_dir}/include/* ${STAGING_KERNEL_DIR}/include/
+    fi
+}
 
 # Override qti-techpack's module_do_compile.
 # DTB compilation requires driving from the kernel top-level Makefile

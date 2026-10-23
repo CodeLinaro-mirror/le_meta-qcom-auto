@@ -1,13 +1,12 @@
 SUMMARY = "Qualcomm SoC kernel modules"
 DESCRIPTION = "Out-of-tree kernel modules for Qualcomm SoC platforms"
 HOMEPAGE = "https://www.codelinaro.org"
-LICENSE = "GPLv2.0-with-linux-syscall-note"
-LIC_FILES_CHKSUM = "file://COPYING;md5=6bc538ed5bd9a7fc9398086aedcd7e46"
+LICENSE = "GPL-2.0-with-Linux-syscall-note"
+LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/${LICENSE};md5=0bad96c422c41c3a94009dcfe1bff992"
 
-COMPATIBLE_MACHINE = "qclinux-gvm-gen5"
+COMPATIBLE_MACHINE = "gvm-omnix"
 
-# Kernel source dependency - must build after linux-qcom-rt
-DEPENDS = "virtual/kernel linux-qcom-custom-rt"
+DEPENDS = "virtual/kernel"
 
 PV = "1.0"
 
@@ -42,7 +41,7 @@ TECHPACK_MODULES = "\
 "
 
 # Ensure we build after linux-qcom-rt shared workdir is ready
-do_compile[depends] += "linux-qcom-custom-rt:do_shared_workdir"
+do_compile[depends] += "virtual/kernel:do_shared_workdir"
 
 # Source directory
 S = "${UNPACKDIR}/vendor/qcom/opensource/soc-modules"

@@ -34,6 +34,7 @@ MISSING_RECIPE_SRCLIST:append:sa7255 = " ${MISSING_RECIPE_SRCLIST_BASELINE_LY020
 MISSING_RECIPE_SRCLIST:append:qclinux-gvm-gen5 = " ${MISSING_RECIPE_SRCLIST_BASELINE_LV053}"
 MISSING_RECIPE_SRCLIST:append:gvm-gen4-5 = " ${MISSING_RECIPE_SRCLIST_BASELINE_LV052}"
 MISSING_RECIPE_SRCLIST:append:gvm-gen5 = " ${MISSING_RECIPE_SRCLIST_BASELINE_LV052}"
+MISSING_RECIPE_SRCLIST:append:gvm-omnix = " ${MISSING_RECIPE_SRCLIST_BASELINE_LV060}"
 
 # Missing recipes globally
 MISSING_RECIPE_SRCLIST += "\
@@ -192,8 +193,8 @@ MISSING_RECIPE_SRCLIST_BASELINE_LY020 += "\
     meta-qcom-auto/recipes-graphics/wayland/gvm-touch-proxy_1.0.bb \
 "
 
-# Missing recipes in baseline LV.AU.0.5.2 (used by gvm-gen4-5/gvm-gen5)
-MISSING_RECIPE_SRCLIST_BASELINE_LV052 += "\
+# Missing recipes in baseline LV.AU.0.6.0 (used by gvm-omnix)
+MISSING_RECIPE_SRCLIST_BASELINE_LV060 += "\
     meta-qcom-auto/recipes-core/edk2/edk2_git.bbappend \
     meta-qcom-auto/recipes-kernel/linux/linux-qcom-custom-rt_6.6.bbappend \
     meta-qcom-auto/recipes-audio/acdb/acdb_git.bb \
@@ -216,6 +217,7 @@ MISSING_RECIPE_SRCLIST_BASELINE_LV052 += "\
     meta-qcom-auto/recipes-audio/sound-card-info-common-header/sound-card-info-common-header_git.bb \
     meta-qcom-auto/recipes-audio/sound-card-info-util/sound-card-info-util_git.bb \
     meta-qcom-auto/recipes-audio/spf/spf_git.bb \
+    meta-qcom-auto/recipes-audio/pcm-logging-util/pcm-logging-util_git.bb \
     meta-qcom-auto/recipes-core/bootkpi-logging/bootkpi-logging.bb \
     meta-qcom-auto/recipes-core/early-service-infra/early-service-infra_git.bb \
     meta-qcom-auto/recipes-core/irqbalance/irqbalance_git.bbappend \
@@ -229,8 +231,15 @@ MISSING_RECIPE_SRCLIST_BASELINE_LV052 += "\
     meta-qcom-auto/recipes-graphics/auto-gfx-app/auto-gfx-app.bb \
     meta-qcom-auto/recipes-graphics/mm-auto-ksync/ksyncdlkm_git.bb \
     meta-qcom-auto/recipes-graphics/graphics-driver/graphicsdlkm_git.bb \
+    meta-qcom-auto/recipes-graphics/wayland/weston-sdm-extension-headers_git.bb \
+    meta-qcom-auto/recipes-graphics/wayland/weston-sdm-extension_1.0.0.bb \
     meta-qcom-auto/recipes-kernel/edk2/edk2_git.bb \
+    meta-qcom-auto/recipes-kernel/edk2/edk2_5.0.bb \
     meta-qcom-auto/recipes-kernel/oot-dtbo/oot-dtbo.bb \
+    meta-qcom-auto/recipes-kernel/linux-msm/qcom-dtc-native.bb \
+    meta-qcom-auto/recipes-kernel/linux/kernel-basedevicetree.bb \
+    meta-qcom-auto/recipes-kernel/dtc/dtc-aosp.bb \
+    meta-qcom-auto/recipes-kernel/kernel-aosp-tools/kernel-aosp-tools-native.bb \
     meta-qcom-auto/recipes-kiumd/dspfirmware-mount/dspfirmware-mount_git.bb \
     meta-qcom-auto/recipes-kiumd/gvm-net-config/gvm-net-config_git.bb \
     meta-qcom-auto/recipes-kiumd/kiumd-headers/kiumd-headers_git.bb \
