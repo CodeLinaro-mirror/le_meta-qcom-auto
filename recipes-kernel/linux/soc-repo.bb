@@ -39,6 +39,9 @@ TECHPACK_MODULES = "\
     drivers/soc/qcom/qcom_soc_wdt.ko \
     drivers/soc/qcom/minidump.ko \
     drivers/soc/qcom/debug_symbol.ko \
+    kernel/trace/qcom_ipc_logging.ko \
+    drivers/rpmsg/qcom_glink.ko \
+    drivers/rpmsg/qcom_glink_cma.ko \
 "
 
 # Ensure we build after linux-qcom-rt shared workdir is ready
@@ -100,6 +103,13 @@ do_compile() {
         EXTRA_CFLAGS="-I${STAGING_KERNEL_DIR} ${DEFCONFIG_CFLAGS}" \
         KCFLAGS="-Wno-error=implicit-fallthrough -Wno-error=unused-variable -Wno-error=format -Wno-error=incompatible-pointer-types" \
         modules
+}
+
+# Stage Module.symvers to sysroot includedir so dependent OOT recipes can resolve cross-module
+do_install:append() {
+    if [ -f "${S}/Module.symvers" ]; then
+        install -Dm0644 "${S}/Module.symvers" "${D}${includedir}/${BPN}/Module.symvers"
+    fi
 }
 
 # Exclude KERNEL_VERSION from task hash calculation to avoid metadata instability
