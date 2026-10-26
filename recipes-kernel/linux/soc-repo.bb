@@ -47,18 +47,6 @@ do_compile[depends] += "virtual/kernel:do_shared_workdir"
 S = "${UNPACKDIR}/vendor/qcom/opensource/soc-modules"
 DEFCONFIG_FILE = "${UNPACKDIR}/configs/soc-repo_defconfig"
 
-# Configure: Overlay headers
-do_configure:append() {
-    # Overlay soc-repo headers to kernel source to ensure they take precedence
-    if [ -d ${S}/include ]; then
-        cp -rf ${S}/include/* ${STAGING_KERNEL_DIR}/include/
-    fi
-
-    if [ -d ${S}/arch/arm64/include ]; then
-        cp -rf ${S}/arch/arm64/include/* ${STAGING_KERNEL_DIR}/arch/arm64/include/
-    fi
-}
-
 # Compile: Build modules using standard OOT approach
 # CONFIG_VARS and DEFCONFIG_CFLAGS are passed explicitly to override any conflicting
 # values that may already exist in auto.conf from the kernel's own Kconfig.
@@ -91,15 +79,23 @@ do_compile() {
         bbwarn "soc-repo_defconfig not found at ${DEFCONFIG_FILE}"
     fi
 
+    # This kernel's kbuild no longer reads EXTRA_CFLAGS (removed from
+    # scripts/Makefile.build/scripts/Makefile.lib in newer kernels) -- only
+    # KCFLAGS (via KBUILD_CFLAGS += $(KCFLAGS) in the top-level Makefile) is
+    # honored, so DEFCONFIG_CFLAGS must be passed through KCFLAGS or the
+    # CONFIG_* defines (e.g. CONFIG_VIRTIO_MMIO_POLL_RESET) are silently
+    # dropped from the actual compile command.
     oe_runmake -C ${STAGING_KERNEL_BUILDDIR} \
         M=${S} \
         ARCH=${ARCH} \
         CROSS_COMPILE=${TARGET_PREFIX} \
         ${CONFIG_VARS} \
-        EXTRA_CFLAGS="-I${STAGING_KERNEL_DIR} ${DEFCONFIG_CFLAGS}" \
-        KCFLAGS="-Wno-error=implicit-fallthrough -Wno-error=unused-variable -Wno-error=format -Wno-error=incompatible-pointer-types" \
-        modules
+        KCFLAGS="-I${STAGING_KERNEL_DIR} ${DEFCONFIG_CFLAGS} -Wno-error=implicit-fallthrough -Wno-error=unused-variable -Wno-error=format -Wno-error=incompatible-pointer-types" \
+        drivers/virtio/virtio_mmio.ko
 }
+
+KERNEL_MODULE_PACKAGE_PREFIX = "soc-repo-"
+PACKAGES_DYNAMIC += "^soc-repo-kernel-module-.*"
 
 # Exclude KERNEL_VERSION from task hash calculation to avoid metadata instability
 # KERNEL_VERSION is read dynamically and may cause basehash changes during reparsing

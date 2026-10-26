@@ -115,7 +115,7 @@ KERNEL_CONFIG_FRAGMENTS = "\
     arch/arm64/configs/virt.config \
 "
 
-
+KBUILD_CONFIG_EXTRA:append:gvm-omnix = " ${UNPACKDIR}/configs/gvm-omnix.config"
 KBUILD_CONFIG_EXTRA:remove:aarch64 = "${S}/arch/arm64/configs/prune.config"
 KBUILD_CONFIG_EXTRA:remove:aarch64 = "${S}/arch/arm64/configs/qcom.config"
 

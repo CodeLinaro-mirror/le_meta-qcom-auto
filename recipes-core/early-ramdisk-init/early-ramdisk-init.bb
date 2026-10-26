@@ -29,10 +29,7 @@ TARGET_PATH_NAME:sa8775 = "sa8775-qclinux"
 TARGET_PATH_NAME:sa7255 = "sa7255"
 TARGET_PATH_NAME:sa7255-ivi = "sa7255-qclinux"
 TARGET_PATH_NAME:gen5 = "sa8797"
-# gvm-omnix has no MACHINEOVERRIDES relation to gen5 (it doesn't include
-# gen5.inc), but its MACHINE_FEATURES/EARLY_RAMDISK_KERNEL_MODULES are copied
-# from gvm-gen5.conf, so it reuses the gvm-gen5 module list here too.
-TARGET_PATH_NAME:gvm-omnix = "gvm-gen5"
+TARGET_PATH_NAME:gvm-omnix = "qclinux-gvm-gen5"
 
 do_install:append() {
     install -d ${D}/dev

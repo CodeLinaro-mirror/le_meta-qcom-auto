@@ -9,6 +9,7 @@ DEPENDS += "virtual/kernel"
 # needed as a build dep so its ipk reaches the rootfs feed (matches QLI1.0).
 DEPENDS += "${@bb.utils.contains('MACHINE_FEATURES', 'qti-umd', 'safelinux-sec-modules safelinux-cfg-modules ', '', d)}"
 DEPENDS:qclinux-gvm-gen5:append = " soc-repo"
+DEPENDS:append:gvm-omnix = " soc-repo"
 DEPENDS:append = " ${@bb.utils.contains('PREFERRED_PROVIDER_virtual/kernel', 'linux-ack', 'soc-modules', '', d)}"
 
 IMAGE_CLASSES:remove = "qimage qimage-boot"
