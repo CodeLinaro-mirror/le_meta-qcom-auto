@@ -10,7 +10,6 @@ DEPENDS += "tinyalsa-new tinycompress expat dbus \
 
 FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
 SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/agm/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/agm;usehead=1"
-SRC_URI:append = " file://0001-agm-tinyalsa-test-drop-agmplay-agmcap-and-acdbdata-i.patch;patchdir=${S}"
 
 SRCREV = "${AUTOREV}"
 
@@ -53,6 +52,10 @@ FILES_SOLIBSDEV = ""
 # Include custom libdir and pkgconfig files in the main and -dev packages
 FILES:${PN} += "/usr/lib/ar/*.so"
 FILES:${PN}-dev += "/usr/lib/ar/pkgconfig /usr/lib/ar/pkgconfig/*.pc"
+
+# AGM still relies on C17 APIs such as ATOMIC_VAR_INIT, which C23 removed.
+# GCC 15 defaults to GNU C23, so keep the source on its expected C standard.
+CFLAGS:append = " -std=gnu17"
 
 # GCC 15.3: incompatible pointer/int conversion, implicit decls, deprecated
 # -Wno-poison-system-directories remains as a cross-compile safety net.
