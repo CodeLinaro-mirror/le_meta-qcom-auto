@@ -41,7 +41,6 @@ local_conf_header:
     BBMASK:append = " /meta-qcom-auto/recipes-data/ptp-virtual/ptp-virtual_git.bb"
     BBMASK:append = " /meta-qcom-auto/recipes-graphics/graphics-driver/graphicsdlkm_git.bb"
     BBMASK:append = " /meta-qcom-auto/recipes-multimedia/dsp-kernel/dsp-kernel_git.bb"
-    BBMASK:append = " /meta-qcom-auto/recipes-multimedia/media/media_0.1.bb"
     BBMASK:append = " /meta-qcom-auto/recipes-multimedia/videodlkm/videodlkm_git.bb"
     BBMASK:append = " /meta-qcom-auto/recipes-security/securemsmdlkm/securemsmdlkm_git.bb"
     BBMASK:append = " /meta-qcom-auto/recipes-kernel/edk2/edk2_5.0.bb"

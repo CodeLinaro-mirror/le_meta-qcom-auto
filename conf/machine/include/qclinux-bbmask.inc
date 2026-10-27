@@ -50,7 +50,6 @@ MISSING_RECIPE_SRCLIST += "\
     meta-qcom-auto/recipes-data/emac-dwc-eqos/emac-dwc-eqos_git.bb \
     meta-qcom-auto/recipes-graphics/graphics-driver/graphicsdlkm_git.bb \
     meta-qcom-auto/recipes-graphics/graphics-hgsl/graphics-hgsldlkm_git.bb \
-    meta-qcom-auto/recipes-multimedia/media/media_0.1.bb \
     meta-qcom-auto/recipes-security/securemsm-devicetree/securemsm-devicetree.bb \
 "
 
