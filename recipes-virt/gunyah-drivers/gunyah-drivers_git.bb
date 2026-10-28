@@ -10,8 +10,8 @@ FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
 
 SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/gunyah-drivers/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/gunyah-drivers;usehead=1"
 SRC_URI += " \
-    file://0001-gunyah-kernel7-gcc15-compat.patch;patchdir=${S} \
-    file://0002-gunyah-add-stub-headers.patch;patchdir=${S} \
+    file://0001-gunyah-kernel7-gcc15-compat.patch \
+    file://0002-gunyah-add-stub-headers.patch \
 "
 
 SRCREV = "${AUTOREV}"

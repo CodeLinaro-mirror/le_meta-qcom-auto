@@ -10,7 +10,7 @@ DEPENDS += "${@bb.utils.contains('PREFERRED_PROVIDER_virtual/kernel', 'linux-ark
 # 0002-*.patch carries the kernel 6.18 ARM SMMU macro and platform-driver
 # remove() compatibility changes.
 SRC_URI = "\
-    ${PATH_TO_REPO}/vendor/qcom/opensource/safelinux-cfg-modules/.git;protocol=${PROTO};destsuffix=safelinux-cfg-modules;usehead=1 \
+    ${PATH_TO_REPO}/vendor/qcom/opensource/safelinux-cfg-modules/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/safelinux-cfg-modules;usehead=1 \
     file://0001-safelinux-cfg-modules-fix-remove-signature-for-6.18-.patch;patchdir=.. \
     file://0003-safelinux-cfg-modules-fix-thermal-cooling-api.patch;patchdir=.. \
     file://0003-kiumd-align-drivers-with-linux-6_18-rebased.patch;patchdir=.. \
@@ -24,7 +24,7 @@ SRCBRANCH = "safe-services.lnx.1.0"
 SRCREV = "${AUTOREV}"
 
 # Yocto 6: avoid double slash, keep S aligned with where patches are applied
-S = "${UNPACKDIR}/safelinux-cfg-modules/safelinux-modules"
+S = "${UNPACKDIR}/vendor/qcom/opensource/safelinux-cfg-modules/safelinux-modules"
 
 TECHPACK_MODULES = "apps_pinctrl.ko scm_user_intf.ko qcom_dload_mode.ko vfio_iommu_qcom.ko iommu_iova_map.ko kiumd.ko qcom_uscmi.ko kryo_arm64_edac.ko kiumd_kgsl.ko mhi_ep_net.ko profiler.ko arm-smmu-qcom-fusa.ko pinctrl_fusa.ko qcom_vdev.ko dmabuf_share.ko iommu_faults.ko qcom_remote_virq.ko qcom_secure_buffer.ko mem_buf.ko qcom_dma_heaps.ko"
 TECHPACK_MODULES:append:gen5 = " vendor_uscmi.ko  qcom_vm_cpufreq.ko"
@@ -55,18 +55,18 @@ do_install:append() {
     install -d ${D}${includedir}/linux
     install -d ${D}${includedir}/uapi/misc
 
-    install -m 0644 ${UNPACKDIR}/safelinux-cfg-modules/safelinux-modules/include/linux/iommu_iova_map.h ${D}${includedir}/linux
-    install -m 0644 ${UNPACKDIR}/safelinux-cfg-modules/safelinux-modules/include/linux/qtee_shmbridge.h ${D}${includedir}/linux
+    install -m 0644 ${S}/include/linux/iommu_iova_map.h ${D}${includedir}/linux
+    install -m 0644 ${S}/include/linux/qtee_shmbridge.h ${D}${includedir}/linux
 
-    install -m 0644 ${UNPACKDIR}/safelinux-cfg-modules/safelinux-modules/include/uapi/misc/qcom_vdev.h ${D}${includedir}/linux
-    install -m 0644 ${UNPACKDIR}/safelinux-cfg-modules/safelinux-modules/include/uapi/misc/iommu_iova_map_user.h ${D}${includedir}/uapi/misc
-    install -m 0644 ${UNPACKDIR}/safelinux-cfg-modules/safelinux-modules/include/uapi/misc/kiumd.h ${D}${includedir}/uapi/misc
-    install -m 0644 ${UNPACKDIR}/safelinux-cfg-modules/safelinux-modules/include/uapi/misc/dmabuf_share.h ${D}${includedir}/uapi/misc
-    install -m 0644 ${UNPACKDIR}/safelinux-cfg-modules/safelinux-modules/include/uapi/misc/scm_user_intf.h ${D}${includedir}/uapi/misc
-    install -m 0644 ${UNPACKDIR}/safelinux-cfg-modules/safelinux-modules/include/uapi/misc/qcom_uscmi.h ${D}${includedir}/uapi/misc
-    install -m 0644 ${UNPACKDIR}/safelinux-cfg-modules/safelinux-modules/include/uapi/misc/vendor_uscmi.h ${D}${includedir}/uapi/misc
-    install -m 0644 ${UNPACKDIR}/safelinux-cfg-modules/safelinux-modules/include/uapi/misc/qcom_l3_cache_config.h ${D}${includedir}/uapi/misc
-    install -m 0644 ${UNPACKDIR}/safelinux-cfg-modules/safelinux-modules/include/uapi/misc/qcom_vm_cpufreq.h ${D}${includedir}/uapi/misc
+    install -m 0644 ${S}/include/uapi/misc/qcom_vdev.h ${D}${includedir}/linux
+    install -m 0644 ${S}/include/uapi/misc/iommu_iova_map_user.h ${D}${includedir}/uapi/misc
+    install -m 0644 ${S}/include/uapi/misc/kiumd.h ${D}${includedir}/uapi/misc
+    install -m 0644 ${S}/include/uapi/misc/dmabuf_share.h ${D}${includedir}/uapi/misc
+    install -m 0644 ${S}/include/uapi/misc/scm_user_intf.h ${D}${includedir}/uapi/misc
+    install -m 0644 ${S}/include/uapi/misc/qcom_uscmi.h ${D}${includedir}/uapi/misc
+    install -m 0644 ${S}/include/uapi/misc/vendor_uscmi.h ${D}${includedir}/uapi/misc
+    install -m 0644 ${S}/include/uapi/misc/qcom_l3_cache_config.h ${D}${includedir}/uapi/misc
+    install -m 0644 ${S}/include/uapi/misc/qcom_vm_cpufreq.h ${D}${includedir}/uapi/misc
     install -m 0755 ${UNPACKDIR}/${UMD_LOAD_CONF} -D ${D}${sysconfdir}/modules-load.d/umd_load.conf
 }
 

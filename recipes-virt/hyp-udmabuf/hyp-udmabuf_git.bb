@@ -31,4 +31,4 @@ RPROVIDES:${PN} += "kernel-module-hyp-udmabuf-${KERNEL_VERSION}"
 
 # Kernel 7.0: cache_sgt_mapping removed; MODULE_IMPORT_NS requires string literal
 FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
-SRC_URI:append = " file://0001-hyp-udmabuf-kernel7-compat.patch;patchdir=${S}"
+SRC_URI:append = " file://0001-hyp-udmabuf-kernel7-compat.patch"
