@@ -170,7 +170,7 @@ MISSING_RECIPE_SRCLIST_BASELINE_LY020 += "\
     meta-qcom-auto/recipes-multimedia/codec2/codec2-app_git.bb \
     meta-qcom-auto/recipes-multimedia/dsp-kernel/dsp-kernel_git.bb \
     meta-qcom-auto/recipes-multimedia/gstreamer/gstreamer1.0-plugin-qvais_git.bb \
-    meta-qcom-auto/recipes-multimedia/gstreamer/gstreamer1.0-plugins-codec2_1.0.0.bb \
+    meta-qcom-auto/recipes-multimedia/gstreamer/gstreamer1.0-plugins-codec2.bb \
     meta-qcom-auto/recipes-multimedia/gstreamer/gstreamer1.0-plugins-extpoolsink.bb \
     meta-qcom-auto/recipes-multimedia/gstreamer/gstreamer1.0-plugins-qcarcamsrc_git.bb \
     meta-qcom-auto/recipes-multimedia/gstreamer/gstreamer1.0-plugins-qscreencapsrc_1.0.0.bb \
