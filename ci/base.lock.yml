@@ -1,0 +1,16 @@
+header:
+    version: 14
+overrides:
+    repos:
+        meta-lts-mixins:
+            commit: 71dfb81bd98f59ca2127d39b100ecbb8ce1e0ba3
+        oe-core:
+            commit: ae5a301091f5b0574ea7444aab40b309b6d9f3f2
+        meta-openembedded:
+            commit: f28a144aa0a0ae05ca2ee91e1aef6aa05f6a12db
+        meta-selinux:
+            commit: 1c3a699f363167571ab39fecb0fe6f56691a4e20
+        bitbake:
+            commit: 6e260eb6ab1631607ea414d9ff8ede1155faa5d9
+        meta-virtualization:
+            commit: 18d58082b2458cf85438ac6e0f2f1fd0153318cb
