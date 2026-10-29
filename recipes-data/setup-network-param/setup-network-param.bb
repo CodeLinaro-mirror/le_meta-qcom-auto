@@ -9,6 +9,7 @@ ${LICENSE};md5=7a434440b651f4a472ca93716d01033a"
 SRC_URI = "\
     file://101-sysctl.conf \
 "
+S = "${UNPACKDIR}"
 
 USERADD_PACKAGES = "${PN}"
 GROUPADD_PARAM:${PN} = "setup-network-param"

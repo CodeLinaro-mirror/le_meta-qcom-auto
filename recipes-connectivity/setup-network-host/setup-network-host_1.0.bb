@@ -20,6 +20,8 @@ SRC_URI = "\
     file://gvm_net_run.sh \
 "
 
+S = "${UNPACKDIR}"
+
 inherit systemd
 
 do_install:append:sa8775() {
