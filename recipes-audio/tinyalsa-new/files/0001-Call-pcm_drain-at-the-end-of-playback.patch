@@ -3,7 +3,7 @@ From: Jiazai Wu <jiazwu@qti.qualcomm.com>
 Date: Tue, 26 Aug 2025 06:22:00 +0530
 Subject: [PATCH] Call pcm_drain at the end of playback
 
-Upstream-Status: None
+Upstream-Status: Pending
 
 Signed-off-by: Jiazai Wu <jiazwu@qti.qualcomm.com>
 ---

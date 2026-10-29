@@ -7,6 +7,7 @@ From ad726b08def666a205f60727d55ef5919359ed02 Mon Sep 17 00:00:00 2001
 From: Hugh Guan <hhguan@qti.qualcomm.com>
 Date: Fri, 8 May 2026 14:08:59 -0700
 Subject: [PATCH] tinyalsa: close mixer node in plugin teardown
+Upstream-Status: Pending
 
 Keeps open/close symmetry in mixer plugin lifecycle and fix
 plugin mixer close path to release the node opened by.

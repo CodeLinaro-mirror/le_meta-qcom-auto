@@ -6,7 +6,7 @@ From 4033293ff8d3c34d6cc1c98c24779f596048c1f9 Mon Sep 17 00:00:00 2001
 From: Hexuan Zhu <hexuzhu@qti.qualcomm.com>
 Date: Mon, 15 Sep 2025 10:47:39 +0800
 Subject: [PATCH] tinyhostless: bugfix for -l(alsa-alsa) loopback case
-Upstrem-Status: Pending
+Upstream-Status: Pending
 Signed-off-by: Hexuan Zhu<hexuzhu@qti.qualcomm.com>
 ---
  utils/tinyhostless.c | 11 ++++++-----
