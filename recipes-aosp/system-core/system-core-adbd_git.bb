@@ -8,6 +8,7 @@ LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/Apache-2.0;md5
 DEPENDS += "libbase fs-mgr glib-2.0"
 
 SRC_URI = "${PATH_TO_REPO}/system/core/.git;protocol=${PROTO};destsuffix=system/core;usehead=1"
+SRC_URI += "file://no-osc.conf"
 SRCREV = "${AUTOREV}"
 
 S = "${UNPACKDIR}/system/core/adb"
@@ -34,7 +35,13 @@ FILES:${PN} += "\
     ${libdir}/libadbd.so.* \
     ${systemd_unitdir}/system/adbd.service \
     ${systemd_unitdir}/system/multi-user.target.wants/adbd.service \
+    ${systemd_unitdir}/system/adbd.service.d/no-osc.conf \
     ${sysconfdir}/launch_adbd \
     ${sysconfdir}/initscripts/adbd \
     ${sysconfdir}/adb_devid \
 "
+
+do_install:append() {
+    install -d ${D}${systemd_unitdir}/system/adbd.service.d
+    install -m 0644 ${UNPACKDIR}/no-osc.conf ${D}${systemd_unitdir}/system/adbd.service.d/
+}

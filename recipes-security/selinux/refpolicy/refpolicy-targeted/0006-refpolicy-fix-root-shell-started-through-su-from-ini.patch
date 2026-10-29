@@ -1,0 +1,268 @@
+From b8ac3ff0942a3b280dd3636773a970e8efd711a9 Mon Sep 17 00:00:00 2001
+From: Jie Ma <mjie@qti.qualcomm.com>
+Date: Wed, 28 Oct 2026 10:05:14 +0100
+Subject: [PATCH] refpolicy: fix root shell started through su from init
+ scripts
+
+When adbd is started by systemd without a dedicated domain, it runs
+in initrc_t.  A root adb shell is started through /bin/su, so su, the
+shell and every command run from it stay in initrc_t.  This causes the
+first two problems below.
+
+1. su reports "su: Error in service module" on exit.
+
+The su PAM session stack includes pam_systemd, which asks
+systemd-logind to create a session.  systemd-logind identifies the
+caller by reading /proc/<pid>/cgroup, but refpolicy only dontaudits
+this access for initrc_t, so the session is not registered and
+pam_close_session() fails.  The denials (visible only with dontaudit
+disabled) are:
+
+  avc: denied { search } for comm="systemd-logind" name="<pid>"
+    scontext=system_u:system_r:systemd_logind_t:s0
+    tcontext=system_u:system_r:initrc_t:s0 tclass=dir
+  avc: denied { open read getattr ioctl } for comm="systemd-logind"
+    path="/proc/<pid>/cgroup"
+    scontext=system_u:system_r:systemd_logind_t:s0
+    tcontext=system_u:system_r:initrc_t:s0 tclass=file
+
+2. Output of tools run from the shell is lost.
+
+Tools such as dmesg and journalctl transition from initrc_t into their
+confined init script domains (dmesg_t, systemd_journal_init_t), which
+cannot write to the redirected output file or the pty, so
+
+  adb shell "dmesg > /data/dmesg.log"
+  adb shell "journalctl > /data/journalctl.log"
+
+leave empty files, while the same commands work from a console login
+running in unconfined_t:
+
+  avc: denied { write } for comm="dmesg" path="/data/dmesg.log"
+    scontext=system_u:system_r:dmesg_t:s0
+    tcontext=system_u:object_r:default_t:s0 tclass=file
+  avc: denied { write } for comm="journalctl"
+    path="/data/journalctl.log"
+    scontext=system_u:system_r:systemd_journal_init_t:s0
+    tcontext=system_u:object_r:default_t:s0 tclass=file
+  avc: denied { read write } for comm="journalctl" path="/dev/pts/0"
+    scontext=system_u:system_r:systemd_journal_init_t:s0
+    tcontext=system_u:object_r:initrc_devpts_t:s0 tclass=chr_file
+
+3. ssh connections are reset with "kex_exchange_identification:
+   read: Connection reset".
+
+sshd is started with a configuration whose HostKey points to
+/run/ssh.  sshdgenkeys.service creates /run/ssh from initrc_t, so the
+directory gets initrc_runtime_t and ssh-keygen cannot create the host
+key in it.  sshd then has no host key and exits:
+
+  avc: denied { search } for comm="ssh-keygen" name="ssh"
+    scontext=system_u:system_r:ssh_keygen_t:s0
+    tcontext=system_u:object_r:initrc_runtime_t:s0 tclass=dir
+
+Once the key exists, a root login is denied with
+"/bin/sh_login: Permission denied", because root maps to unconfined_u
+and sshd_t may only transition to unprivileged user domains unless
+ssh_sysadm_login is enabled.
+
+Replace init_dontaudit_read_script_state() with
+init_read_script_state() for systemd_logind_t.  initrc_t is already
+unconfined; add su_domtrans_to() and unconfined_su_domtrans()
+interfaces and let initrc_t execute su in unconfined_t, so a shell
+started through su gets the same domain as an interactive root login.
+
+Label /run/ssh as sshd_key_t, add ssh_runtime_filetrans_key_dir() so
+initrc_t creates it with that type, allow ssh_keygen_t to manage key
+files in it and sshd_t to search it, and enable ssh_sysadm_login by
+default so root can log in through ssh.
+
+Upstream-Status: Pending
+Signed-off-by: Jie Ma <mjie@qti.qualcomm.com>
+---
+ policy/modules/admin/su.if          | 25 +++++++++++++++++++++++++
+ policy/modules/services/ssh.fc      |  1 +
+ policy/modules/services/ssh.if      | 20 ++++++++++++++++++++
+ policy/modules/services/ssh.te      |  5 ++++-
+ policy/modules/system/init.te       |  5 +++++
+ policy/modules/system/systemd.te    |  2 +-
+ policy/modules/system/unconfined.if | 18 ++++++++++++++++++
+ 7 files changed, 74 insertions(+), 2 deletions(-)
+
+diff --git a/policy/modules/admin/su.if b/policy/modules/admin/su.if
+index b6c7ca0..6730574 100644
+--- a/policy/modules/admin/su.if
++++ b/policy/modules/admin/su.if
+@@ -316,6 +316,31 @@ interface(`su_exec',`
+ 	can_exec($1, su_exec_t)
+ ')
+ 
++#######################################
++## <summary>
++##	Execute su in the specified domain.
++## </summary>
++## <param name="domain">
++##	<summary>
++##	Domain allowed to transition.
++##	</summary>
++## </param>
++## <param name="target_domain">
++##	<summary>
++##	Domain to transition to.
++##	</summary>
++## </param>
++#
++interface(`su_domtrans_to',`
++	gen_require(`
++		type su_exec_t;
++	')
++
++	corecmd_search_bin($1)
++	domain_entry_file($2, su_exec_t)
++	domtrans_pattern($1, su_exec_t, $2)
++')
++
+ #######################################
+ ## <summary>
+ ##	Send signals to all su domains.
+diff --git a/policy/modules/services/ssh.fc b/policy/modules/services/ssh.fc
+index 81314fd..ea64274 100644
+--- a/policy/modules/services/ssh.fc
++++ b/policy/modules/services/ssh.fc
+@@ -27,6 +27,7 @@ HOME_DIR/\.ssh(/.*)?			gen_context(system_u:object_r:ssh_home_t,s0)
+ 
+ /usr/sbin/sshd			--	gen_context(system_u:object_r:sshd_exec_t,s0)
+ 
++/run/ssh(/.*)?			gen_context(system_u:object_r:sshd_key_t,s0)
+ /run/sshd(/.*)?			gen_context(system_u:object_r:sshd_runtime_t,s0)
+ /run/sshd\.init\.pid	--	gen_context(system_u:object_r:sshd_runtime_t,s0)
+ /run/sshd\.pid		--	gen_context(system_u:object_r:sshd_runtime_t,s0)
+diff --git a/policy/modules/services/ssh.if b/policy/modules/services/ssh.if
+index 39fd112..ba2012c 100644
+--- a/policy/modules/services/ssh.if
++++ b/policy/modules/services/ssh.if
+@@ -739,6 +739,26 @@ interface(`ssh_setattr_key_files',`
+ 	files_search_runtime($1)
+ ')
+ 
++########################################
++## <summary>
++##	Create the ssh server key directory
++##	in the runtime directories.
++## </summary>
++## <param name="domain">
++##	<summary>
++##	Domain allowed access.
++##	</summary>
++## </param>
++#
++interface(`ssh_runtime_filetrans_key_dir',`
++	gen_require(`
++		type sshd_key_t;
++	')
++
++	allow $1 sshd_key_t:dir create_dir_perms;
++	files_runtime_filetrans($1, sshd_key_t, dir, "ssh")
++')
++
+ ########################################
+ ## <summary>
+ ##	Execute the ssh agent client in the caller domain.
+diff --git a/policy/modules/services/ssh.te b/policy/modules/services/ssh.te
+index 7b97358..e3626ec 100644
+--- a/policy/modules/services/ssh.te
++++ b/policy/modules/services/ssh.te
+@@ -17,7 +17,7 @@ gen_tunable(allow_ssh_keysign, false)
+ ## Allow ssh logins as sysadm_r:sysadm_t
+ ## </p>
+ ## </desc>
+-gen_tunable(ssh_sysadm_login, false)
++gen_tunable(ssh_sysadm_login, true)
+ 
+ ## <desc>
+ ## <p>
+@@ -257,6 +257,7 @@ allow sshd_t self:netlink_route_socket r_netlink_socket_perms;
+ allow sshd_t self:key { link search write };
+ 
+ allow sshd_t sshd_keytab_t:file read_file_perms;
++allow sshd_t sshd_key_t:dir search_dir_perms;
+ 
+ manage_dirs_pattern(sshd_t, sshd_tmp_t, sshd_tmp_t)
+ manage_files_pattern(sshd_t, sshd_tmp_t, sshd_tmp_t)
+@@ -368,6 +369,8 @@ allow ssh_keygen_t self:unix_stream_socket create_stream_socket_perms;
+ 
+ allow ssh_keygen_t sshd_key_t:file manage_file_perms;
+ files_etc_filetrans(ssh_keygen_t, sshd_key_t, file)
++manage_files_pattern(ssh_keygen_t, sshd_key_t, sshd_key_t)
++files_search_runtime(ssh_keygen_t)
+ 
+ kernel_read_kernel_sysctls(ssh_keygen_t)
+ kernel_dontaudit_getattr_proc(ssh_keygen_t)
+diff --git a/policy/modules/system/init.te b/policy/modules/system/init.te
+index 8188f8a..88c4e80 100644
+--- a/policy/modules/system/init.te
++++ b/policy/modules/system/init.te
+@@ -1526,6 +1526,7 @@ optional_policy(`
+ optional_policy(`
+ 	ssh_dontaudit_read_server_keys(initrc_t)
+ 	ssh_setattr_key_files(initrc_t)
++	ssh_runtime_filetrans_key_dir(initrc_t)
+ ')
+ 
+ optional_policy(`
+@@ -1564,6 +1565,10 @@ optional_policy(`
+ 		mono_domtrans(initrc_t)
+ 	')
+ 
++	optional_policy(`
++		unconfined_su_domtrans(initrc_t)
++	')
++
+ 	optional_policy(`
+ 		rtkit_scheduled(initrc_t)
+ 	')
+diff --git a/policy/modules/system/systemd.te b/policy/modules/system/systemd.te
+index 69d5945..ea68984 100644
+--- a/policy/modules/system/systemd.te
++++ b/policy/modules/system/systemd.te
+@@ -1174,7 +1174,7 @@ init_stop_all_units(systemd_logind_t)
+ init_start_system(systemd_logind_t)
+ init_stop_system(systemd_logind_t)
+ init_stream_connect(systemd_logind_t)
+-init_dontaudit_read_script_state(systemd_logind_t)
++init_read_script_state(systemd_logind_t)
+ 
+ miscfiles_read_localization(systemd_logind_t)
+ 
+diff --git a/policy/modules/system/unconfined.if b/policy/modules/system/unconfined.if
+index 6c48561..a356656 100644
+--- a/policy/modules/system/unconfined.if
++++ b/policy/modules/system/unconfined.if
+@@ -231,6 +231,24 @@ interface(`unconfined_shell_domtrans',`
+ 	allow unconfined_t $1:process sigchld;
+ ')
+ 
++########################################
++## <summary>
++##	Transition to the unconfined domain by executing su.
++## </summary>
++## <param name="domain">
++##	<summary>
++##	Domain allowed to transition.
++##	</summary>
++## </param>
++#
++interface(`unconfined_su_domtrans',`
++	gen_require(`
++		type unconfined_t;
++	')
++
++	su_domtrans_to($1, unconfined_t)
++')
++
+ ########################################
+ ## <summary>
+ ##	Allow unconfined to execute the specified program in
+-- 
+2.43.0
+
