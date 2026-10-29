@@ -88,6 +88,8 @@ local_conf_header:
     IMAGE_CLASSES += "image_types_qcom"
     VARIANT ??= "debug"
     BBMASK:append = " /meta-openembedded/meta-oe/recipes-core/images/meta-oe-image-ptest.bb"
+  init-prebuilt-git: |
+    INHERIT += "init-prebuilt-git"
   extra: |
     DISTRO_FEATURES:append = " efi pam pni-names"
     EXTRA_IMAGE_FEATURES += "allow-empty-password empty-root-password allow-root-login"
