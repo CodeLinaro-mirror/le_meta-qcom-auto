@@ -43,7 +43,6 @@ CXXFLAGS += "\
 
 EXTRA_OEMESON += "\
     -Dav1-dec=enabled \
-    -Dmpeg2-dec=disabled \
     -Dqprange_option=op1 \
     -Dreport_frame_qp_option=op1 \
 "
