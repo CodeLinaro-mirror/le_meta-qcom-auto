@@ -6,6 +6,7 @@ From 28d9104ec76a4d992a983f7e940c760ceb35c120 Mon Sep 17 00:00:00 2001
 From: Xuewen Liu <xuewliu@qti.qualcomm.com>
 Date: Wed, 5 Nov 2025 17:03:23 +0800
 Subject: [PATCH] Fix-tinycap-to-support-24bits
+Upstream-Status: Pending
 
 Change-Id: Iaee95add66b176f7c4559ed235e3105445489c51
 Signed-off-by: Xuewen Liu <xuewliu@qti.qualcomm.com>

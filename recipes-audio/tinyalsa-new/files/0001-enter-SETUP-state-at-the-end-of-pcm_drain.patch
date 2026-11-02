@@ -2,6 +2,7 @@ From e4001cebcf477306ce6c4ff9bcf4f7fce032ee04 Mon Sep 17 00:00:00 2001
 From: Jiazai Wu <jiazwu@qti.qualcomm.com>
 Date: Thu, 28 Aug 2025 14:58:53 +0530
 Subject: [PATCH] enter SETUP state at the end of pcm_drain
+Upstream-Status: Pending
 
 pcm_drain stops the pcm like pcm_drop.
 it should also set plugin state SETUP.
