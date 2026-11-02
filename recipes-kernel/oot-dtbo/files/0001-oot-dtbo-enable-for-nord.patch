@@ -123,7 +123,7 @@ new file mode 100644
 index 0000000..e9569a7
 --- /dev/null
 +++ b/devicetree/nord-ride_overlay.dtso
-@@ -0,0 +1,55 @@
+@@ -0,0 +1,83 @@
 +// SPDX-License-Identifier: BSD-3-Clause
 +/*
 + * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
@@ -140,7 +140,19 @@ index 0000000..e9569a7
 +
 +	#address-cells = <2>;
 +	#size-cells = <2>;
-+	
++
++};
++
++&reserved_memory {
++	ramoops_mem: ramoops@d7800000 {
++		compatible = "qcom,ramoops";
++		reg = <0x0 0xd7800000 0x0 0x100000>;
++		record-size = <0x4000>;
++		console-size = <0x40000>;
++		ftrace-size = <0x40000>;
++		pmsg-size = <0x40000>;
++		no-map;
++	};
 +};
 +
 +&soc {
@@ -151,6 +163,10 @@ index 0000000..e9569a7
 +
 +	dload_mode {
 +		compatible = "qcom,dload-mode";
++	};
++
++	qcom_scm {
++		qcom,dload-mode = <&tcsr 0x79000>;
 +	};
 +
 +	dload_type {
@@ -173,6 +189,18 @@ index 0000000..e9569a7
 +		compatible = "qcom,scm-user-intf";
 +		scm_dev = "scm";
 +		status = "ok";
++	};
++
++	firmware_vm_mini_dump: firmware-vm-mini-dump@0 {
++		compatible = "qcom,firmware-vm-mini-dump";
++		reg = <0x0 0xd7650000 0x0 0x00180000>,
++		      <0x0 0xd6e00000 0x0 0x00800000>;
++		reg-names = "fvm_shared", "fvm_mem";
++	};
++
++	nhlos_log {
++		compatible = "qcom,nhlos-logs-mem", "qcom,nhlos-logs";
++		memory-region = <&uefi_log>;
 +	};
 +};
 +
