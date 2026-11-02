@@ -8,7 +8,7 @@ DEPENDS += "virtual/kernel"
 
 SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/audiolite/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/audiolite;usehead=1"
 SRC_URI:append = " \
-    file://0001-ipcc_shmem_test_module-fix-kernel-6.x-API.patch;patchdir=${UNPACKDIR}/vendor/qcom/opensource/audiolite/test_drivers/pvm \
+    file://0001-ipcc_shmem_test_module-fix-kernel-6.x-API.patch \
 "
 SRCREV = "${AUTOREV}"
 
