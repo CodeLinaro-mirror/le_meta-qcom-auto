@@ -1,6 +1,6 @@
 SECTION = "kernel"
 
-COMPATIBLE_MACHINE .= "|sa8797-ride-sx"
+COMPATIBLE_MACHINE .= "|sa8797-ride-sx|gvm-omnix"
 
 FILESEXTRAPATHS:prepend := "${THISDIR}/${PN}:${THISDIR}/files:${THISDIR}/files/patches:"
 
@@ -98,6 +98,14 @@ SRC_URI:append = " \
 
 # Enable SELinux kernel config only when SELinux is enabled in DISTRO_FEATURES.
 SRC_URI:append = " ${@bb.utils.contains('DISTRO_FEATURES', 'selinux', 'file://selinux-lsm.cfg', '', d)}"
+
+# gvm-omnix support
+SRC_URI:append:gvm-omnix = " \
+    file://configs/gvm-omnix.config \
+    file://0004-uapi-add-habmmid-header.patch \
+    file://0005-uapi-add-hab_ioctl-header.patch \
+    file://0006-uapi-add-ion-header.patch \
+"
 
 # Pin to a specific commit once you know it
 SRCREV = "da28394e5c5b0a590086385484d3ea2453ec825e"

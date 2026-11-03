@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/siemens/kas/master/kas/schema-kas.json
+
+header:
+  version: 14
+
+distro: qcom-auto-gvm-distro
+
+defaults:
+  repos:
+    branch: wrynose
+
+repos:
+  meta-qcom-auto-distro:
+    path: meta-qcom-auto-distro
+
+  meta-openembedded:
+    url: https://github.com/openembedded/meta-openembedded
+    layers:
+      meta-filesystems:
+      meta-networking:
+      meta-oe:
+      meta-python:
+

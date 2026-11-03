@@ -45,6 +45,4 @@ EXTRA_IMAGECMD:ext4 += " -b 4096 "
 
 IMAGE_CLASSES += "qimage"
 
-EXTRA_IMAGEDEPENDS += "qti-image-boot:do_sign_boot_img"
-EXTRA_IMAGEDEPENDS:remove:qti-dpk = "qti-image-boot:do_sign_boot_img"
-EXTRA_IMAGEDEPENDS:remove:sa7255 = "qti-image-boot:do_sign_boot_img"
+EXTRA_IMAGEDEPENDS += "qcom-image-boot:do_sign_boot_img"
