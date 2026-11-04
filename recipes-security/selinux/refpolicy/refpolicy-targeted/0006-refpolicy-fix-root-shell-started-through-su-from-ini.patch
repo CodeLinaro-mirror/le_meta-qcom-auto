@@ -66,6 +66,19 @@ Once the key exists, a root login is denied with
 and sshd_t may only transition to unprivileged user domains unless
 ssh_sysadm_login is enabled.
 
+4. "mount -o remount,rw /" fails from adb shell after "adb root".
+
+Once the adb root shell runs in unconfined_t (fixed by item 1 above),
+executing mount triggers a domain transition from unconfined_t to
+unconfined_mount_t via mount_exec_t.  adbd.service sets
+NoNewPrivileges=true, so the kernel requires an explicit nnp_transition
+allow rule for this transition.  Without it the transition is denied:
+
+  denied { nnp_transition } for comm="sh"
+    scontext=system_u:system_r:unconfined_t:s0
+    tcontext=system_u:system_r:unconfined_mount_t:s0
+    tclass=process2
+
 Replace init_dontaudit_read_script_state() with
 init_read_script_state() for systemd_logind_t.  initrc_t is already
 unconfined; add su_domtrans_to() and unconfined_su_domtrans()
@@ -77,6 +90,13 @@ initrc_t creates it with that type, allow ssh_keygen_t to manage key
 files in it and sshd_t to search it, and enable ssh_sysadm_login by
 default so root can log in through ssh.
 
+Add mount_nnp_trans_unconfined() to mount.if following the existing
+mount_nnp_trans() pattern, and call it for unconfined_t in unconfined.te.
+The adb shell transitions from system_r:initrc_t to system_r:unconfined_t
+via su; associate system_r with unconfined_mount_t so the RBAC check
+passes when mount is executed from the resulting system_r:unconfined_t
+context.
+
 Upstream-Status: Pending
 Signed-off-by: Jie Ma <mjie@qti.qualcomm.com>
 ---
@@ -85,9 +105,11 @@ Signed-off-by: Jie Ma <mjie@qti.qualcomm.com>
  policy/modules/services/ssh.if      | 20 ++++++++++++++++++++
  policy/modules/services/ssh.te      |  5 ++++-
  policy/modules/system/init.te       |  5 +++++
+ policy/modules/system/mount.if      | 19 +++++++++++++++++++
  policy/modules/system/systemd.te    |  2 +-
  policy/modules/system/unconfined.if | 18 ++++++++++++++++++
- 7 files changed, 74 insertions(+), 2 deletions(-)
+ policy/modules/system/unconfined.te |  1 +
+ 9 files changed, 95 insertions(+), 2 deletions(-)
 
 diff --git a/policy/modules/admin/su.if b/policy/modules/admin/su.if
 index b6c7ca0..6730574 100644
@@ -221,6 +243,36 @@ index 8188f8a..88c4e80 100644
  	optional_policy(`
  		rtkit_scheduled(initrc_t)
  	')
+diff --git a/policy/modules/system/mount.if b/policy/modules/system/mount.if
+index 0000000..0000001 100644
+--- a/policy/modules/system/mount.if
++++ b/policy/modules/system/mount.if
+@@ -164,6 +164,25 @@
+ 	mount_domtrans_unconfined($1)
+ 	role $2 types unconfined_mount_t;
+ ')
++
++########################################
++## <summary>
++##	Allow a domain to transition to the unconfined_mount_t domain
++##	when the process has the NoNewPrivileges flag set.
++## </summary>
++## <param name="domain">
++##	<summary>
++##	Domain allowed to transition.
++##	</summary>
++## </param>
++#
++interface(`mount_nnp_trans_unconfined',`
++	gen_require(`
++		type unconfined_mount_t;
++	')
++
++	allow $1 unconfined_mount_t:process2 nnp_transition;
++')
+
+ ########################################
+ ## <summary>
 diff --git a/policy/modules/system/systemd.te b/policy/modules/system/systemd.te
 index 69d5945..ea68984 100644
 --- a/policy/modules/system/systemd.te
@@ -263,6 +315,19 @@ index 6c48561..a356656 100644
  ########################################
  ## <summary>
  ##	Allow unconfined to execute the specified program in
--- 
+diff --git a/policy/modules/system/unconfined.te b/policy/modules/system/unconfined.te
+index 0000000..0000001 100644
+--- a/policy/modules/system/unconfined.te
++++ b/policy/modules/system/unconfined.te
+@@ -41,6 +41,8 @@
+ logging_run_auditctl(unconfined_t, unconfined_r)
+
+ mount_run_unconfined(unconfined_t, unconfined_r)
++mount_run_unconfined(unconfined_t, system_r)
++mount_nnp_trans_unconfined(unconfined_t)
+
+ seutil_run_setfiles(unconfined_t, unconfined_r)
+ seutil_run_semanage(unconfined_t, unconfined_r)
+--
 2.43.0
 
