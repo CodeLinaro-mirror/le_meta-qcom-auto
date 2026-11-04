@@ -92,8 +92,8 @@ SRC_URI:append = " \
     file://ethernet/dts/0002-arm64-dts-qcom-sa8x97p-add-SCMI-SGMII-SerDes-PHY-nod.patch \
     file://ethernet/0017-net-stmmac-dwmac-qcom-ethqos-switch-to-SCMI-PHY-driv.patch \
     file://ethernet/0018-phy-qcom-add-SCMI-managed-SGMII-SerDes-PHY-driver.patch \
-    file://files/minidump/0001-PENDING-kallsyms-Export-kallsyms_lookup_name.patch \
-    file://files/minidump/0002-PENDING-printk-sched-Export-internal-symbols-require.patch \
+    file://minidump/0001-PENDING-kallsyms-Export-kallsyms_lookup_name.patch \
+    file://minidump/0002-PENDING-printk-sched-Export-internal-symbols-require.patch \
 "
 
 # Enable SELinux kernel config only when SELinux is enabled in DISTRO_FEATURES.
