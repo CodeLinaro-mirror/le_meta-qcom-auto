@@ -7,8 +7,6 @@ LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/${LICENSE};md5
 DEPENDS += "${@bb.utils.contains('PREFERRED_PROVIDER_virtual/kernel', 'linux-ark', 'safelinux-sec-modules', '', d)}"
 
 # Kernel 7.3 compatibility changes already exist in the source HEAD.
-# 0002-*.patch carries the kernel 6.18 ARM SMMU macro and platform-driver
-# remove() compatibility changes.
 SRC_URI = "\
     ${PATH_TO_REPO}/vendor/qcom/opensource/safelinux-cfg-modules/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/safelinux-cfg-modules;usehead=1 \
     file://0001-safelinux-cfg-modules-fix-remove-signature-for-6.18-.patch;patchdir=.. \
