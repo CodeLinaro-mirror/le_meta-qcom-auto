@@ -13,6 +13,8 @@ SRC_URI = "\
     file://gvm-net-config-lvgvm.service \
 "
 
+S = "${UNPACKDIR}"
+
 inherit systemd
 
 do_install() {

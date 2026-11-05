@@ -16,6 +16,8 @@ SRC_URI = "\
 
 SYSTEMD_SERVICE:${PN} = "persist-prop.service"
 
+S = "${UNPACKDIR}"
+
 inherit systemd useradd
 
 USERADD_PACKAGES = "${PN}"

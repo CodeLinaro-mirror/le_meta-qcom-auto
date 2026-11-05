@@ -14,6 +14,8 @@ SRC_URI = "\
     file://${MEMORY_SERVICE} \
 "
 
+S = "${UNPACKDIR}"
+
 inherit systemd
 
 SYSTEMD_SERVICE:${PN} = "memory-hotplug.service"

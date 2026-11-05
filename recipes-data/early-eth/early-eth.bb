@@ -15,6 +15,8 @@ SRC_URI = "\
     file://eth_module_load.service \
 "
 
+S = "${UNPACKDIR}"
+
 inherit systemd useradd
 
 USERADD_PACKAGES = "${PN}"

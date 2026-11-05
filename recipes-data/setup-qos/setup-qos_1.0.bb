@@ -22,6 +22,8 @@ SRC_URI = "\
     file://setup_eth_sa8775.sh \
 "
 
+S = "${UNPACKDIR}"
+
 inherit systemd useradd
 
 USERADD_PACKAGES = "${PN}"
