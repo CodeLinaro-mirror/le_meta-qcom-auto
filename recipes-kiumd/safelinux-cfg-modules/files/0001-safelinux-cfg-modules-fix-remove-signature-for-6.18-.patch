@@ -1,4 +1,4 @@
-From a73f7a99f3b8df040cb8dcd286e89c20ebdc8b8b Mon Sep 17 00:00:00 2001
+From 19c4da3e35c388580ae8ea3064b660fbcab11ce9 Mon Sep 17 00:00:00 2001
 From: kas User <kas@example.com>
 Date: Tue, 5 May 2026 16:36:22 -0700
 Subject: [PATCH] safelinux-cfg-modules: fix remove() signature for 6.18 kernel
@@ -6,7 +6,8 @@ Subject: [PATCH] safelinux-cfg-modules: fix remove() signature for 6.18 kernel
 Signed-off-by: Venkatakrishnaiah Pari <vpari@qti.qualcomm.com>
 
 Upstream-Status: Inappropriate
----
+Signed-off-by: Jie Ma <mjie@qti.qualcomm.com>
+
 diff --git a/safelinux-modules/Kbuild b/safelinux-modules/Kbuild
 index 8b6407b..5cd4d50 100644
 --- a/safelinux-modules/Kbuild
@@ -81,36 +82,33 @@ index c3af819..37d1000 100644
  MODULE_LICENSE("GPL");
  MODULE_DESCRIPTION("Platform buffer share driver");
 diff --git a/safelinux-modules/drivers/iommu_faults.c b/safelinux-modules/drivers/iommu_faults.c
-index 5e87a59..7431f59 100644
+index 5e87a59..068599a 100644
 --- a/safelinux-modules/drivers/iommu_faults.c
 +++ b/safelinux-modules/drivers/iommu_faults.c
-@@ -234,16 +234,16 @@ static int iommu_fault_custom_handler(struct iommu_domain *domain,
- 	if (__ratelimit(&iommufault_rs))
- 		dev_err(dev, "SMMU fault: iova=0x%lx fsr=0x%08x [%s%s%s%s%s%s%s%s%s%s] flags=0x%x\n",
- 			iova, fsr,
--			(fsr & ARM_SMMU_FSR_TF)     ? "TF "     : "",
--			(fsr & ARM_SMMU_FSR_AFF)    ? "AFF "    : "",
--			(fsr & ARM_SMMU_FSR_PF)     ? "PF "     : "",
--			(fsr & ARM_SMMU_FSR_EF)     ? "EF "     : "",
--			(fsr & ARM_SMMU_FSR_TLBMCF) ? "TLBMCF " : "",
--			(fsr & ARM_SMMU_FSR_TLBLKF) ? "TLBLKF " : "",
--			(fsr & ARM_SMMU_FSR_ASF)    ? "ASF "    : "",
--			(fsr & ARM_SMMU_FSR_UUT)    ? "UUT "    : "",
--			(fsr & ARM_SMMU_FSR_SS)     ? "SS "     : "",
--			(fsr & ARM_SMMU_FSR_MULTI)  ? "MULTI "  : "",
-+			(fsr & ARM_SMMU_CB_FSR_TF)     ? "TF "     : "",
-+			(fsr & ARM_SMMU_CB_FSR_AFF)    ? "AFF "    : "",
-+			(fsr & ARM_SMMU_CB_FSR_PF)     ? "PF "     : "",
-+			(fsr & ARM_SMMU_CB_FSR_EF)     ? "EF "     : "",
-+			(fsr & ARM_SMMU_CB_FSR_TLBMCF) ? "TLBMCF " : "",
-+			(fsr & ARM_SMMU_CB_FSR_TLBLKF) ? "TLBLKF " : "",
-+			(fsr & ARM_SMMU_CB_FSR_ASF)    ? "ASF "    : "",
-+			(fsr & ARM_SMMU_CB_FSR_UUT)    ? "UUT "    : "",
-+			(fsr & ARM_SMMU_CB_FSR_SS)     ? "SS "     : "",
-+			(fsr & ARM_SMMU_CB_FSR_MULTI)  ? "MULTI "  : "",
- 			flags);
+@@ -9,6 +9,23 @@
+ #include "safelinux_modules_trace.h"
  
- out_unlock:
+ #include "arm-smmu/arm-smmu.h"
++
++/*
++ * Linux 6.18+ renamed the SMMU context bank FSR bits to ARM_SMMU_CB_FSR_*.
++ * Keep the old names so the fault decoding below builds unchanged.
++ */
++#if defined(ARM_SMMU_CB_FSR_TF) && !defined(ARM_SMMU_FSR_TF)
++#define ARM_SMMU_FSR_TF		ARM_SMMU_CB_FSR_TF
++#define ARM_SMMU_FSR_AFF	ARM_SMMU_CB_FSR_AFF
++#define ARM_SMMU_FSR_PF		ARM_SMMU_CB_FSR_PF
++#define ARM_SMMU_FSR_EF		ARM_SMMU_CB_FSR_EF
++#define ARM_SMMU_FSR_TLBMCF	ARM_SMMU_CB_FSR_TLBMCF
++#define ARM_SMMU_FSR_TLBLKF	ARM_SMMU_CB_FSR_TLBLKF
++#define ARM_SMMU_FSR_ASF	ARM_SMMU_CB_FSR_ASF
++#define ARM_SMMU_FSR_UUT	ARM_SMMU_CB_FSR_UUT
++#define ARM_SMMU_FSR_SS		ARM_SMMU_CB_FSR_SS
++#define ARM_SMMU_FSR_MULTI	ARM_SMMU_CB_FSR_MULTI
++#endif
+ #include <linux/iommu.h>
+ #include <linux/kernel.h>
+ #include <linux/kernfs.h>
 diff --git a/safelinux-modules/drivers/kiumd.c b/safelinux-modules/drivers/kiumd.c
 index 90c1ac3..6169590 100644
 --- a/safelinux-modules/drivers/kiumd.c
