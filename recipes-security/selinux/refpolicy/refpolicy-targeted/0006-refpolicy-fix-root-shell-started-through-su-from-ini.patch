@@ -1,4 +1,4 @@
-From b8ac3ff0942a3b280dd3636773a970e8efd711a9 Mon Sep 17 00:00:00 2001
+From 5f59bbf2ea97693cf23d1061e9eff291a83c8168 Mon Sep 17 00:00:00 2001
 From: Jie Ma <mjie@qti.qualcomm.com>
 Date: Wed, 28 Oct 2026 10:05:14 +0100
 Subject: [PATCH] refpolicy: fix root shell started through su from init
@@ -79,6 +79,51 @@ allow rule for this transition.  Without it the transition is denied:
     tcontext=system_u:system_r:unconfined_mount_t:s0
     tclass=process2
 
+5. Remaining AVC denials during boot and while collecting logs.
+
+journalctl started by init scripts (for example to dump the journal
+into a log file) runs in systemd_journal_init_t and cannot use the
+output files it inherits, raise its limits, read machine-id or map the
+journal files:
+
+  avc: denied { write } for comm="journalctl"
+    scontext=system_u:system_r:systemd_journal_init_t:s0
+    tcontext=system_u:object_r:initrc_var_log_t:s0 tclass=file
+  avc: denied { read write } for comm="journalctl"
+    scontext=system_u:system_r:systemd_journal_init_t:s0
+    tcontext=system_u:object_r:initrc_tmp_t:s0 tclass=file
+  avc: denied { setrlimit } for comm="journalctl"
+    scontext=system_u:system_r:systemd_journal_init_t:s0
+    tcontext=system_u:system_r:systemd_journal_init_t:s0 tclass=process
+  avc: denied { map } for comm="journalctl"
+    scontext=system_u:system_r:systemd_journal_init_t:s0
+    tcontext=system_u:object_r:systemd_journal_t:s0 tclass=file
+
+The systemd generator creates /run/modprobe.d, which has no label and
+is denied:
+
+  avc: denied { create } for comm="mkdir" name="modprobe.d"
+    scontext=system_u:system_r:systemd_generator_t:s0
+    tcontext=system_u:object_r:var_run_t:s0 tclass=dir
+
+/run/blkid is created from initrc_t, so it gets initrc_runtime_t and
+fsadm_t cannot read the blkid cache:
+
+  avc: denied { read } for comm="blkid" name="blkid.tab"
+    scontext=system_u:system_r:fsadm_t:s0
+    tcontext=system_u:object_r:initrc_runtime_t:s0 tclass=file
+
+systemd-tmpfiles cannot stat named pipes created early on the /tmp
+tmpfs, and restorecon started from the early ramdisk inherits
+/dev/console (root_t) and a log file on tmpfs:
+
+  avc: denied { getattr } for comm="systemd-tmpfile"
+    scontext=system_u:system_r:systemd_tmpfiles_t:s0
+    tcontext=system_u:object_r:tmpfs_t:s0 tclass=fifo_file
+  avc: denied { read write } for comm="restorecon" path="/dev/console"
+    scontext=system_u:system_r:setfiles_t:s0
+    tcontext=system_u:object_r:root_t:s0 tclass=chr_file
+
 Replace init_dontaudit_read_script_state() with
 init_read_script_state() for systemd_logind_t.  initrc_t is already
 unconfined; add su_domtrans_to() and unconfined_su_domtrans()
@@ -97,19 +142,34 @@ via su; associate system_r with unconfined_mount_t so the RBAC check
 passes when mount is executed from the resulting system_r:unconfined_t
 context.
 
+Allow systemd_journal_init_t to write init script log and tmp files
+through new init_write_script_log_files() and init_rw_script_tmp_files(),
+set its resource limits, read etc runtime files, search tmpfs and map
+journal files.  Label /run/modprobe.d as modules_conf_t and add
+modutils_manage_runtime_module_config() for systemd_generator_t.  Let
+initrc_t create /run/blkid as fsadm_run_t.  Add
+fs_getattr_tmpfs_fifo_files() for systemd_tmpfiles_t, and dontaudit
+setfiles_t use of the inherited root_t console and tmpfs files, as
+upstream does for init_t.
+
 Upstream-Status: Pending
 Signed-off-by: Jie Ma <mjie@qti.qualcomm.com>
 ---
- policy/modules/admin/su.if          | 25 +++++++++++++++++++++++++
- policy/modules/services/ssh.fc      |  1 +
- policy/modules/services/ssh.if      | 20 ++++++++++++++++++++
- policy/modules/services/ssh.te      |  5 ++++-
- policy/modules/system/init.te       |  5 +++++
- policy/modules/system/mount.if      | 19 +++++++++++++++++++
- policy/modules/system/systemd.te    |  2 +-
- policy/modules/system/unconfined.if | 18 ++++++++++++++++++
- policy/modules/system/unconfined.te |  1 +
- 9 files changed, 95 insertions(+), 2 deletions(-)
+ policy/modules/admin/su.if           | 25 +++++++++++++++++++++++++
+ policy/modules/kernel/filesystem.if  | 18 ++++++++++++++++++
+ policy/modules/services/ssh.fc       |  1 +
+ policy/modules/services/ssh.if       | 20 ++++++++++++++++++++
+ policy/modules/services/ssh.te       |  5 ++++-
+ policy/modules/system/init.if        | 19 +++++++++++++++++++
+ policy/modules/system/init.te        |  7 +++++++
+ policy/modules/system/modutils.fc    |  2 ++
+ policy/modules/system/modutils.if    | 21 +++++++++++++++++++++
+ policy/modules/system/mount.if       | 19 +++++++++++++++++++
+ policy/modules/system/selinuxutil.te |  2 ++
+ policy/modules/system/systemd.te     | 12 +++++++++++-
+ policy/modules/system/unconfined.if  | 18 ++++++++++++++++++
+ policy/modules/system/unconfined.te  |  2 ++
+ 14 files changed, 169 insertions(+), 2 deletions(-)
 
 diff --git a/policy/modules/admin/su.if b/policy/modules/admin/su.if
 index b6c7ca0..6730574 100644
@@ -147,6 +207,35 @@ index b6c7ca0..6730574 100644
  #######################################
  ## <summary>
  ##	Send signals to all su domains.
+diff --git a/policy/modules/kernel/filesystem.if b/policy/modules/kernel/filesystem.if
+index e22bf5a..1044098 100644
+--- a/policy/modules/kernel/filesystem.if
++++ b/policy/modules/kernel/filesystem.if
+@@ -6496,6 +6496,24 @@ interface(`fs_getattr_tmpfs_sockets',`
+ 	getattr_sock_files_pattern($1, tmpfs_t, tmpfs_t)
+ ')
+ 
++########################################
++## <summary>
++##	Get attributes of tmpfs named pipes.
++## </summary>
++## <param name="domain">
++##	<summary>
++##	Domain allowed access.
++##	</summary>
++## </param>
++#
++interface(`fs_getattr_tmpfs_fifo_files',`
++	gen_require(`
++		type tmpfs_t;
++	')
++
++	getattr_fifo_files_pattern($1, tmpfs_t, tmpfs_t)
++')
++
+ ########################################
+ ## <summary>
+ ##	Relabelfrom tmpfs link files.
 diff --git a/policy/modules/services/ssh.fc b/policy/modules/services/ssh.fc
 index 81314fd..ea64274 100644
 --- a/policy/modules/services/ssh.fc
@@ -220,11 +309,50 @@ index 7b97358..e3626ec 100644
  
  kernel_read_kernel_sysctls(ssh_keygen_t)
  kernel_dontaudit_getattr_proc(ssh_keygen_t)
+diff --git a/policy/modules/system/init.if b/policy/modules/system/init.if
+index 129afd9..7bb4e12 100644
+--- a/policy/modules/system/init.if
++++ b/policy/modules/system/init.if
+@@ -2970,6 +2970,25 @@ interface(`init_rw_script_tmp_files',`
+ 	rw_files_pattern($1, initrc_tmp_t, initrc_tmp_t)
+ ')
+ 
++########################################
++## <summary>
++##	Write init script log files.
++## </summary>
++## <param name="domain">
++##	<summary>
++##	Domain allowed access.
++##	</summary>
++## </param>
++#
++interface(`init_write_script_log_files',`
++	gen_require(`
++		type initrc_var_log_t;
++	')
++
++	logging_search_logs($1)
++	write_files_pattern($1, initrc_var_log_t, initrc_var_log_t)
++')
++
+ ########################################
+ ## <summary>
+ ##	Create files in a init script
 diff --git a/policy/modules/system/init.te b/policy/modules/system/init.te
-index 8188f8a..88c4e80 100644
+index 8188f8a..ff9a286 100644
 --- a/policy/modules/system/init.te
 +++ b/policy/modules/system/init.te
-@@ -1526,6 +1526,7 @@ optional_policy(`
+@@ -919,6 +919,8 @@ fs_getattr_all_fs(initrc_t)
+ fs_search_all(initrc_t)
+ fs_getattr_nfsd_files(initrc_t)
+ 
++fstools_runtime_filetrans(initrc_t, dir, "blkid")
++
+ mcs_process_set_categories(initrc_t)
+ 
+ mls_file_read_all_levels(initrc_t)
+@@ -1526,6 +1528,7 @@ optional_policy(`
  optional_policy(`
  	ssh_dontaudit_read_server_keys(initrc_t)
  	ssh_setattr_key_files(initrc_t)
@@ -232,7 +360,7 @@ index 8188f8a..88c4e80 100644
  ')
  
  optional_policy(`
-@@ -1564,6 +1565,10 @@ optional_policy(`
+@@ -1564,6 +1567,10 @@ optional_policy(`
  		mono_domtrans(initrc_t)
  	')
  
@@ -243,15 +371,59 @@ index 8188f8a..88c4e80 100644
  	optional_policy(`
  		rtkit_scheduled(initrc_t)
  	')
+diff --git a/policy/modules/system/modutils.fc b/policy/modules/system/modutils.fc
+index 3231200..f0d83da 100644
+--- a/policy/modules/system/modutils.fc
++++ b/policy/modules/system/modutils.fc
+@@ -13,6 +13,8 @@ ifdef(`init_systemd',`
+ /run/tmpfiles\.d/static-nodes\.conf --  gen_context(system_u:object_r:kmod_tmpfiles_conf_t,s0)
+ ')
+ 
++/run/modprobe\.d(/.*)?		gen_context(system_u:object_r:modules_conf_t,s0)
++
+ /usr/bin/depmod.*		--	gen_context(system_u:object_r:kmod_exec_t,s0)
+ /usr/bin/generate-modprobe\.conf --	gen_context(system_u:object_r:kmod_exec_t,s0)
+ /usr/bin/insmod.*		--	gen_context(system_u:object_r:kmod_exec_t,s0)
+diff --git a/policy/modules/system/modutils.if b/policy/modules/system/modutils.if
+index 09e782c..99400f7 100644
+--- a/policy/modules/system/modutils.if
++++ b/policy/modules/system/modutils.if
+@@ -122,6 +122,27 @@ interface(`modutils_manage_module_config',`
+ 	manage_files_pattern($1, modules_conf_t, modules_conf_t)
+ ')
+ 
++########################################
++## <summary>
++##	Create and manage module configuration
++##	in the runtime directories.
++## </summary>
++## <param name="domain">
++##	<summary>
++##	Domain allowed access.
++##	</summary>
++## </param>
++#
++interface(`modutils_manage_runtime_module_config',`
++	gen_require(`
++		type modules_conf_t;
++	')
++
++	files_runtime_filetrans($1, modules_conf_t, dir, "modprobe.d")
++	manage_dirs_pattern($1, modules_conf_t, modules_conf_t)
++	manage_files_pattern($1, modules_conf_t, modules_conf_t)
++')
++
+ ########################################
+ ## <summary>
+ ##	Execute any modutil,
 diff --git a/policy/modules/system/mount.if b/policy/modules/system/mount.if
-index 0000000..0000001 100644
+index db9880d..7674d4b 100644
 --- a/policy/modules/system/mount.if
 +++ b/policy/modules/system/mount.if
-@@ -164,6 +164,25 @@
- 	mount_domtrans_unconfined($1)
+@@ -165,6 +165,25 @@ interface(`mount_run_unconfined',`
  	role $2 types unconfined_mount_t;
  ')
-+
+ 
 +########################################
 +## <summary>
 +##	Allow a domain to transition to the unconfined_mount_t domain
@@ -270,14 +442,72 @@ index 0000000..0000001 100644
 +
 +	allow $1 unconfined_mount_t:process2 nnp_transition;
 +')
-
++
  ########################################
  ## <summary>
+ ##	Read loopback filesystem image files.
+diff --git a/policy/modules/system/selinuxutil.te b/policy/modules/system/selinuxutil.te
+index 2c4f793..e5d95ff 100644
+--- a/policy/modules/system/selinuxutil.te
++++ b/policy/modules/system/selinuxutil.te
+@@ -675,6 +675,7 @@ files_list_all(setfiles_t)
+ files_relabel_all_files(setfiles_t)
+ files_read_usr_symlinks(setfiles_t)
+ files_dontaudit_read_all_symlinks(setfiles_t)
++files_dontaudit_rw_root_chr_files(setfiles_t)
+ 
+ fs_getattr_all_xattr_fs(setfiles_t)
+ fs_getattr_cgroup(setfiles_t)
+@@ -687,6 +688,7 @@ fs_getattr_tracefs_files(setfiles_t)
+ fs_list_all(setfiles_t)
+ fs_relabelfrom_noxattr_fs(setfiles_t)
+ fs_search_auto_mountpoints(setfiles_t)
++fs_dontaudit_rw_tmpfs_files(setfiles_t)
+ 
+ mls_file_read_all_levels(setfiles_t)
+ mls_file_write_all_levels(setfiles_t)
 diff --git a/policy/modules/system/systemd.te b/policy/modules/system/systemd.te
-index 69d5945..ea68984 100644
+index e22189f..d7d5f60 100644
 --- a/policy/modules/system/systemd.te
 +++ b/policy/modules/system/systemd.te
-@@ -1174,7 +1174,7 @@ init_stop_all_units(systemd_logind_t)
+@@ -666,6 +666,7 @@ init_read_generic_units_symlinks(systemd_generator_t)
+ init_getattr_all_unit_files(systemd_generator_t)
+ 
+ modutils_domtrans(systemd_generator_t)
++modutils_manage_runtime_module_config(systemd_generator_t)
+ 
+ miscfiles_read_localization(systemd_generator_t)
+ 
+@@ -982,13 +983,18 @@ seutil_read_file_contexts(systemd_hw_t)
+ #
+ 
+ dontaudit systemd_journal_init_t self:capability net_admin;
++allow systemd_journal_init_t self:process setrlimit;
+ 
+ manage_dirs_pattern(systemd_journal_init_t, systemd_journal_t, systemd_journal_t)
+ manage_files_pattern(systemd_journal_init_t, systemd_journal_t, systemd_journal_t)
++allow systemd_journal_init_t systemd_journal_t:file map;
++
++files_read_etc_runtime_files(systemd_journal_init_t)
+ 
+ fs_getattr_all_fs(systemd_journal_init_t)
+ fs_search_cgroup_dirs(systemd_journal_init_t)
+ fs_getattr_nsfs_files(systemd_journal_init_t)
++fs_search_tmpfs(systemd_journal_init_t)
+ 
+ kernel_getattr_proc(systemd_journal_init_t)
+ kernel_read_kernel_sysctls(systemd_journal_init_t)
+@@ -997,6 +1003,9 @@ kernel_read_system_state(systemd_journal_init_t)
+ init_read_state(systemd_journal_init_t)
+ init_search_var_lib_dirs(systemd_journal_init_t)
+ init_var_lib_filetrans(systemd_journal_init_t, systemd_journal_t, dir)
++# journalctl run by init scripts writes to inherited output files
++init_rw_script_tmp_files(systemd_journal_init_t)
++init_write_script_log_files(systemd_journal_init_t)
+ 
+ logging_search_logs(systemd_journal_init_t)
+ logging_send_syslog_msg(systemd_journal_init_t)
+@@ -1174,7 +1183,7 @@ init_stop_all_units(systemd_logind_t)
  init_start_system(systemd_logind_t)
  init_stop_system(systemd_logind_t)
  init_stream_connect(systemd_logind_t)
@@ -286,6 +516,14 @@ index 69d5945..ea68984 100644
  
  miscfiles_read_localization(systemd_logind_t)
  
+@@ -2265,6 +2274,7 @@ fs_getattr_cgroup(systemd_tmpfiles_t)
+ fs_list_tmpfs(systemd_tmpfiles_t)
+ fs_relabelfrom_tmpfs_dirs(systemd_tmpfiles_t)
+ fs_getattr_tmpfs_sockets(systemd_tmpfiles_t)
++fs_getattr_tmpfs_fifo_files(systemd_tmpfiles_t)
+ fs_getattr_all_fs(systemd_tmpfiles_t)
+ fs_search_auto_mountpoints(systemd_tmpfiles_t)
+ fs_search_cgroup_dirs(systemd_tmpfiles_t)
 diff --git a/policy/modules/system/unconfined.if b/policy/modules/system/unconfined.if
 index 6c48561..a356656 100644
 --- a/policy/modules/system/unconfined.if
@@ -316,18 +554,18 @@ index 6c48561..a356656 100644
  ## <summary>
  ##	Allow unconfined to execute the specified program in
 diff --git a/policy/modules/system/unconfined.te b/policy/modules/system/unconfined.te
-index 0000000..0000001 100644
+index 671d386..7c28bc3 100644
 --- a/policy/modules/system/unconfined.te
 +++ b/policy/modules/system/unconfined.te
-@@ -41,6 +41,8 @@
+@@ -41,6 +41,8 @@ logging_send_syslog_msg(unconfined_t)
  logging_run_auditctl(unconfined_t, unconfined_r)
-
+ 
  mount_run_unconfined(unconfined_t, unconfined_r)
 +mount_run_unconfined(unconfined_t, system_r)
 +mount_nnp_trans_unconfined(unconfined_t)
-
+ 
  seutil_run_setfiles(unconfined_t, unconfined_r)
  seutil_run_semanage(unconfined_t, unconfined_r)
---
+-- 
 2.43.0
 
