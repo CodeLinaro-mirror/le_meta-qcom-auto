@@ -71,8 +71,6 @@ MACHINE_FEATURES += "\
     qti-cv \
     qti-display \
     qti-graphics \
-    qti-audio-aw \
-    qti-audio-ar \
     qti-data \
     qti-camera \
     qti-safety \
