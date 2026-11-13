@@ -7,7 +7,7 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/${LICENSE};md5=7a434440b651f4a4
 DEPENDS += "audio-log-util agm ar-dev-plugin ar-audio-service-utils audio-device-manager"
 DEPENDS += "glib-2.0 libkiumd libglink-client libglink-core fastrpc libpil-client systemd bootkpi-logging power-utils powercyclemgr"
 
-SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/audio-ar-service/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/audio-ar-service/audio_service;subpath=audio_service;usehead=1"
+SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/audio-ar-service/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/audio-ar-service;usehead=1"
 SRCREV = "${AUTOREV}"
 
 S = "${UNPACKDIR}/vendor/qcom/opensource/audio-ar-service/audio_service"
