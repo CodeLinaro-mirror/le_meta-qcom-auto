@@ -4,5 +4,9 @@ header:
   version: 14
 
 bblayers_conf_header:
-  automotive-internal-layer:
-    BBLAYERS:prepend = "${TOPDIR}/../meta-qti-automotive-internal "
+  automotive-internal-layer: |
+    # Add meta-qti-automotive-internal only if its directory exists (evaluated by
+    # bitbake when parsing bblayers.conf), so this config also works in
+    # workspaces that do not sync the internal layer.
+    QCOM_AUTO_INTERNAL_LAYER = "${TOPDIR}/../meta-qti-automotive-internal"
+    BBLAYERS:prepend = "${@d.getVar('QCOM_AUTO_INTERNAL_LAYER') + ' ' if os.path.isdir(d.getVar('QCOM_AUTO_INTERNAL_LAYER')) else ''}"
