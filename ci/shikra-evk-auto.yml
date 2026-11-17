@@ -34,6 +34,9 @@ local_conf_header:
   shikra-evk-auto-features: |
     MACHINE_FEATURES:remove = " qti-hypervisor"
 
+  shikra-evk-auto-gpsd: |
+    IMAGE_INSTALL:append = " gpsd gpsd-conf gpsd-udev gpsd-machine-conf gps-utils"
+
   shikra-evk-auto-masking: |
     BBMASK:remove = " /meta-qcom-auto/recipes-extra/recipes-core/"
     BBMASK:remove = " /meta-qcom-auto/recipes-aosp/atrace/"
