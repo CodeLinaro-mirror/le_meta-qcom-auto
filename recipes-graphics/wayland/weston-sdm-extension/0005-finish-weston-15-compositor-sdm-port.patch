@@ -30,12 +30,12 @@ index 30f8d3a..f4b7773 100644
 -
 -	return 0;
  }
-@@ -1646,7 +1644,7 @@ drm_assign_planes(struct weston_output *output_base)
+@@ -1698,7 +1698,7 @@ drm_assign_planes(struct weston_output *output_base)
  			prepare_virtual_output(virtual_output, output_base);
  
  			/* TODO: Update output buffer */
--			screen_cap->fallback_gpu = assign_planes(virtual_output, true);
-+			screen_cap->fallback_gpu = assign_planes(&virtual_output->base, true);
+-			screen_cap->fallback_gpu = assign_planes(virtual_output, true, output_base);
++			screen_cap->fallback_gpu = assign_planes(&virtual_output->base, true, output_base);
  		} else {
  			screen_cap->fallback_gpu = true;
  		}
