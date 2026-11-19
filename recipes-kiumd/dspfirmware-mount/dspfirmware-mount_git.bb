@@ -8,7 +8,7 @@ SRC_URI = "\
     ${CLO_LE_GIT}/platform/vendor/qcom-opensource/kiumd.git;branch=safe-services.lnx.1.0.r24-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/kiumd \
     file://mnt_fs.conf \
 "
-SRCREV = "f6e8c384a2d0cc0e7b79e1d8615a1ad5af55e860"
+SRCREV = "e274ca39a8cdcd8b8ef1fb4ed0eaca6b36c42f39"
 
 S = "${WORKDIR}/vendor/qcom/opensource/kiumd/dspfirmware-mount"
 inherit systemd
@@ -90,6 +90,9 @@ do_install:append:gen5() {
     install -m 0755 ${S}/sa8797_hpass2_compute_cfg ${D}${sysconfdir}/sysconfig/sa8797_hpass2_compute_cfg
 
     install -m 0777 ${S}/sa8797_firmware-vm-boot-autoghgvm-mount.service ${D}${systemd_unitdir}/system/sa8797_firmware-vm-boot-autoghgvm-mount.service
+    if ${@bb.utils.contains('MACHINE_FEATURES', 'qti-vmm', 'true', 'false', d)}; then
+        sed -i 's|^WantedBy=multi-user.target|WantedBy=multi-gvm.target\nWantedBy=single-gvm.target|' ${D}${systemd_unitdir}/system/firmware-vm-boot-autoghgvm-mount.service
+    fi
     sed -i 's|^WantedBy=multi-user.target|WantedBy=multi-gvm.target\nWantedBy=single-lv-gvm.target|' ${D}${systemd_unitdir}/system/firmware-vm-boot-autoghgvmlv-mount.service
 }
 

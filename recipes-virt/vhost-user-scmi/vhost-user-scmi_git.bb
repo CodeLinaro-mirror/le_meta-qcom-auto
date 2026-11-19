@@ -7,12 +7,12 @@ LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/${LICENSE};md5
 SYSTEMD_SERVICE:${PN} = "vhost-user-scmi.service"
 SYSTEMD_SERVICE:${PN}-lvgvm:append:sa8255-ivi = " vhost-user-scmi-lv.service"
 SYSTEMD_SERVICE:${PN}-lvgvm:append:sa8775-flex = " vhost-user-scmi-lv.service"
-SYSTEMD_SERVICE:${PN}-lvgvm:append:gen5 = " vhost-user-scmi-lv.service"
+SYSTEMD_SERVICE:${PN}-lvgvm:append:gen5 = " vhost-user-scmi-lv.service vhost-user-scmi-qclinux-lv.service"
 
 DEPENDS += "safelinux-cfg-modules vhost-user-lib"
 
 SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/vhost-user-scmi.git;branch=vhost-user-scmi.lnx.1.0.r15-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/vhost-user-scmi"
-SRCREV = "7c19a35f93d0077b800840f2cd01bcc5e96315c3"
+SRCREV = "92a04651c2b26a9a4cc0bd5253a32433a97893ee"
 
 S = "${WORKDIR}/vendor/qcom/opensource/vhost-user-scmi"
 

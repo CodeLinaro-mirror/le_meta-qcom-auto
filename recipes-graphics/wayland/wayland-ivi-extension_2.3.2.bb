@@ -7,7 +7,7 @@ LIC_FILES_CHKSUM = "file://LICENSE;md5=1f1a56bb2dadf5f2be8eb342acf4ed79"
 DEPENDS = "weston wayland-native"
 
 SRCREV = "d62475b3fb9d0be07d7c5de9d108483dff88c631"
-SRC_URI = "${CLO_LA_GIT}/wayland/wayland-ivi-extension.git;branch=upstream/master;protocol=http \
+SRC_URI = "${CLO_LA_GIT}/wayland/wayland-ivi-extension.git;protocol=${OSS_PROTO};branch=upstream/master \
     "
 
 S = "${WORKDIR}/git"

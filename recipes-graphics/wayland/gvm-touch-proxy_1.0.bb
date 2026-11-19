@@ -17,7 +17,7 @@ DEPENDS = "\
 
 CODE_DIR = "vendor/qcom/opensource/display/weston-sdm-extension"
 SRC_URI = "${CLO_LE_GIT}/graphics/weston-sdm-extension.git;branch=display-le.lnx.6.5.r8-rel;protocol=${OSS_PROTO};destsuffix=${CODE_DIR}"
-SRCREV = "ad8df4d7a9ed0a3e8bea2c0d3d754d16c6f2f9a5"
+SRCREV = "d14684f3d194d0c2f14de85d521ed2cc65979c1f"
 
 PACKAGECONFIG ??= ""
 PACKAGECONFIG[coverage] = "-Db_coverage=true,-Db_coverage=false,"

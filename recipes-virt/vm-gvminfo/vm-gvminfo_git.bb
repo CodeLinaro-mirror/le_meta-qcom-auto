@@ -5,7 +5,7 @@ LICENSE = "BSD-3-Clause-Clear"
 LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/${LICENSE};md5=7a434440b651f4a472ca93716d01033a"
 
 SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/vm-tools.git;branch=auto-vmm.lnx.1.0.r29-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/vm-tools"
-SRCREV = "cda8436db8744b939d9035d7e2513715bb6836cb"
+SRCREV = "c38a4ba86940eb965698680fe71916c2dc330386"
 S = "${WORKDIR}/vendor/qcom/opensource/vm-tools/vm-gvminfo"
 
 PACKAGE_ARCH = "${MACHINE_ARCH}"

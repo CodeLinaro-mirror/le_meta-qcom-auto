@@ -12,7 +12,7 @@ DEPENDS += "systemd bootkpi-logging"
 
 SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/safelinux-services.git;branch=safe-services.lnx.1.0.r24-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/safelinux-services"
 
-SRCREV = "148038b08b4a8669794482a6a0b115dd29492e35"
+SRCREV = "ba61c302bc0991cc8459fe1f4dd7802641bea1ec"
 
 S = "${WORKDIR}/vendor/qcom/opensource/safelinux-services/early-service-infra"
 

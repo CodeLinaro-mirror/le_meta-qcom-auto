@@ -6,7 +6,7 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/${LICENSE};md5=550794465ba0ec53
 DEPENDS += "libcutils"
 
 SRC_URI = "\
-    git://git.codelinaro.org/clo/la/platform/external/tinyalsa;protocol=https;branch=aosp-new/master \
+    ${CLO_LA_GIT}/platform/external/tinyalsa;protocol=${OSS_PROTO};branch=aosp-new/master \
     file://0001-tinyalsa-support-tinyalsa-build-for-Linux.patch \
 "
 SRCREV = "61bf563f1df205cf14df142721aaafb854bbbd82"

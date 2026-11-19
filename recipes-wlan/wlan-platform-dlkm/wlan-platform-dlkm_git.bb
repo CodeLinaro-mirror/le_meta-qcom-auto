@@ -7,7 +7,7 @@ ${LICENSE};md5=801f80980d171dd6425610833a22dbe6"
 
 SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/wlan/platform.git;branch=auto-wlan-platform.qclinux.1.1.r11-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/wlan/platform \
 "
-SRCREV = "cf54bd8f47dd883c9d6b1732ad5f923485b59125"
+SRCREV = "0133b6d7b57a1d8474f02d428a31c891c542c086"
 
 S = "${WORKDIR}/vendor/qcom/opensource/wlan/platform"
 

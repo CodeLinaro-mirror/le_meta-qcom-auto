@@ -33,6 +33,7 @@ BBMASK:append = " meta-qcom-hwe/recipes-multimedia/fastrpc/fastrpc_git.bbappend"
 BBMASK:append = " meta-qcom-hwe/recipes-graphics/msm_be/msm_be.bb"
 BBMASK:append = " meta-qcom-hwe/recipes-graphics/libgbm/gbm_21.1.1.bb"
 BBMASK:append = " meta-qcom-hwe/recipes-graphics/adreno/qcom-adreno_1.855.2.bb"
+BBMASK:append = " meta-qcom-hwe/recipes-graphics/adreno/qcom-adreno_1.855.3.bb"
 BBMASK:append = " meta-qcom-hwe/recipes-graphics/drm/libdrm_%.bbappend"
 BBMASK:append = " meta-qcom-hwe/dynamic-layers/openembedded-layer/recipes-devtools/rsyslog/rsyslog_%.bbappend"
 # Mask all meta-qcom-hwe recipes except subsystem ramdump parity recipe.
@@ -119,6 +120,7 @@ MISSING_RECIPE_SRCLIST += "\
 # Missing recipes in baseline LY.AU.0.1.1 (used by gen5)
 MISSING_RECIPE_SRCLIST_BASELINE_LY011 += "\
     meta-qcom-auto/recipes-kernel/kernel-aosp-tools/kernel-aosp-tools-native.bb \
+    meta-qcom-auto-extras/recipes-data/vnw-devicetree/vnw-devicetree_git.bb \
     meta-qcom-auto-extras/recipes-qcvirtio/qcvirtio-devices/qcvirtio-devices_git.bb \
     meta-qcom-auto/recipes-audio/ar-pal/ar-pal_git.bb \
     meta-qcom-auto/recipes-audio/audiodlkm/audiodlkm_git.bb \
@@ -153,16 +155,9 @@ MISSING_RECIPE_SRCLIST_BASELINE_LY011 += "\
     meta-qcom-auto/recipes-multimedia/codec2/codec2-app_git.bb \
     meta-qcom-auto/recipes-multimedia/codec2/codec2_git.bb \
     meta-qcom-auto/recipes-multimedia/dsp-kernel/dsp-kernel_git.bb \
-    meta-qcom-auto/recipes-multimedia/gstreamer/drm-player-example_1.0.0.bb \
     meta-qcom-auto/recipes-multimedia/gstreamer/gstreamer1.0-plugin-qvais_git.bb \
-    meta-qcom-auto/recipes-multimedia/gstreamer/gstreamer1.0-plugins-codec2_1.0.0.bb \
-    meta-qcom-auto/recipes-multimedia/gstreamer/gstreamer1.0-plugins-drmdecryptor_1.0.0.bb \
-    meta-qcom-auto/recipes-multimedia/gstreamer/gstreamer1.0-plugins-qscreencapsrc_1.0.0.bb \
-    meta-qcom-auto/recipes-multimedia/gstreamer/gstreamer1.0-plugins-qvblend_1.0.bb \
+    meta-qcom-auto/recipes-multimedia/gstreamer/gstreamer1.0-plugins-codec2.bb \
     meta-qcom-auto/recipes-multimedia/gstreamer/gstreamer1.0-plugins-qvrate_git.bb \
-    meta-qcom-auto/recipes-multimedia/gstreamer/gstreamer1.0-plugins-vesdeliver_1.0.0.bb \
-    meta-qcom-auto/recipes-multimedia/gstreamer/mm-vdec-omx-test-lite_0.1.bb \
-    meta-qcom-auto/recipes-multimedia/gstreamer/mm-venc-omx-test-lite_0.1.bb \
     meta-qcom-auto/recipes-multimedia/gstreamer/secure-video-app_1.0.0.bb \
     meta-qcom-auto/recipes-multimedia/media/media_0.1.bb \
     meta-qcom-auto/recipes-multimedia/videodlkm/videodlkm_git.bb \
@@ -186,24 +181,17 @@ MISSING_RECIPE_SRCLIST_BASELINE_LY020 += "\
     meta-qcom-auto/recipes-display/display-intf/display-intf-headers.bb \
     meta-qcom-auto/recipes-display/display-la/display-la-headers.bb \
     meta-qcom-auto/recipes-multimedia/codec2/codec2-app_git.bb \
-    meta-qcom-auto/recipes-multimedia/gstreamer/drm-player-example_1.0.0.bb \
     meta-qcom-auto/recipes-multimedia/gstreamer/gstreamer1.0-plugin-qvais_git.bb \
-    meta-qcom-auto/recipes-multimedia/gstreamer/gstreamer1.0-plugins-codec2_1.0.0.bb \
-    meta-qcom-auto/recipes-multimedia/gstreamer/gstreamer1.0-plugins-drmdecryptor_1.0.0.bb \
+    meta-qcom-auto/recipes-multimedia/gstreamer/gstreamer1.0-plugins-codec2.bb \
     meta-qcom-auto/recipes-multimedia/gstreamer/gstreamer1.0-plugins-extpoolsink.bb \
     meta-qcom-auto/recipes-multimedia/gstreamer/gstreamer1.0-plugins-qcarcamsrc_git.bb \
-    meta-qcom-auto/recipes-multimedia/gstreamer/gstreamer1.0-plugins-qscreencapsrc_1.0.0.bb \
-    meta-qcom-auto/recipes-multimedia/gstreamer/gstreamer1.0-plugins-qvblend_1.0.bb \
     meta-qcom-auto/recipes-multimedia/gstreamer/gstreamer1.0-plugins-qvconv.bb \
-    meta-qcom-auto/recipes-multimedia/gstreamer/gstreamer1.0-plugins-qvdeinterlace_1.0.bb \
     meta-qcom-auto/recipes-multimedia/gstreamer/gstreamer1.0-plugins-qvrate_git.bb \
-    meta-qcom-auto/recipes-multimedia/gstreamer/gstreamer1.0-plugins-vesdeliver_1.0.0.bb \
     meta-qcom-auto/recipes-multimedia/gstreamer/gstreamer1.0-plugins-vidc.bb \
-    meta-qcom-auto/recipes-multimedia/gstreamer/mm-vdec-omx-test-lite_0.1.bb \
-    meta-qcom-auto/recipes-multimedia/gstreamer/mm-venc-omx-test-lite_0.1.bb \
     meta-qcom-auto/recipes-multimedia/gstreamer/secure-video-app_1.0.0.bb \
     meta-qcom-auto/recipes-rideware/qcnode/qcnode_2.0.bb \
     meta-qcom-auto/recipes-audio/system-media/system-media_git.bb \
+    meta-qcom-auto/recipes-audio/pcm-logging-util/pcm-logging-util_git.bb \
     meta-qcom-auto/recipes-data/aurix-can/aurix-can_git.bb \
     meta-qcom-auto/recipes-data/hsi2s/hsi2s-qmi-test_git.bb \
     meta-qcom-auto/recipes-data/hsi2s/hsi2s-test_0.1.bb \
@@ -244,8 +232,6 @@ BBMASK += " \
     meta-qcom-auto/recipes-qcvirtio/adbd-linux/adbd-linux_git.bb \
     meta-qcom-auto/recipes-multimedia/gstreamer/gstreamer1.0-plugins-codec2-monaco.bb \
     meta-qcom-auto/recipes-multimedia/gstreamer/drm-player-example.bb \
-    meta-qcom-auto/recipes-multimedia/gstreamer/gstreamer1.0-plugins-qvdeinterlace.bb \
-    meta-qcom-auto/recipes-kernel/linux/vms-devicetree.bb \
     meta-qcom-auto/recipes-multimedia/virtio-video/virtio-video_git.bb \
     meta-qcom-auto/recipes-multimedia/gstreamer/gstreamer1.0-plugins-vesdeliver.bb \
     meta-qcom-auto/recipes-multimedia/gstreamer/gstreamer1.0-plugins-codec2-gen5.bb \

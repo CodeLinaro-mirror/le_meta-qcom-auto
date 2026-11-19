@@ -5,7 +5,7 @@ LICENSE = "BSD-3-Clause"
 LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/${LICENSE};md5=550794465ba0ec5312d6919e203a55f9"
 
 SRC_URI = "${CLO_LA_GIT}/platform/hardware/qcom/display.git;branch=display-la.lnx.16.5.r16-rel;protocol=${OSS_PROTO};destsuffix=hardware/qcom/display"
-SRCREV = "cb28f9b957cc0e522039cca2e515ac98f4477dbb"
+SRCREV = "c22f9a399ddc238723cd46cb4e010a76dc23ba63"
 S = "${WORKDIR}/hardware/qcom/display"
 
 do_configure[noexec] = "1"

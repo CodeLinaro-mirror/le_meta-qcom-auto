@@ -17,7 +17,7 @@ SRC_URI = "\
     file://0001-vfio-device-probe-service-remove-delay-after-start-o.patch \
 "
 
-SRCREV = "1412d4af1711fa0bc08e916589db8e20404d9a47"
+SRCREV = "683d812002541732d92e5692ff56c96f28c772fe"
 
 S = "${WORKDIR}/vendor/qcom/opensource/safelinux-system-cfg"
 

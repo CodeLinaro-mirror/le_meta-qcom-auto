@@ -6,7 +6,7 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/${LICENSE};md5=550794465ba0ec53
 DEPENDS += "libcutils"
 
 SRC_URI = "\
-    git://git.codelinaro.org/clo/la/platform/external/tinyalsa_new;protocol=https;branch=aosp-new/master \
+    ${CLO_LA_GIT}/platform/external/tinyalsa_new;protocol=${OSS_PROTO};branch=aosp-new/master \
     file://0001-tinyalsa-Fix-interger-comparison-warning.patch \
     file://0001-Enable-TinyAlsa-plugin-support.patch \
     file://0001-Call-pcm_start-for-NON-MMAP-mode.patch \

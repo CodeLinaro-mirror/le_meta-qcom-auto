@@ -8,7 +8,7 @@ DEPENDS += "virtual/kernel"
 
 SRC_URI = "${CLO_LA_GIT}/platform/vendor/qcom-opensource/audiolite.git;branch=audiolite.lnx.1.0.r38-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/audiolite"
 
-SRCREV = "36c4e3ce1bded8473bc7b5fcf1b3e93924906f6d"
+SRCREV = "6f760a41473500074949cdc92c043dd51976ba62"
 
 S = "${WORKDIR}/vendor/qcom/opensource/audiolite/test_drivers/pvm"
 

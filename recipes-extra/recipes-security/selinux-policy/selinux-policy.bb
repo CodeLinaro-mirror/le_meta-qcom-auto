@@ -21,7 +21,7 @@ SRC_URI += "file://customizable_types  \
 "
 
 SRCREV_refpolicy = "429b26878be53e0b3537771a98e240e6e383ee73"
-SRCREV_lvsepolicy = "8d2f8e838d8e9a32094625c21b051138d9a41215"
+SRCREV_lvsepolicy = "2ddd3fad4b3e5eb77cca96f2acbed9f4e51baa62"
 SRCREV_FORMAT = "refpolicy_lvsepolicy"
 
 S = "${WORKDIR}/refpolicy"

@@ -15,10 +15,10 @@ SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/wlan/qcacld-3.0.git;bra
            ${CLO_LE_GIT}/platform/vendor/qcom-opensource/wlan/fw-api.git;branch=auto-wlan-api.lnx.1.4.r21-rel;protocol=${OSS_PROTO};name=fw-api;destsuffix=wlan/fw-api/ \
            ${CLO_LA_GIT}/platform/vendor/qcom/wlan.git;branch=auto-wlan-service.lnx.1.4.r8-rel;protocol=${OSS_PROTO};name=wlan;destsuffix=device/qcom/wlan \
            "
-SRCREV_qcacld = "a8efb16618257a91038c8b49427222332c4f7df4"
-SRCREV_qca-wifi-host-cmn = "69be777fc7fdf55a139822cba4053f38a93c05b1"
+SRCREV_qcacld = "6797d7063dd92fcb4bb6742830b48cb23ee832cc"
+SRCREV_qca-wifi-host-cmn = "d47851a719e610d94e0ccb92a22b721e085dc949"
 SRCREV_fw-api = "913e7274d2d8219359bfff4132e90f3ec8239bec"
-SRCREV_wlan = "2536a284a5ccc942c51507b53bcf1ec1ff6a0928"
+SRCREV_wlan = "c51c331d4c31b7ab5b9361d524fcbb16b104111e"
 SRCREV_FORMAT = "qcacld_cmn_fw_msm"
 
 _MODNAME = "qca6797"

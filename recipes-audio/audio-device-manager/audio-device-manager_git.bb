@@ -7,7 +7,7 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/${LICENSE};md5=7a434440b651f4a4
 DEPENDS += "libuhab audio-log-util sound-card-info-common-header compute-resmgr"
 
 SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/audio-virtio-be.git;branch=audio-auto-virtio-snd-be.lnx.1.0.r5-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/audio-virtio-be/audio_device_manager;subpath=audio_device_manager"
-SRCREV = "df54461e0ff2b522243fd0d0c4e2fb8ba57f6636"
+SRCREV = "38030259bf8a19b0397a0b0953f59e0f5baac09e"
 
 S = "${WORKDIR}/vendor/qcom/opensource/audio-virtio-be/audio_device_manager"
 

@@ -8,7 +8,7 @@ SYSTEMD_SERVICE:${PN} = "qcom-dcc.service"
 SYSTEMD_AUTO_ENABLE:${PN} = "enable"
 
 SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/safelinux-dbg-modules.git;branch=safe-services.lnx.1.0.r24-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/safelinux-dbg-modules"
-SRCREV = "f270ba8cb295c49c1cddf9db86e7bdbaf1a14ff9"
+SRCREV = "47d036cd8d11014e61e47007f7b590234a4eab0a"
 
 S = "${WORKDIR}/vendor/qcom/opensource/safelinux-dbg-modules"
 
@@ -16,17 +16,16 @@ TECHPACK_MODULES = "minidump/minidump.ko \
                     kaslr_store/kaslr_store.ko \
                     memory_dump_v2/memory_dump_v2.ko \
                     nhlos_log/dump_boot_log.ko \
-                    cpuss_log/qcom_cpuss_log.ko \
                     firmware_vm_mini_dump/firmware_vm_mini_dump.ko \
 "
-TECHPACK_MODULES:remove:gen5 = "memory_dump_v2/memory_dump_v2.ko cpuss_log/qcom_cpuss_log.ko"
 TECHPACK_MODULES:append:gen5 = " memory_dump_v21/memory_dump_v21.ko"
-TECHPACK_MODULES:remove:sa8775-flex = "cpuss_log/qcom_cpuss_log.ko"
+TECHPACK_MODULES:append:gen5 = " cpuss_log/qcom_cpuss_log.ko"
+TECHPACK_MODULES:remove:gen5 = "memory_dump_v2/memory_dump_v2.ko"
 
 inherit qti-techpack systemd
 EXTRA_OEMAKE += "KDIR=${STAGING_KERNEL_DIR}"
 
-EXTRA_OEMAKE:append:gen5 = " CONFIG_QCOM_MEMORY_DUMP_V21=y"
+EXTRA_OEMAKE:append:gen5 = " CONFIG_QCOM_MEMORY_DUMP_V21=y CONFIG_QCOM_CPUSS_LOG=y"
 
 QCOM_DCC_CONF ?= "qcom_dcc_sa8775.conf"
 QCOM_DCC_CONF:gen5 = "qcom_dcc_sa8797.conf"

@@ -46,6 +46,7 @@ SRC_URI:append = "\
     file://qup/0018-i2c-qcom-geni-Remove-redundant-runtime_resume-fallba.patch \
     file://qup/0044-spi-qcom-geni-Abort-active-transfer-during-system-su.patch \
     file://qup/0046-PENDING-spi-geni-msm-Reconfigure-SPI-mode-after-resu.patch \
+    file://qup/0049-PENDING-serial-qcom-geni-Clear-pending-IRQs-while-su.patch \
     file://0001-PENDING-scsi-ufs-qcom-Enable-sa8255p-platform.patch \
     file://0002-PENDING-ufs-ufs-qcom-Skip-hibern8-FSM-state-check-fo.patch \
     file://0003-PENDING-ufs-ufs-qcom-Skip-UFS-link-startup-in-HLOS.patch \
@@ -53,6 +54,7 @@ SRC_URI:append = "\
     file://0005-PENDING-ufs-ufs-qcom-Don-t-skip-link-startup-for-QB-.patch \
     file://0006-PENDING-ufs-ufs-qcom-Enable-UFS-Temperature-Monitori.patch \
     file://0007-ufs-ufs-qcom-Re-enable-ESI-after-host-is-reset.patch \
+    file://0008-ufs-core-Add-support-for-Fault-injection-functionali.patch \
     ${@bb.utils.contains('DISTRO_FEATURES', 'qti-rumi', 'file://0001-Revert-PENDING-ufs-ufs-qcom-Skip-UFS-link-startup-in.patch', '', d)} \
     ${@bb.utils.contains('DISTRO_FEATURES', 'qti-rumi', 'file://0001-QCLINUX-ufs-UFS-bringup-on-Seca-RUMI.patch', '', d)} \
     file://0001-PENDING-firmware-extend-vmid-support-to-128.patch \
@@ -93,6 +95,7 @@ SRC_URI:append = "\
     file://minidump/0001-PENDING-kallsyms-Export-kallsyms_lookup_name.patch \
     file://0001-PENDING-firmware-qcom-scm-Export-dump-mode-caps-API.patch \
     file://0001-QCLINUX-iommu-arm-smmu-protect-the-dereference-of-ad.patch \
+    file://0001-PENDING-firmware-qcom-scm-Export-disable-sdi-API.patch \
     file://minidump/0002-PENDING-printk-sched-Export-internal-symbols-require.patch \
     ${@bb.utils.contains('DISTRO_FEATURES', 'qti-qcvirtio', 'file://0001-clk-Introduce-get-clock-by-unique-name-API-clk_get_b.patch', '', d)} \
     file://wlan/0001-net-wireless-Enable-WEXT-legacy-support-for-kernel-6.patch \
@@ -144,12 +147,15 @@ SRC_URI:append:gen5 = " \
     file://pcie/0005-MHI_RC_bus-mhi-host-pci_generic-Add-supoprt-for-SA8797P.patch \
     file://pcie/0007-PCIe_EP_qcom-ep-Add-support-for-SCMI-based-PCIe-EP-for-Nords.patch \
     file://pcie/0008-MHI_EP_dmaengine-dw-edma-Add-correct-offsets-for-HDMA-RD-WR.patch \
-    file://pcie/0009-PCI-qcom-ecam-Add-manual-init-deinit-with-resource-c.patch \
-    file://pcie/00010-meta-qti-auto-kernel-Add-controller-reset-functional.patch \
-    file://pcie/00011-PCIe-Convert-spinlocks-to-raw_spinlock_t.patch \
-    file://pcie/00012-PCIe-Add-LTSSM-state-monitoring-via-debugf.patch \
-    file://pcie/00013-PCI-qcom-ecam-Refactor-power-domain-handling-and-fix.patch \
-    file://pcie/00014-PCIe-qcom-ecam-Fix-power-management-and-debugfs-robus.patch \
+    file://pcie/0009-PCIe_RC_qcom-ecam-Add-manual-init-deinit-with-resource-c.patch \
+    file://pcie/0010-PCIe_RC_meta-qti-auto-kernel-Add-controller-reset-functional.patch \
+    file://pcie/0011-PCIe_RC_Convert-spinlocks-to-raw_spinlock_t.patch \
+    file://pcie/0012-PCIe_RC_Add-LTSSM-state-monitoring-via-debugf.patch \
+    file://pcie/0013-PCIe_RC_qcom-ecam-Refactor-power-domain-handling-and-fix.patch \
+    file://pcie/0014-PCIe_RC_qcom-ecam-Fix-power-management-and-debugfs-robus.patch \
+    file://pcie/0015-PCIe_RC_qcom-ecam-Update-power-domain-management-and-tr.patch \
+    file://pcie/0016-MHI_RC_bus-mhi-host-pci_generic-Add-support-for-SA8787P.patch \
+    file://pcie/0017-PCIe_EP_Add-support-for-SCMI-based-PCIe-EP-for-s.patch \
     file://qup/0033-meta-qti-auto-kernel-ccu-Add-Ftrace-support-for-CCU.patch \
     file://qup/0034-i2c-qcom-geni-Skip-TX-DMA-TRE-for-I2C-read-operation.patch \
     file://qup/0035-i2c-qcom-geni-Add-asynchronous-read-support-for-CCU-.patch \

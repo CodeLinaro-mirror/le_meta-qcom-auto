@@ -6,7 +6,7 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/${LICENSE};md5=550794465ba0ec53
 DEPENDS += "libcutils"
 
 SRC_URI = "\
-    git://git.codelinaro.org/clo/la/platform/external/tinycompress;protocol=https;branch=aosp-new/master \
+    ${CLO_LA_GIT}/platform/external/tinycompress;protocol=${OSS_PROTO};branch=aosp-new/master \
     file://0001-tinycompress-support-tinycompress-build-for-Linux.patch \
 "
 

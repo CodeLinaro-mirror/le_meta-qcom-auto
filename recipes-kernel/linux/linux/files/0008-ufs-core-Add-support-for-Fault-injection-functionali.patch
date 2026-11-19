@@ -1,0 +1,156 @@
+From 8590e57580b2f59f267cd210f38a38b77276692c Mon Sep 17 00:00:00 2001
+From: Ram Kumar Dwivedi <ram.dwivedi@oss.qualcomm.com>
+Date: Fri, 29 May 2026 23:41:48 +0530
+Subject: [PATCH] ufs: core: Add fault injection support for FUSA compliance
+
+Functional safety compliance on Gen4 automotive platforms requires the
+UFS safety diagnostics to be validated against controller-level faults.
+
+Add fault injection support for three such faults, so that the error
+handling and safety monitoring paths can be exercised on demand without
+any hardware manipulation:
+
+  - trigger_eh simulates a host controller reset cycle. Error recovery
+    is forced from the command submission path, so the controller goes
+    through a full reset and restore.
+
+  - ufs_fatal_intr simulates a controller fatal error interrupt. The
+    device fatal error status is set from the command submission path,
+    so the interrupt handler takes the fatal error path and queues
+    error recovery.
+
+  - timeout simulates a SCSI I/O command timeout. The transfer
+    completion is dropped in the completion interrupt, leaving the
+    command in flight until the SCSI layer times it out.
+
+Each fault is armed at runtime through the standard kernel fault
+injection attribute format <interval>,<probability>,<space>,<times>,
+stops injecting once the configured count is exhausted, and is logged
+so that an injected fault is distinguishable from a genuine one.
+
+The support is gated on CONFIG_FAULT_INJECTION and
+CONFIG_SCSI_UFS_FAULT_INJECTION, enabled for the Gen4 automotive
+platform only.
+
+Change-Id: Icaadf2b3356e027370d6c04382c615821b8777b2
+Signed-off-by: Ram Kumar Dwivedi <ram.dwivedi@oss.qualcomm.com>
+---
+ arch/arm64/configs/qcom_gen4auto.config |  2 ++
+ drivers/ufs/core/ufs-fault-injection.c  | 15 +++++++++++++++
+ drivers/ufs/core/ufs-fault-injection.h  |  6 ++++++
+ drivers/ufs/core/ufshcd.c               | 15 +++++++++++----
+ 4 files changed, 34 insertions(+), 4 deletions(-)
+
+diff --git a/arch/arm64/configs/qcom_gen4auto.config b/arch/arm64/configs/qcom_gen4auto.config
+index a3ef9c8bf30d..195d929727d0 100644
+--- a/arch/arm64/configs/qcom_gen4auto.config
++++ b/arch/arm64/configs/qcom_gen4auto.config
+@@ -170,6 +170,8 @@ CONFIG_QCOM_DMABUF_HEAPS_CARVEOUT_DEFER_ZERO=y
+ CONFIG_VIRTIO_IOMMU=y
+ CONFIG_ARM_SMMU_V3_QCOM_VIRTIO=y
+ CONFIG_SCSI_UFS_HWMON=y
++CONFIG_FAULT_INJECTION=y
++CONFIG_SCSI_UFS_FAULT_INJECTION=y
+ # CONFIG_WLAN_VENDOR_ADMTEK is not set
+ # CONFIG_WLAN_VENDOR_ATH is not set
+ # CONFIG_WLAN_VENDOR_ATMEL is not set
+diff --git a/drivers/ufs/core/ufs-fault-injection.c b/drivers/ufs/core/ufs-fault-injection.c
+index 5b1184aac585..0e0bf3341fe0 100644
+--- a/drivers/ufs/core/ufs-fault-injection.c
++++ b/drivers/ufs/core/ufs-fault-injection.c
+@@ -32,6 +32,14 @@ MODULE_PARM_DESC(timeout,
+ 	"Fault injection. timeout=<interval>,<probability>,<space>,<times>");
+ static DECLARE_FAULT_ATTR(ufs_timeout_attr);
+ 
++static char g_trigger_fatal_itr_str[FAULT_INJ_STR_SIZE];
++module_param_cb(ufs_fatal_intr, &ufs_fault_ops, g_trigger_fatal_itr_str,
++		0644);
++MODULE_PARM_DESC(ufs_fatal_intr,
++	"Fault injection. "
++	"ufs_fatal_intr=<interval>,<probability>,<space>,<times>");
++static DECLARE_FAULT_ATTR(ufs_fatal_intr_attr);
++
+ static int ufs_fault_get(char *buffer, const struct kernel_param *kp)
+ {
+ 	const char *fault_str = kp->arg;
+@@ -47,6 +55,8 @@ static int ufs_fault_set(const char *val, const struct kernel_param *kp)
+ 		attr = &ufs_trigger_eh_attr;
+ 	else if (kp->arg == g_timeout_str)
+ 		attr = &ufs_timeout_attr;
++	else if (kp->arg == g_trigger_fatal_itr_str)
++		attr = &ufs_fatal_intr_attr;
+ 
+ 	if (WARN_ON_ONCE(!attr))
+ 		return -EINVAL;
+@@ -68,3 +78,8 @@ bool ufs_fail_completion(void)
+ {
+ 	return should_fail(&ufs_timeout_attr, 1);
+ }
++
++bool ufs_fatal_intr(void)
++{
++	return should_fail(&ufs_fatal_intr_attr, 1);
++}
+diff --git a/drivers/ufs/core/ufs-fault-injection.h b/drivers/ufs/core/ufs-fault-injection.h
+index 6d0cd8e10c87..06f769dfed9b 100644
+--- a/drivers/ufs/core/ufs-fault-injection.h
++++ b/drivers/ufs/core/ufs-fault-injection.h
+@@ -9,6 +9,7 @@
+ #ifdef CONFIG_SCSI_UFS_FAULT_INJECTION
+ bool ufs_trigger_eh(void);
+ bool ufs_fail_completion(void);
++bool ufs_fatal_intr(void);
+ #else
+ static inline bool ufs_trigger_eh(void)
+ {
+@@ -19,6 +20,11 @@ static inline bool ufs_fail_completion(void)
+ {
+ 	return false;
+ }
++
++static inline bool ufs_fatal_intr(void)
++{
++	return false;
++}
+ #endif
+ 
+ #endif /* _UFS_FAULT_INJECTION_H */
+diff --git a/drivers/ufs/core/ufshcd.c b/drivers/ufs/core/ufshcd.c
+index 92ac7e62b0e0..b7677d4e36f9 100644
+--- a/drivers/ufs/core/ufshcd.c
++++ b/drivers/ufs/core/ufshcd.c
+@@ -3064,11 +3064,16 @@ static int ufshcd_queuecommand(struct Scsi_Host *host, struct scsi_cmnd *cmd)
+ 	ufshcd_send_command(hba, tag, hwq);
+ 
+ out:
+-	if (ufs_trigger_eh()) {
+-		unsigned long flags;
++	if (unlikely(ufs_trigger_eh())) {
++		dev_info(hba->dev, "Injected error: UFS host controller reset triggered");
++		ufshcd_force_error_recovery(hba);
++	}
+ 
++	if (unlikely(ufs_fatal_intr())) {
++		unsigned long flags;
++		dev_info(hba->dev, "Injected error: Fatal interrupt received");
+ 		spin_lock_irqsave(hba->host->host_lock, flags);
+-		ufshcd_schedule_eh_work(hba);
++		hba->errors |= DEVICE_FATAL_ERROR;
+ 		spin_unlock_irqrestore(hba->host->host_lock, flags);
+ 	}
+ 
+@@ -5789,8 +5794,10 @@ static irqreturn_t ufshcd_transfer_req_compl(struct ufs_hba *hba)
+ 	    !(hba->quirks & UFSHCI_QUIRK_SKIP_RESET_INTR_AGGR))
+ 		ufshcd_reset_intr_aggr(hba);
+ 
+-	if (ufs_fail_completion())
++	if (unlikely(ufs_fail_completion())) {
++		dev_info(hba->dev, "Injected error: SCSI I/O request timeout");
+ 		return IRQ_HANDLED;
++	}
+ 
+ 	/*
+ 	 * Ignore the ufshcd_poll() return value and return IRQ_HANDLED since we
+-- 
+2.34.1
+

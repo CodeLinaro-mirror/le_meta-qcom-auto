@@ -6,7 +6,7 @@ LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/${LICENSE};md5
 
 SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/safelinux-sec-modules.git;branch=sec-safe-kernel.lnx.1.0.r15-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/safelinux-sec-modules"
 
-SRCREV = "2bc76bc64081860de59563245e594d92df781111"
+SRCREV = "f809df9af5b4f218d17f28ca3e28795a0f9c283f"
 
 S = "${WORKDIR}/vendor/qcom/opensource/safelinux-sec-modules/security-modules"
 

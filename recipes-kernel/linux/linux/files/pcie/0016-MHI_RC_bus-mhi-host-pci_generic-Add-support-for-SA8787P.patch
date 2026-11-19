@@ -1,0 +1,57 @@
+From b3e3b255adc7bb97f0264c3b18b6ecd74bb4aac3 Mon Sep 17 00:00:00 2001
+From: Nitesh Gupta <nitegupt@qti.qualcomm.com>
+Date: Thu, 3 Sep 2026 11:59:52 +0530
+Subject: [PATCH 1/1] bus: mhi: host: pci_generic: Add support for SA8787P
+ target
+
+Add generic info for SA8787P target to support IP_SW.
+
+Change-Id: Ie5dff5d5cad7da6fcad5999a75e199d26b9bbeea
+Signed-off-by: Nitesh Gupta <nitegupt@qti.qualcomm.com>
+---
+ drivers/bus/mhi/host/pci_generic.c | 16 ++++++++++++++--
+ 1 file changed, 14 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/bus/mhi/host/pci_generic.c b/drivers/bus/mhi/host/pci_generic.c
+index e6ac2023828a..47eb0a87c162 100644
+--- a/drivers/bus/mhi/host/pci_generic.c
++++ b/drivers/bus/mhi/host/pci_generic.c
+@@ -19,7 +19,7 @@
+ 
+ #define MHI_PCI_DEFAULT_BAR_NUM 0
+ 
+-#define MHI_NORD_BAR_NUM 1
++#define MHI_GEN5_BAR_NUM 1
+ 
+ #define MHI_POST_RESET_DELAY_MS 2000
+ 
+@@ -325,7 +325,17 @@ static const struct mhi_pci_dev_info mhi_qcom_sa8775p_info = {
+ static const struct mhi_pci_dev_info mhi_qcom_sa8797p_info = {
+ 	.name = "qcom-sa8797p",
+ 	.config = &modem_qcom_v3_mhiv_config,
+-	.bar_num = MHI_NORD_BAR_NUM,
++	.bar_num = MHI_GEN5_BAR_NUM,
++	.dma_data_width = 32,
++	.mru_default = 32768,
++	.sideband_wake = false,
++	.disable_auto_suspend = true,
++};
++
++static const struct mhi_pci_dev_info mhi_qcom_sa8787p_info = {
++	.name = "qcom-sa8787p",
++	.config = &modem_qcom_v3_mhiv_config,
++	.bar_num = MHI_GEN5_BAR_NUM,
+ 	.dma_data_width = 32,
+ 	.mru_default = 32768,
+ 	.sideband_wake = false,
+@@ -658,6 +668,8 @@ static const struct pci_device_id mhi_pci_id_table[] = {
+ 		.driver_data = (kernel_ulong_t) &mhi_qcom_sdx35_info },
+ 	{PCI_DEVICE(PCI_VENDOR_ID_QCOM, 0x0120),
+ 		.driver_data = (kernel_ulong_t) &mhi_qcom_sa8797p_info },
++	{PCI_DEVICE(PCI_VENDOR_ID_QCOM, 0x012C),
++		.driver_data = (kernel_ulong_t) &mhi_qcom_sa8787p_info },
+ 	{ PCI_DEVICE(PCI_VENDOR_ID_QCOM, 0x0304),
+ 		.driver_data = (kernel_ulong_t) &mhi_qcom_sdx24_info },
+ 	{ PCI_DEVICE_SUB(PCI_VENDOR_ID_QCOM, 0x0306, PCI_VENDOR_ID_QCOM, 0x010c),
+-- 
+

@@ -1,4 +1,4 @@
-DESCRIPTION = "Build kernel vms-devicetree overlays and header"
+DESCRIPTION = "Build kernel vms-devicetree overlays"
 HOMEPAGE = "https://www.codelinaro.org"
 LICENSE = "BSD-3-Clause"
 LIC_FILES_CHKSUM = "\
@@ -7,9 +7,9 @@ LIC_FILES_CHKSUM = "\
 
 DEPENDS += "kernel-basedevicetree"
 
-SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/vms-devicetree/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/vms-devicetree;usehead=1"
+SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/vms-devicetree.git;branch=auto-vmm-kernel.lnx.1.0.r15-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/vms-devicetree"
 
-SRCREV = "${AUTOREV}"
+SRCREV = "58553ec12e1ab24640a2b7f1f9af4364269c94f4"
 
 S = "${WORKDIR}/vendor/qcom/opensource/vms-devicetree"
 
@@ -28,23 +28,11 @@ do_compile() {
 do_compile[lockfiles] += "${TMPDIR}/qti-techpack.lock"
 
 do_deploy() {
-    # Deploy vms-header.dtb: used as the first entry in dtb.img,
-    # offsets are patched at do_make_dtb time via fdtput.
-    install -d ${DEPLOYDIR}/build-artifacts/vms-header
-    if [ -f ${B}/vms-header.dtb ]; then
-        install -m 0644 ${B}/vms-header.dtb \
-            ${DEPLOYDIR}/build-artifacts/vms-header/vms-header.dtb
-    fi
-
-    # Deploy vms DDR overlays (second-level merge, compatible + board-id ddr_type match)
-    if [ -n "${VMS_DDR_DTBOS}" ]; then
+    # Deploy all vms DDR overlays from build dir (second-level merge)
+    if [ -n "$(ls ${B}/*.dtbo 2>/dev/null)" ]; then
         install -d ${DEPLOYDIR}/build-artifacts/vms-ddrdtbos
-        for dtbo in ${VMS_DDR_DTBOS}; do
-            if [ -f ${B}/$dtbo ]; then
-                install -m 0644 ${B}/$dtbo \
-                    ${DEPLOYDIR}/build-artifacts/vms-ddrdtbos/
-            fi
-        done
+        install -m 0644 ${B}/*.dtbo \
+            ${DEPLOYDIR}/build-artifacts/vms-ddrdtbos/
     fi
 }
 

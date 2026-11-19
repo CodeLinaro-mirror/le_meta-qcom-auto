@@ -17,8 +17,8 @@ SRC_URI = "\
     ${CLO_LA_GIT}/platform/external/rust/crates/simplelog.git;branch=auto-android-core-sys.lnx.13.0.r31-rel;protocol=${OSS_PROTO};destsuffix=external/rust/crates/simplelog;name=platform_external_rust_crates_simplelog \
     ${CLO_LA_GIT}/platform/external/rust/crates/vmm_vhost.git;branch=auto-vmm.lnx.1.0.r29-rel;protocol=${OSS_PROTO};destsuffix=external/rust/crates/vmm_vhost;name=platform_external_rust_crates_vmm_vhost \
 "
-SRCREV_platform_vendor_qcom_opensource_crosvm_gunyah = "25cba790dc5b95fabe750a15ae73e64e7ea535c8"
-SRCREV_platform_external_crosvm = "5bc9a7c5eb04803b48b4c847d7980699fac066c9"
+SRCREV_platform_vendor_qcom_opensource_crosvm_gunyah = "8c3d66ff812737272dbd458eda04833f2b1e12d3"
+SRCREV_platform_external_crosvm = "738a3603e5e352cd6fff1951a11cec8703009918"
 SRCREV_platform_external_minijail = "8cb44f9fc32f538a90b6a3f09d3941e26fe6d6f9"
 SRCREV_platform_external_rust_crates_android_logger = "7f4eca1ac49d9c7fc88cfa5f547ca09c7b5eace3"
 SRCREV_platform_external_rust_crates_simplelog = "b2d25e663deaa1e8294c6bf94942eca8d86ae4c2"
@@ -52,6 +52,12 @@ VM_CONFIG_XML:sa8775-flex = "vm_config_lalv.xml"
 do_install:append() {
     install -d ${D}${sysconfdir}
     install -m 0644 ${S}/vm_config_xml/${VM_CONFIG_XML} ${D}${sysconfdir}/vm_config.xml
+
+    # GVM console log backup
+    if [ -f ${S}/gvm-log-backup.sh ]; then
+        install -d ${D}${bindir}
+        install -m 0755 ${S}/gvm-log-backup.sh ${D}${bindir}/gvm-log-backup.sh
+    fi
 }
 
 do_install:append:gen5() {

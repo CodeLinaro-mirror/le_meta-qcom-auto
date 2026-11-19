@@ -1,0 +1,48 @@
+From 705169b1544c714d4c9b641367cf9d9a227025cb Mon Sep 17 00:00:00 2001
+From: Praveen Talari <praveen.talari@oss.qualcomm.com>
+Date: Thu, 15 Oct 2026 19:50:20 +0530
+Subject: [PATCH] PENDING: serial: qcom-geni: Clear pending IRQs while
+ suspended
+
+When uart_suspend_port() marks a port suspended, an interrupt may still
+be pending before TX and RX are stopped. Returning IRQ_NONE before
+taking
+the port lock leaves those interrupt status bits uncleared and can cause
+the interrupt to be retriggered.
+
+Take the UART port lock and clear the relevant interrupt status first,
+then skip interrupt processing while the port is suspended.
+
+Change-Id: I9f97cc8e62dd4c5d11f0d04a355d8ba394702f59
+Signed-off-by: Praveen Talari <praveen.talari@oss.qualcomm.com>
+---
+ drivers/tty/serial/qcom_geni_serial.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/tty/serial/qcom_geni_serial.c b/drivers/tty/serial/qcom_geni_serial.c
+index 2fc909e5feb5..3f7c0fc8c614 100644
+--- a/drivers/tty/serial/qcom_geni_serial.c
++++ b/drivers/tty/serial/qcom_geni_serial.c
+@@ -1113,9 +1113,6 @@ static irqreturn_t qcom_geni_serial_isr(int isr, void *dev)
+ 	struct tty_port *tport = &uport->state->port;
+ 	struct qcom_geni_serial_port *port = to_dev_port(uport);
+ 
+-	if (uport->suspended)
+-		return IRQ_NONE;
+-
+ 	uart_port_lock(uport);
+ 
+ 	m_irq_status = readl(uport->membase + SE_GENI_M_IRQ_STATUS);
+@@ -1130,6 +1127,9 @@ static irqreturn_t qcom_geni_serial_isr(int isr, void *dev)
+ 	writel(dma_tx_status, uport->membase + SE_DMA_TX_IRQ_CLR);
+ 	writel(dma_rx_status, uport->membase + SE_DMA_RX_IRQ_CLR);
+ 
++	if (uport->suspended)
++		goto out_unlock;
++
+ 	serial_trace_log(uport->dev, "%s: s_irq_status: 0x%x, m_irq_status: 0x%x",
+ 			 __func__, s_irq_status, m_irq_status);
+ 	if (WARN_ON(m_irq_status & M_ILLEGAL_CMD_EN))
+-- 
+2.34.1
+

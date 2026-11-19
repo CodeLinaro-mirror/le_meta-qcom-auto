@@ -1,6 +1,6 @@
-From 099bf7fdfd76852193faaa32a79ef56587596920 Mon Sep 17 00:00:00 2001
+From 788766f81f5193d561c41bd9ca9122106352d602 Mon Sep 17 00:00:00 2001
 From: Praveen Talari <ptalari@qti.qualcomm.com>
-Date: Tue, 27 May 2025 14:28:20 +0530
+Date: Fri, 14 Aug 2026 16:40:31 +0530
 Subject: [PATCH] PENDING: serial: Ensure DMA buffer is synced before CPU read
 
 The CPU accesses a DMA buffer after the device has written to it. However,
@@ -12,15 +12,16 @@ buffer, ensuring proper memory visibility and coherency.
 
 Change-Id: I8e88c862a785fd1be440427df4a5d7c5a22ef6db
 Signed-off-by: Praveen Talari <ptalari@qti.qualcomm.com>
+Signed-off-by: Chiluka Harish <chiluka.harish@oss.qualcomm.com>
 ---
  drivers/tty/serial/qcom_geni_serial.c | 4 ++++
  1 file changed, 4 insertions(+)
 
 diff --git a/drivers/tty/serial/qcom_geni_serial.c b/drivers/tty/serial/qcom_geni_serial.c
-index 9377d7bf8639..7d0e6dce94e7 100644
+index 0fbba2c2db76..a490d7345df5 100644
 --- a/drivers/tty/serial/qcom_geni_serial.c
 +++ b/drivers/tty/serial/qcom_geni_serial.c
-@@ -7,6 +7,7 @@
+@@ -9,6 +9,7 @@
  
  #include <linux/clk.h>
  #include <linux/console.h>
@@ -28,16 +29,16 @@ index 9377d7bf8639..7d0e6dce94e7 100644
  #include <linux/io.h>
  #include <linux/iopoll.h>
  #include <linux/irq.h>
-@@ -882,6 +883,9 @@ static void qcom_geni_serial_handle_rx_dma(struct uart_port *uport, bool drop)
+@@ -925,6 +926,9 @@ static void qcom_geni_serial_handle_rx_dma(struct uart_port *uport, bool drop)
+ 	if (!port->rx_dma_addr)
  		return;
- 	}
  
 +	dma_sync_single_for_cpu(uport->dev->parent, port->rx_dma_addr,
-+				DMA_RX_BUF_SIZE, DMA_FROM_DEVICE);
++                               DMA_RX_BUF_SIZE, DMA_FROM_DEVICE);
 +
- 	if (!drop)
- 		handle_rx_uart(uport, rx_in, drop);
- 
+ 	rx_in = readl(uport->membase + SE_DMA_RX_LEN_IN);
+ 	if (!rx_in)
+ 		dev_warn_ratelimited(uport->dev, "serial engine reports 0 RX bytes in!\n");
 -- 
 2.34.1
 

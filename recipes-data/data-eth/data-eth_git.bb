@@ -8,7 +8,7 @@ LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/${LICENSE};md5
 DEPENDS = "gunyah-drivers"
 
 SRC_URI = "${CLO_LE_GIT}/platform/vendor/opensource/data-eth.git;branch=data-kernel.lnx.5.0.r43-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/data-eth"
-SRCREV = "9ce4236ad0f4cc7db5519f9b7f98b18e66a171b8"
+SRCREV = "43c78ad771c70f60abc7c558464f1936af5004c9"
 
 S = "${WORKDIR}/vendor/qcom/opensource/data-eth"
 

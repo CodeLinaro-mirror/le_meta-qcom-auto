@@ -1,0 +1,789 @@
+From 0c7701676f2e13c782eade3e21cd17c87f1be940 Mon Sep 17 00:00:00 2001
+From: Rama Krishna Phani A <ramkri@qti.qualcomm.com>
+Date: Mon, 1 Jun 2026 14:41:36 +0530
+Subject: [PATCH] PCI: qcom-ecam: Refactor power domain handling and fix init/deinit issues
+
+This patch addresses multiple critical issues in the Qualcomm PCIe ECAM
+driver related to power domain management, safety feature handling, and
+sysfs attribute organization. Changes are made to address
+Power Domain Lifecycle Management, Safety Feature Refactoring,
+Sysfs Attribute Reorganization, Resource Handling Improvements.
+
+Change-Id: I322a426a830f50bdb451402302fb8f8df4e9bc75
+Signed-off-by: Rama Krishna Phani A <ramkri@qti.qualcomm.com>
+---
+ drivers/pci/controller/pcie-qcom-ecam.c | 515 ++++++++++++++++--------
+ 1 file changed, 347 insertions(+), 168 deletions(-)
+
+diff --git a/drivers/pci/controller/pcie-qcom-ecam.c b/drivers/pci/controller/pcie-qcom-ecam.c
+index cac9391a33de..cc6f9fe18103 100644
+--- a/drivers/pci/controller/pcie-qcom-ecam.c
++++ b/drivers/pci/controller/pcie-qcom-ecam.c
+@@ -291,13 +291,12 @@ struct qcom_pcie {
+ 	struct qcom_msi *msi;
+ 	struct dentry *debugfs;
+ 	u32 rasdp_off;
+-	struct device **power_devs;
+-	const char **power_domain_names;
+-	int num_power_domains;
+-	int active_power_domain_idx;
++	struct device *power_dev;
+ 	bool power_enabled;
+ 	bool pci_host_initialized;
+ 	bool reset_in_progress;
++	bool probe_in_progress;
++	bool safety_supported;
+ 	struct mutex reset_lock;
+ 	struct pci_host_bridge *bridge;
+ 	struct pci_config_window *cfg;
+@@ -684,7 +683,7 @@ static struct qcom_msi *qcom_msi_init(struct qcom_pcie *pcie)
+ 
+ static void qcom_pcie_enable_error_reporting(struct qcom_pcie *pcie)
+ {
+-	u32 val, offset, mask ;
++	u32 val, mask;
+ 
+ 	/* Clear all the interrupts before we enable it */
+ 	writel(0, pcie->dbi_base + DBI_SAFETY_STATUS);
+@@ -785,6 +784,7 @@ static void qcom_pcie_check_spurious_int(struct qcom_pcie *pcie)
+ 	if (val & CFGPCIE_INTERFACE_TIMER_STATUS_MASK)
+ 		return;
+ 
++	/* Check PARF registers */
+ 	val = readl(pcie->parf + PARF_INT_ALL_STATUS);
+ 	if (val & CFGPCIE_INT_ALL_STATUS_MASK)
+ 		return;
+@@ -933,19 +933,6 @@ static ssize_t qcom_pcie_error_report_show(struct device *dev,
+ }
+ static DEVICE_ATTR_RO(qcom_pcie_error_report);
+ 
+-/**
+- * qcom_pcie_is_dummy_domain - Check if a power domain is dummy
+- * @pcie: PCIe controller instance
+- * @domain_idx: Index of the power domain
+- *
+- * Returns: true if domain is dummy, false if actively controlled
+- */
+-static bool qcom_pcie_is_dummy_domain(struct qcom_pcie *pcie, int domain_idx)
+-{
+-	/* Only the first domain (index 0) is actively controlled */
+-	return (domain_idx != 0);
+-}
+-
+ /**
+  * qcom_pcie_init_power_domains - Initialize power domain support
+  * @pcie: PCIe controller instance
+@@ -955,102 +942,48 @@ static bool qcom_pcie_is_dummy_domain(struct qcom_pcie *pcie, int domain_idx)
+ static int qcom_pcie_init_power_domains(struct qcom_pcie *pcie)
+ {
+ 	struct device *dev = pcie->dev;
+-	struct device_node *np = dev->of_node;
+-	int ret, i;
++	int ret;
+ 
+-	/* Check if power domains are already initialized */
+-	if (pcie->power_enabled) {
+-		dev_warn(dev, "Power domains already initialized, skipping re-initialization\n");
++	/* Skip if already initialized */
++	if (pcie->power_enabled)
+ 		return 0;
+-	}
+ 
+-	/* Get number of power domains */
+-	pcie->num_power_domains = of_count_phandle_with_args(np, "power-domains",
+-							     "#power-domain-cells");
+-	if (pcie->num_power_domains <= 0) {
+-		dev_info(dev, "No power domains specified in device tree\n");
+-		return 0;
+-	}
++	/* Attach to the power domain */
++	pcie->power_dev = dev_pm_domain_attach_by_id(dev, 0);
++	if (IS_ERR(pcie->power_dev)) {
++		ret = PTR_ERR(pcie->power_dev);
++		pcie->power_dev = NULL;
+ 
+-	dev_info(dev, "Initializing %d power domains (only first will be actively controlled)\n",
+-		 pcie->num_power_domains);
++		/* No power domain in DT - optional, continue without it */
++		if (ret == -ENODEV)
++			return 0;
+ 
+-	/* Set active power domain index (always 0 - first domain) */
+-	pcie->active_power_domain_idx = 0;
++		/* Power domain provider not ready - defer probe */
++		if (ret == -EPROBE_DEFER)
++			return ret;
+ 
+-	/* Allocate arrays for power domain devices and names */
+-	pcie->power_devs = devm_kcalloc(dev, pcie->num_power_domains,
+-					sizeof(*pcie->power_devs), GFP_KERNEL);
+-	if (!pcie->power_devs)
+-		return -ENOMEM;
++		/* Already attached - externally managed, skip our management */
++		if (ret == -EEXIST)
++			return 0;
+ 
+-	/* Get power domain names if available */
+-	if (of_find_property(np, "power-domain-names", NULL)) {
+-		pcie->power_domain_names = devm_kcalloc(dev, pcie->num_power_domains,
+-							sizeof(*pcie->power_domain_names),
+-							GFP_KERNEL);
+-		if (pcie->power_domain_names) {
+-			for (i = 0; i < pcie->num_power_domains; i++)
+-				of_property_read_string_index(np, "power-domain-names",
+-							      i, &pcie->power_domain_names[i]);
+-		}
++		/* Other errors - log and continue without power domain */
++		dev_err(dev, "Failed to attach power domain: %d\n", ret);
++		return ret;
+ 	}
+ 
+-	/* Attach to each power domain */
+-	for (i = 0; i < pcie->num_power_domains; i++) {
+-		const char *domain_name = pcie->power_domain_names ?
+-					  pcie->power_domain_names[i] : "unknown";
+-		bool is_dummy = qcom_pcie_is_dummy_domain(pcie, i);
+-
+-		pcie->power_devs[i] = dev_pm_domain_attach_by_id(dev, i);
+-		if (IS_ERR(pcie->power_devs[i])) {
+-			ret = PTR_ERR(pcie->power_devs[i]);
+-			dev_err(dev, "Failed to attach power domain %d (%s): %d\n",
+-				i, domain_name, ret);
+-			pcie->power_devs[i] = NULL;  /* Mark as NULL for cleanup */
+-			goto detach_domains;
+-		}
+-
+-		/* Enable runtime PM for all domains (even dummy ones) */
+-		/* Check if runtime PM is already enabled to avoid "Unbalanced pm_runtime_enable" warning */
+-		if (!pm_runtime_enabled(pcie->power_devs[i]))
+-			pm_runtime_enable(pcie->power_devs[i]);
+-
+-		dev_info(dev, "Attached power domain %d (%s) - %s\n", i, domain_name,
+-			 is_dummy ? "DUMMY" : "ACTIVE");
+-
+-		ret = pm_runtime_resume_and_get(pcie->power_devs[i]);
+-		if (ret < 0) {
+-			dev_err(dev, "Failed to enable PCIe Controller: %d\n", ret);
+-			/* Disable runtime PM for the current domain before cleanup */
+-			pm_runtime_disable(pcie->power_devs[i]);
+-			/* Detach the current domain that failed */
+-			dev_pm_domain_detach(pcie->power_devs[i], true);
+-			pcie->power_devs[i] = NULL;  /* Mark as NULL */
+-			/* Now cleanup previously successful domains */
+-			i--;
+-			goto detach_domains;
+-		}
++	/* Enable runtime PM and power on */
++	pm_runtime_enable(pcie->power_dev);
++	ret = pm_runtime_resume_and_get(pcie->power_dev);
++	if (ret < 0) {
++		dev_err(dev, "Failed to power on domain: %d\n", ret);
++		pm_runtime_disable(pcie->power_dev);
++		dev_pm_domain_detach(pcie->power_dev, true);
++		pcie->power_dev = NULL;
++		return ret;
+ 	}
+ 
+-	/* Initialize power state - assume enabled if active domain is attached */
+ 	pcie->power_enabled = true;
+-
+ 	return 0;
+-
+-detach_domains:
+-	/* Cleanup all successfully initialized domains (i is already decremented) */
+-	while (i >= 0) {
+-		if (pcie->power_devs[i]) {
+-			pm_runtime_put_sync(pcie->power_devs[i]);
+-			pm_runtime_disable(pcie->power_devs[i]);
+-			dev_pm_domain_detach(pcie->power_devs[i], true);
+-			pcie->power_devs[i] = NULL;
+-		}
+-		i--;
+-	}
+-
+-	return ret;
+ }
+ 
+ /**
+@@ -1065,11 +998,11 @@ static int qcom_pcie_init_power_domains(struct qcom_pcie *pcie)
+ static int qcom_pcie_cleanup_power_domains(struct qcom_pcie *pcie)
+ {
+ 	struct device *dev = pcie->dev;
+-	int i, ret = 0;
++	int ret = 0;
+ 
+-	/* Check if power domains were actually initialized */
+-	if (pcie->num_power_domains <= 0 || !pcie->power_devs) {
+-		dev_info(dev, "Power domains not initialized, skipping cleanup\n");
++	/* Check if power domain was actually initialized */
++	if (!pcie->power_dev) {
++		dev_info(dev, "Power domain not initialized, skipping cleanup\n");
+ 		return 0;
+ 	}
+ 
+@@ -1081,36 +1014,40 @@ static int qcom_pcie_cleanup_power_domains(struct qcom_pcie *pcie)
+ 	 *
+ 	 * Without this check, if user does manual deinit followed by driver
+ 	 * removal (rmmod), we would call pm_runtime_put_sync() twice on the
+-	 * same domains, causing "Unbalanced pm_runtime" errors.
++	 * same domain, causing "Unbalanced pm_runtime" errors.
+ 	 */
+ 	if (!pcie->power_enabled) {
+-		dev_info(dev, "Power domains already disabled, skipping cleanup\n");
++		dev_info(dev, "Power domain already disabled, skipping cleanup\n");
+ 		return 0;
+ 	}
+ 
+-	dev_info(dev, "Cleaning up %d power domains\n", pcie->num_power_domains);
++	dev_info(dev, "Cleaning up power domain\n");
+ 
+-	for (i = 0; i < pcie->num_power_domains; i++) {
+-		if (pcie->power_devs[i]) {
+-			const char *domain_name = pcie->power_domain_names ?
+-						  pcie->power_domain_names[i] : "unknown";
+-			bool is_dummy = qcom_pcie_is_dummy_domain(pcie, i);
++	/*
++	 * Balanced PM operations:
++	 * 1. pm_runtime_put_sync() - balances pm_runtime_resume_and_get() from init
++	 * 2. pm_runtime_disable() - balances pm_runtime_enable() from init
++	 * 3. dev_pm_domain_detach() - balances dev_pm_domain_attach_by_id() from init
++	 */
++
++	/* Suspend the power domain (balances the get from init) */
++	ret = pm_runtime_put_sync(pcie->power_dev);
++	if (ret < 0)
++		dev_err(dev, "Failed to suspend power domain: %d\n", ret);
+ 
+-			dev_info(dev, "Detaching power domain %d (%s) - %s\n",
+-				 i, domain_name, is_dummy ? "DUMMY" : "ACTIVE");
++	/* Disable runtime PM (balances the enable from init) */
++	pm_runtime_disable(pcie->power_dev);
+ 
+-			ret = pm_runtime_put_sync(pcie->power_devs[i]);
+-			if (ret < 0)
+-				dev_err(dev, "Failed to suspend power domain %d: %d\n", i, ret);
++	/* Detach from the power domain (balances the attach from init) */
++	dev_pm_domain_detach(pcie->power_dev, true);
+ 
+-			pm_runtime_disable(pcie->power_devs[i]);
+-			dev_pm_domain_detach(pcie->power_devs[i], true);
+-		}
+-	}
++	/* Clear the pointer */
++	pcie->power_dev = NULL;
+ 
+ 	/* Mark power as disabled to prevent double cleanup */
+ 	pcie->power_enabled = false;
+ 
++	dev_info(dev, "Power domain cleaned up successfully\n");
+ 	return ret;
+ }
+ 
+@@ -1137,15 +1074,16 @@ static int qcom_pcie_init(struct qcom_pcie *pcie, struct platform_device *pdev)
+ 
+ 	dev_info(dev, "Initializing PCIe controller\n");
+ 
+-	/* Initialize power domain support */
++	/* Initialize power domain support (optional) */
+ 	ret = qcom_pcie_init_power_domains(pcie);
+-	if (ret) {
+-		dev_warn(dev, "Power domain initialization failed: %d\n", ret);
+-		/* Don't fail probe, power domains are optional */
+-	}
++	if (ret && ret != -EPROBE_DEFER)
++		dev_warn(dev, "Power domain init failed: %d (continuing)\n", ret);
++	else if (ret == -EPROBE_DEFER)
++		return ret;
+ 
+-	/* Enable PCIe safety error reporting */
+-	qcom_pcie_enable_error_reporting(pcie);
++	/* Enable PCIe safety error reporting only if safety is supported */
++	if (pcie->safety_supported)
++		qcom_pcie_enable_error_reporting(pcie);
+ 
+ 	/* Initialize MSI controller if not using msi-map */
+ 	if (!of_find_property(dev->of_node, "msi-map", NULL)) {
+@@ -1176,12 +1114,26 @@ static int qcom_pcie_init(struct qcom_pcie *pcie, struct platform_device *pdev)
+ 	/* Store the config window from bridge->sysdata */
+ 	pcie->cfg = pcie->bridge->sysdata;
+ 	pcie->msi = msi;
++
++	/*
++	 * CRITICAL: Restore platform_data to pcie structure.
++	 * pci_host_common_probe() sets platform_data to bridge, but we need
++	 * it to point to pcie for sysfs operations to work correctly.
++	 * Without this, dev_get_drvdata() in sysfs functions will return
++	 * bridge instead of pcie, causing crashes when accessing pcie members.
++	 */
++	platform_set_drvdata(pdev, pcie);
++
+ 	dev_info(dev, "PCIe controller initialized successfully\n");
+ 
+ 	return 0;
+ 
+ cleanup_power_domains:
+-	/* Cleanup power domains if initialization failed after they were set up */
++	/*
++	 * Cleanup power domains if initialization failed after they were set up.
++	 * This is safe to call even if power domain init failed, as cleanup
++	 * checks power_dev and power_enabled flags.
++	 */
+ 	qcom_pcie_cleanup_power_domains(pcie);
+ 	return ret;
+ }
+@@ -1335,6 +1287,13 @@ static ssize_t qcom_pcie_init_trigger_store(struct device *dev,
+ 		return -EBUSY;
+ 	}
+ 
++	/* Check if probe is in progress */
++	if (pcie->probe_in_progress) {
++		dev_warn(dev, "Probe initialization in progress, cannot init via sysfs now\n");
++		mutex_unlock(&pcie->reset_lock);
++		return -EBUSY;
++	}
++
+ 	/* Check if reset is in progress */
+ 	if (pcie->reset_in_progress) {
+ 		dev_warn(dev, "Controller reset in progress, cannot init now\n");
+@@ -1346,7 +1305,7 @@ static ssize_t qcom_pcie_init_trigger_store(struct device *dev,
+ 	if (pcie->pci_host_initialized) {
+ 		dev_warn(dev, "PCIe controller already initialized, skipping duplicate init\n");
+ 		mutex_unlock(&pcie->reset_lock);
+-		return -EALREADY;
++		return count;  /* Return success, not error */
+ 	}
+ 
+ 	dev_info(dev, "Triggering qcom_pcie_init via sysfs\n");
+@@ -1359,8 +1318,10 @@ static ssize_t qcom_pcie_init_trigger_store(struct device *dev,
+ 		return ret;
+ 	}
+ 
+-	/* Update platform driver data to ensure same pcie structure is used */
+-	platform_set_drvdata(pdev, pcie);
++	/*
++	 * Platform data is already restored to pcie by qcom_pcie_init(),
++	 * so no need to set it again here.
++	 */
+ 
+ 	mutex_unlock(&pcie->reset_lock);
+ 
+@@ -1399,6 +1360,13 @@ static ssize_t qcom_pcie_deinit_trigger_store(struct device *dev,
+ 		return -EBUSY;
+ 	}
+ 
++	/* Check if probe is in progress */
++	if (pcie->probe_in_progress) {
++		dev_warn(dev, "Probe initialization in progress, cannot deinit via sysfs now\n");
++		mutex_unlock(&pcie->reset_lock);
++		return -EBUSY;
++	}
++
+ 	/* Check if reset is in progress */
+ 	if (pcie->reset_in_progress) {
+ 		dev_warn(dev, "Controller reset in progress, cannot deinit now\n");
+@@ -1410,7 +1378,7 @@ static ssize_t qcom_pcie_deinit_trigger_store(struct device *dev,
+ 	if (!pcie->pci_host_initialized) {
+ 		dev_warn(dev, "PCIe controller already deinitialized, skipping duplicate deinit\n");
+ 		mutex_unlock(&pcie->reset_lock);
+-		return -EALREADY;
++		return count;  /* Return success, not error */
+ 	}
+ 
+ 	dev_info(dev, "Triggering qcom_pcie_deinit via sysfs\n");
+@@ -1461,6 +1429,13 @@ static ssize_t qcom_pcie_controller_reset_store(struct device *dev,
+ 		return -EBUSY;
+ 	}
+ 
++	/* Check if probe is in progress */
++	if (pcie->probe_in_progress) {
++		dev_warn(dev, "Probe initialization in progress, cannot reset via sysfs now\n");
++		mutex_unlock(&pcie->reset_lock);
++		return -EBUSY;
++	}
++
+ 	/* Check if reset is already in progress (double protection) */
+ 	if (pcie->reset_in_progress) {
+ 		dev_warn(dev, "Controller reset already in progress\n");
+@@ -1497,8 +1472,10 @@ static ssize_t qcom_pcie_controller_reset_store(struct device *dev,
+ 		return ret;
+ 	}
+ 
+-	/* Update platform driver data to ensure same pcie structure is used */
+-	platform_set_drvdata(pdev, pcie);
++	/*
++	 * Platform data is already restored to pcie by qcom_pcie_init(),
++	 * so no need to set it again here.
++	 */
+ 
+ 	pcie->reset_in_progress = false;
+ 	mutex_unlock(&pcie->reset_lock);
+@@ -1508,23 +1485,65 @@ static ssize_t qcom_pcie_controller_reset_store(struct device *dev,
+ }
+ static DEVICE_ATTR_RW(qcom_pcie_controller_reset);
+ 
++/* Attributes - control always created, safety conditionally added */
+ static struct attribute *qcom_pcie_attrs[] = {
+-	&dev_attr_qcom_pcie_error_report.attr,
+ 	&dev_attr_qcom_pcie_init_trigger.attr,
+ 	&dev_attr_qcom_pcie_deinit_trigger.attr,
+ 	&dev_attr_qcom_pcie_controller_reset.attr,
++	&dev_attr_qcom_pcie_error_report.attr,  /* Only visible when safety supported */
+ 	NULL,
+ };
+ 
++static umode_t qcom_pcie_attr_is_visible(struct kobject *kobj,
++					 struct attribute *attr, int n)
++{
++	struct device *dev = kobj_to_dev(kobj);
++	struct qcom_pcie *pcie = dev_get_drvdata(dev);
++
++	/* error_report attribute only visible when safety is supported */
++	if (attr == &dev_attr_qcom_pcie_error_report.attr) {
++		if (!pcie || !pcie->safety_supported)
++			return 0;  /* Hide attribute */
++	}
++
++	/* All other attributes always visible */
++	return attr->mode;
++}
++
+ static const struct attribute_group qcom_pcie_attribute_group = {
+ 	.attrs = qcom_pcie_attrs,
++	.is_visible = qcom_pcie_attr_is_visible,
+ 	.name = "qcom_pcie"
+ };
+ 
+ static int qcom_pcie_ecam_suspend(struct device *dev)
+ {
++	struct qcom_pcie *pcie = (struct qcom_pcie *)dev_get_drvdata(dev);
+ 	int ret;
+ 
++	/*
++	 * Serialize with init/deinit/reset operations to prevent race conditions.
++	 * Use trylock to avoid blocking suspend if another operation is in progress.
++	 */
++	if (!mutex_trylock(&pcie->reset_lock)) {
++		dev_warn(dev, "Init/deinit/reset in progress, deferring suspend\n");
++		return -EBUSY;
++	}
++
++	/* Check if reset is in progress */
++	if (pcie->reset_in_progress) {
++		dev_warn(dev, "Controller reset in progress, cannot suspend\n");
++		mutex_unlock(&pcie->reset_lock);
++		return -EBUSY;
++	}
++
++	/* Only suspend if controller is initialized */
++	if (!pcie->pci_host_initialized) {
++		dev_info(dev, "Controller not initialized, skipping suspend\n");
++		mutex_unlock(&pcie->reset_lock);
++		return 0;
++	}
++
+ 	/*
+ 	 * Due to usage of single power domain with GenPd framework, there is
+ 	 * additional +1 usage count is seen. dpm_suspend() will remove its -1
+@@ -1536,6 +1555,7 @@ static int qcom_pcie_ecam_suspend(struct device *dev)
+ 	if (ret < 0)
+ 		dev_err(dev, "fail to suspend pcie controller: %d\n", ret);
+ 
++	mutex_unlock(&pcie->reset_lock);
+ 	return 0;
+ }
+ 
+@@ -1544,12 +1564,38 @@ static int qcom_pcie_ecam_resume(struct device *dev)
+ 	struct qcom_pcie *pcie = (struct qcom_pcie *)dev_get_drvdata(dev);
+ 	int ret;
+ 
++	/*
++	 * Serialize with init/deinit/reset operations to prevent race conditions.
++	 * Use trylock to avoid blocking resume if another operation is in progress.
++	 */
++	if (!mutex_trylock(&pcie->reset_lock)) {
++		dev_warn(dev, "Init/deinit/reset in progress, deferring resume\n");
++		return -EBUSY;
++	}
++
++	/* Check if reset is in progress */
++	if (pcie->reset_in_progress) {
++		dev_warn(dev, "Controller reset in progress, cannot resume\n");
++		mutex_unlock(&pcie->reset_lock);
++		return -EBUSY;
++	}
++
++	/* Only resume if controller was initialized before suspend */
++	if (!pcie->pci_host_initialized) {
++		dev_info(dev, "Controller not initialized, skipping resume\n");
++		mutex_unlock(&pcie->reset_lock);
++		return 0;
++	}
++
+ 	ret = pm_runtime_get_sync(dev);
+ 	if (ret < 0)
+ 		dev_err(dev, "fail to resume pcie controller: %d\n", ret);
+ 
+ 	if (pcie && pcie->msi)
+ 		qcom_msi_config(pcie->msi->msi_domain);
++
++	mutex_unlock(&pcie->reset_lock);
++
+ 	/*
+ 	 * Return success as core suspend framework based dpm_start() has already
+ 	 * performed pm_runtime_get_sync() with GenPD device here which would cause
+@@ -1561,6 +1607,17 @@ static int qcom_pcie_ecam_resume(struct device *dev)
+ 
+ static int qcom_pci_ecam_runtime_suspend(struct device *dev)
+ {
++	struct qcom_pcie *pcie = (struct qcom_pcie *)dev_get_drvdata(dev);
++
++	/*
++	 * Check if controller is initialized before allowing runtime suspend.
++	 * This prevents runtime PM operations on uninitialized hardware.
++	 */
++	if (!pcie->pci_host_initialized) {
++		dev_dbg(dev, "Controller not initialized, skipping runtime suspend\n");
++		return 0;
++	}
++
+ 	return 0;
+ }
+ 
+@@ -1568,6 +1625,15 @@ static int qcom_pci_ecam_runtime_resume(struct device *dev)
+ {
+ 	struct qcom_pcie *pcie = (struct qcom_pcie *)dev_get_drvdata(dev);
+ 
++	/*
++	 * Check if controller is initialized before runtime resume operations.
++	 * This prevents accessing hardware registers when controller is not ready.
++	 */
++	if (!pcie->pci_host_initialized) {
++		dev_dbg(dev, "Controller not initialized, skipping runtime resume\n");
++		return 0;
++	}
++
+ 	/*
+ 	 * During suspend msi address gets cleared,
+ 	 * re-configuring the msi in resume process.
+@@ -1581,12 +1647,28 @@ static int qcom_pci_ecam_runtime_resume(struct device *dev)
+ static void qcom_pcie_ecam_shutdown(struct platform_device *pdev)
+ {
+ 	struct device *dev = &pdev->dev;
++	struct qcom_pcie *pcie = platform_get_drvdata(pdev);
+ 	int ret;
+ 
++	/*
++	 * Serialize with init/deinit/reset operations during shutdown.
++	 * Use mutex_lock (not trylock) as shutdown must complete.
++	 */
++	mutex_lock(&pcie->reset_lock);
++
++	/* Check if controller is initialized before shutdown */
++	if (!pcie->pci_host_initialized) {
++		dev_info(dev, "Controller not initialized, skipping shutdown\n");
++		mutex_unlock(&pcie->reset_lock);
++		return;
++	}
++
+ 	/* Put PCIe into D3cold to avoid any access while rebooting device */
+-	ret = qcom_pcie_ecam_suspend(dev);
+-	if (ret)
++	ret = pm_runtime_put_sync(dev);
++	if (ret < 0)
+ 		dev_err(dev, "fail to shutdown pcie controller: %d\n", ret);
++
++	mutex_unlock(&pcie->reset_lock);
+ }
+ 
+ static int qcom_pcie_link_transition_count(struct seq_file *s, void *data)
+@@ -1726,39 +1808,37 @@ static int qcom_pcie_ecam_probe(struct platform_device *pdev)
+ 		return -ENOMEM;
+ 	}
+ 
+-	/* PARF region is optional */
+-	pcie->parf = devm_platform_ioremap_resource_byname(pdev, "parf");
+-	if (IS_ERR(pcie->parf))
+-		dev_err(dev, "Failed to get parf address\n");
++	platform_set_drvdata(pdev, pcie);
+ 
+-	/* MHI region is optional */
+-	pcie->mhi = devm_platform_ioremap_resource_byname(pdev, "mhi");
+-	if (IS_ERR(pcie->mhi))
+-		dev_err(dev, "Failed to get MHI address\n");
++	/*
++	 * Check if safety features are supported first.
++	 * Safety features require both PARF region and Global IRQ.
++	 */
++	if (of_find_property(dev->of_node, "safety-supported", NULL)) {
++		pcie->safety_supported = true;
++
++		/* PARF region is required for safety features */
++		pcie->parf = devm_platform_ioremap_resource_byname(pdev, "parf");
++		if (IS_ERR(pcie->parf)) {
++			dev_err(dev, "PARF region required for safety features but not available\n");
++			return PTR_ERR(pcie->parf);
++		}
+ 
+-	/* Global INT is optional */
+-	pcie->global_irq = platform_get_irq_byname(pdev, "global_int");
+-	if (pcie->global_irq < 0) {
+-		ret = pcie->global_irq;
+-		dev_err(dev, "Failed to get Global IRQ\n");
+-	}
+-	platform_set_drvdata(pdev, pcie);
++		/* Global IRQ is required for safety features */
++		pcie->global_irq = platform_get_irq_byname(pdev, "global_int");
++		if (pcie->global_irq < 0) {
++			dev_err(dev, "Global IRQ required for safety features but not available\n");
++			return pcie->global_irq;
++		}
+ 
+-	if (of_find_property(dev->of_node, "safety-supported", NULL) &&
+-	    !(IS_ERR(pcie->parf)) &&
+-	    (pcie->global_irq > 0)) {
++		/* Read RASDP offset for safety features */
+ 		ret = of_property_read_u32(dev->of_node, "rasdp-off", &pcie->rasdp_off);
+ 		if (ret < 0) {
+ 			dev_err(dev, "Failed to read RASDP Offset from DT\n");
+ 			return ret;
+ 		}
+ 
+-		ret = sysfs_create_group(&pdev->dev.kobj, &qcom_pcie_attribute_group);
+-		if (ret < 0) {
+-			dev_err(dev, "Failed to create sysfs group\n");
+-			return ret;
+-		}
+-
++		/* Request Global IRQ for safety features */
+ 		ret = devm_request_threaded_irq(dev, pcie->global_irq,
+ 						qcom_pcie_global_irq_thread,
+ 						NULL,
+@@ -1766,23 +1846,122 @@ static int qcom_pcie_ecam_probe(struct platform_device *pdev)
+ 						"global_irq", pcie);
+ 		if (ret) {
+ 			dev_err(dev, "Failed to request Global IRQ\n");
+-			sysfs_remove_group(&pdev->dev.kobj, &qcom_pcie_attribute_group);
+ 			return ret;
+ 		}
++
++		dev_info(dev, "Safety features enabled\n");
++	} else {
++		pcie->safety_supported = false;
++		/*
++		 * Safety features not supported.
++		 * PARF and Global IRQ are optional in this case.
++		 * Check if resources exist before trying to map them to avoid
++		 * "invalid resource" kernel warnings.
++		 */
++		if (platform_get_resource_byname(pdev, IORESOURCE_MEM, "parf")) {
++			pcie->parf = devm_platform_ioremap_resource_byname(pdev, "parf");
++			if (IS_ERR(pcie->parf))
++				dev_info(dev, "PARF region mapping failed (optional)\n");
++		} else {
++			pcie->parf = ERR_PTR(-ENODEV);
++			dev_info(dev, "PARF region not available (optional)\n");
++		}
++
++		pcie->global_irq = platform_get_irq_byname(pdev, "global_int");
++		if (pcie->global_irq < 0)
++			dev_info(dev, "Global IRQ not available (optional)\n");
+ 	}
+ 
+-	if (pcie->mhi)
++	/*
++	 * MHI region is always optional, regardless of safety features.
++	 * It's only used for debugfs link transition counters.
++	 */
++	pcie->mhi = devm_platform_ioremap_resource_byname(pdev, "mhi");
++	if (IS_ERR(pcie->mhi)) {
++		dev_info(dev, "MHI region not available (optional)\n");
++	} else {
++		/* Initialize debugfs only if MHI region is available */
+ 		qcom_pcie_init_debugfs(pcie);
++	}
+ 
+-	return ret;
++	/*
++	 * Create sysfs attribute group.
++	 * Control attributes (init/deinit/reset) are always visible.
++	 * Safety attribute (error_report) is only visible when safety is supported.
++	 */
++	ret = sysfs_create_group(&pdev->dev.kobj, &qcom_pcie_attribute_group);
++	if (ret < 0) {
++		dev_err(dev, "Failed to create sysfs group\n");
++		return ret;
++	}
++
++	/*
++	 * Initialize PCIe controller during probe.
++	 * Hold reset_lock to prevent race conditions with sysfs operations.
++	 * This ensures that sysfs init/deinit/reset cannot run while probe
++	 * is initializing the controller.
++	 */
++	mutex_lock(&pcie->reset_lock);
++	pcie->probe_in_progress = true;
++
++	dev_info(dev, "Initializing PCIe controller during probe\n");
++	ret = qcom_pcie_init(pcie, pdev);
++	if (ret) {
++		dev_err(dev, "PCIe controller initialization failed during probe: %d\n", ret);
++		pcie->probe_in_progress = false;
++		mutex_unlock(&pcie->reset_lock);
++
++		/* Cleanup on failure */
++		sysfs_remove_group(&pdev->dev.kobj, &qcom_pcie_attribute_group);
++		return ret;
++	}
++
++	pcie->probe_in_progress = false;
++	mutex_unlock(&pcie->reset_lock);
++
++	dev_info(dev, "PCIe controller initialized successfully during probe\n");
++
++	return 0;
+ }
+ 
+ static int qcom_pcie_ecam_remove(struct platform_device *pdev)
+ {
+ 	struct qcom_pcie *pcie = platform_get_drvdata(pdev);
++	struct device *dev = &pdev->dev;
++	int ret = 0;
+ 
+-	qcom_pcie_cleanup_power_domains(pcie);
+-	return 0;
++	if (!pcie) {
++		dev_err(dev, "No driver data found during remove\n");
++		return -EINVAL;
++	}
++
++	/*
++	 * Deinitialize the controller if it was initialized.
++	 * This ensures proper cleanup of PCI resources, MSI, and power domains.
++	 */
++	if (pcie->pci_host_initialized) {
++		dev_info(dev, "Deinitializing PCIe controller during remove\n");
++		ret = qcom_pcie_deinit(pcie);
++		if (ret)
++			dev_err(dev, "Failed to deinitialize controller during remove: %d\n", ret);
++	} else {
++		/*
++		 * If controller was not initialized (probe failed after basic setup),
++		 * still cleanup power domains if they were initialized.
++		 */
++		dev_info(dev, "Controller not initialized, cleaning up power domains only\n");
++		ret = qcom_pcie_cleanup_power_domains(pcie);
++		if (ret)
++			dev_err(dev, "Failed to cleanup power domains during remove: %d\n", ret);
++	}
++
++	/* Cleanup debugfs if it was created */
++	if (pcie->debugfs) {
++		debugfs_remove_recursive(pcie->debugfs);
++		pcie->debugfs = NULL;
++	}
++
++	return ret;
+ }
+ 
+ static const struct dev_pm_ops qcom_pcie_ecam_pm_ops = {
+--

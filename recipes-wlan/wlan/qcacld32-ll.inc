@@ -20,12 +20,21 @@ EXTRA_OEMAKE:append = " ${WLAN_PLATFORM_CFG} "
 _LINUX_BUILD_TOP = "${WORKDIR}/wlan"
 
 do_unpack[deptask] = "do_populate_sysroot"
-do_compile:prepend() {
+
+qcacld_python_shim() {
     # Some kernel/Kbuild helper paths still invoke plain "python".
     # Provide a local python -> python3-native shim in task PATH.
     install -d ${B}/host-python-bin
     ln -sf ${STAGING_BINDIR_NATIVE}/python3-native/python3 ${B}/host-python-bin/python
     export PATH="${B}/host-python-bin:${PATH}"
+}
+
+autotools_preconfigure:prepend() {
+    qcacld_python_shim
+}
+
+do_compile:prepend() {
+    qcacld_python_shim
 
     #Add gnu99 for compiler compatible issues
     sed -i '$a\ccflags-y += -std=gnu99' ${S}/Kbuild

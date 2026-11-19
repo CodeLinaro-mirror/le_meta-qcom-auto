@@ -1,0 +1,58 @@
+From 09b039147984080c08b73356543d7fae9ad22a51 Mon Sep 17 00:00:00 2001
+From: Sankalp Negi <snegi@qti.qualcomm.com>
+Date: Fri, 14 Aug 2026 03:44:13 -0700
+Subject: [PATCH] PENDING: firmware: qcom_scm: Export disable SDI API
+
+Export qcom_scm_disable_sdi() so out-of-tree kernel modules can disable
+SDI/watchdog debug when the user explicitly requests no crash-dump
+collection.
+
+This is required by the qcom_dload_mode OOT driver: writing NODUMP to
+the TCSR_TCSR_BOOT_MISC_DETECT register alone does not stop a
+post-crash ramdump if SDI is still enabled. Verified on target: SDI
+disable succeeds and no ramdump is collected after a crash with
+dload_mode set to off.
+
+Change-Id: Ib34c12e4a6e3e2641a5126d038ddcc0732bc61da
+Signed-off-by: Sankalp Negi <snegi@qti.qualcomm.com>
+---
+ drivers/firmware/qcom_scm.c            | 3 ++-
+ include/linux/firmware/qcom/qcom_scm.h | 1 +
+ 2 files changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/firmware/qcom_scm.c b/drivers/firmware/qcom_scm.c
+index 7622218ae18d..ec6700d734ba 100644
+--- a/drivers/firmware/qcom_scm.c
++++ b/drivers/firmware/qcom_scm.c
+@@ -433,7 +433,7 @@ int qcom_scm_set_remote_state(u32 state, u32 id)
+ }
+ EXPORT_SYMBOL_GPL(qcom_scm_set_remote_state);
+ 
+-static int qcom_scm_disable_sdi(void)
++int qcom_scm_disable_sdi(void)
+ {
+ 	int ret;
+ 	struct qcom_scm_desc desc = {
+@@ -455,6 +455,7 @@ static int qcom_scm_disable_sdi(void)
+ 
+ 	return ret ? : res.result[0];
+ }
++EXPORT_SYMBOL_GPL(qcom_scm_disable_sdi);
+ 
+ static int __qcom_scm_set_dload_mode(struct device *dev, bool enable)
+ {
+diff --git a/include/linux/firmware/qcom/qcom_scm.h b/include/linux/firmware/qcom/qcom_scm.h
+index d68b63a534f8..40a3f10c0464 100644
+--- a/include/linux/firmware/qcom/qcom_scm.h
++++ b/include/linux/firmware/qcom/qcom_scm.h
+@@ -106,6 +106,7 @@ extern int qcom_scm_set_cold_boot_addr(void *entry);
+ extern int qcom_scm_set_warm_boot_addr(void *entry);
+ extern void qcom_scm_cpu_power_down(u32 flags);
+ extern int qcom_scm_set_remote_state(u32 state, u32 id);
++extern int qcom_scm_disable_sdi(void);
+ 
+ struct qcom_scm_pas_metadata {
+ 	void *ptr;
+-- 
+2.34.1
+

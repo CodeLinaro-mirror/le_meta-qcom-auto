@@ -11,9 +11,9 @@ SRC_URI:sa8775-flex = "\
     ${CLO_LA_GIT}/platform/vendor/opensource/gen4-5/virtio-video.git;branch=video-hyp_gen4-5.lnx.2.0.r2-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/virtio-video \
 "
 
-SRCREV = "eaa1d7cd1455aa6762f0bfce7e80cc626571284d"
+SRCREV = "f974f0961342f1227a48f323c6d0a20daa3ab4fd"
 
-SRCREV:sa8775-flex = "18bbe5158f7dee12a364b1094a66d74c060e1070"
+SRCREV:sa8775-flex = "c5d4eb09a6b8249b11fabc3b9039e463eeaca0f6"
 S = "${WORKDIR}/vendor/qcom/opensource/virtio-video"
 
 

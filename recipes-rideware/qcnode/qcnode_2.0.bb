@@ -28,7 +28,7 @@ DEPENDS += "aosal apdf fastrpc libkiumd libstd rpcmem camera-qcx fadas adreno vi
             nlohmann-json sv-auto sv-auto-noship safetylibs vidc-test-app"
 
 SRC_URI = "${CLO_LE_GIT}/vendor/qcom/opensource/qcnode.git;branch=qcnode.auto.2.0.r4-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/qcnode"
-SRCREV = "87a5daad8e39155393a897e03a25588bfe2a1027"
+SRCREV = "0610f6ad9e797f814511e2d94e067977c5b9ae44"
 S = "${WORKDIR}/vendor/qcom/opensource/qcnode"
 
 inherit cmake

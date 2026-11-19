@@ -8,7 +8,7 @@ DEPENDS += "virtual/kernel"
 
 SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/gunyah-drivers.git;branch=auto-vmm-kernel.lnx.1.0.r15-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/gunyah-drivers"
 
-SRCREV = "2b59e8c22f5b4dd256c70e30fb3d84583d7e0245"
+SRCREV = "8310446d77a67f38810c82374f0ebff06935cc2f"
 
 S = "${WORKDIR}/vendor/qcom/opensource/gunyah-drivers"
 

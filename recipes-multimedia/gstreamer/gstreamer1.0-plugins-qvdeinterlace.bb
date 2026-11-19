@@ -7,20 +7,19 @@ LIC_FILES_CHKSUM = "file://${QTI_LICENSE_DIR}/${LICENSE};md5=b796c0007db682166a1
 
 DEPENDS += "\
     adreno \
-    displaydlkm \
     display-commonsys-intf-linux \
     gbm \
     gbm-headers \
     glib-2.0 \
     gstreamer1.0 \
     gstreamer1.0-plugins-base \
+    ${@bb.utils.contains('MACHINE_FEATURES', 'qti-umd', '', 'videodlkm displaydlkm', d)} \
     virtual/kernel-headers \
     mm-gfx-auto-prop \
-    videodlkm \
 "
 
-SRC_URI = "${PATH_TO_REPO}/gstreamer/gst-plugins-qti-oss/.git;protocol=${PROTO};destsuffix=gstreamer/gst-plugins-qti-oss;usehead=1"
-SRCREV = "${AUTOREV}"
+SRC_URI = "${CLO_LA_GIT}/platform/vendor/qcom-opensource/gst-plugins-qti-oss.git;branch=gst-auto-tools-plugins.4.0.r14-rel;protocol=${OSS_PROTO};destsuffix=gstreamer/gst-plugins-qti-oss"
+SRCREV = "c337d56b1fcb0faf9ee1af31395722d6391b451f"
 S = "${WORKDIR}/gstreamer/gst-plugins-qti-oss/gst-plugin-qvdeinterlace"
 
 inherit meson pkgconfig
@@ -28,6 +27,10 @@ inherit meson pkgconfig
 CFLAGS += "\
     -I${STAGING_INCDIR}/${PREFERRED_PROVIDER_virtual/kernel} \
     -I${STAGING_INCDIR}/${PREFERRED_PROVIDER_virtual/kernel}/display \
+"
+
+EXTRA_OEMESON += "\
+    ${@bb.utils.contains('MACHINE_FEATURES', 'qti-umd', '-Duseumd=true', '', d)} \
 "
 
 SOLIBS = ".so"

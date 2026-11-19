@@ -8,7 +8,7 @@ LIC_FILES_CHKSUM += "file://${COREBASE}/meta/files/common-licenses/\
 BSD-3-Clause-Clear;md5=7a434440b651f4a472ca93716d01033a"
 DEPENDS = "libbase libcutils libutils gtest"
 
-SRC_URI = "${CLO_LA_GIT}/platform/system/libprocinfo;name=native;protocol=https;branch=aosp-new/master;destsuffix=git \
+SRC_URI = "${CLO_LA_GIT}/platform/system/libprocinfo;name=native;protocol=${OSS_PROTO};branch=aosp-new/master;destsuffix=git \
            file://0001-libprocinfo-add-automake.patch \
            file://0001-libprocinfo-solve-build-issues-under-yocto.patch \
           "

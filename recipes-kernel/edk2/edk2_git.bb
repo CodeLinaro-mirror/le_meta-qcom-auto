@@ -13,7 +13,7 @@ PV = "3.0"
 
 SRC_URI = "${CLO_LE_GIT}/abl/tianocore/edk2.git;branch=uefi.lnx.4.0.r89-rel;protocol=${OSS_PROTO};destsuffix=bootable/bootloader/edk2"
 
-SRCREV = "34c2e5c781a55922a221c0071380aa28e2c00401"
+SRCREV = "fe4d9879becfb28fc27fc23fbe00de8ae22d6c50"
 
 S = "${WORKDIR}/bootable/bootloader/edk2"
 
@@ -62,8 +62,8 @@ EXTRA_OEMAKE = "'CLANG_BIN=${STAGING_BINDIR_NATIVE}/' \
                 ${@bb.utils.contains('DISTRO_FEATURES', 'qti-avb', 'VERIFIED_BOOT_ENABLED=1', '', d)} \
                 ${@bb.utils.contains('DISTRO_FEATURES', 'qti-avb', 'VERIFIED_BOOT_2=1', '', d)} "
 
-EXTRA_OEMAKE:append = " PYTHON_COMMAND=python3"
 
+EXTRA_OEMAKE:append = " PYTHON_COMMAND=python3"
 
 EXTRA_OEMAKE:append:sa8775 = " 'SUPPORT_AB_BOOT_LXC=1' \
                                'ENABLE_LV_ATOMIC_AB=1' \

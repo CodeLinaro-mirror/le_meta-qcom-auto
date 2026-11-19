@@ -7,9 +7,11 @@ ${LICENSE};md5=801f80980d171dd6425610833a22dbe6"
 
 DEPENDS += "umd-power-devicetree"
 
-SRC_URI = "${PATH_TO_REPO}/vendor/qcom/opensource/display-drivers/.git;protocol=${PROTO};destsuffix=vendor/qcom/opensource/display-drivers;;usehead=1"
+SRC_URI = "${CLO_LE_GIT}/platform/vendor/opensource/display-drivers.git;branch=display-kernel.lnx.12.5.r18-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/display-drivers"
+SRC_URI:sa8775-flex = "${CLO_LE_GIT}/platform/vendor/opensource/gen4-5/display-drivers.git;branch=display-kernel_gen4-5.lnx.5.15.1.r2-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/display-drivers"
 
-SRCREV = "${AUTOREV}"
+SRCREV = "10bb21ddaa0962244cca234a034d16a99ddf4d12"
+SRCREV:sa8775-flex = "49d7d7761d6c87e46cb15d40b9bc45d20ced5ebe"
 
 S = "${WORKDIR}/vendor/qcom/opensource/display-drivers/umd-mm"
 

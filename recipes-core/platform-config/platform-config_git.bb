@@ -11,7 +11,7 @@ DEPENDS += "systemd minini"
 DEPENDS:append:gen5 = " libsoftsku"
 
 SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom-opensource/safelinux-system-cfg.git;branch=safe-services.lnx.1.0.r24-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/safelinux-system-cfg"
-SRCREV = "1412d4af1711fa0bc08e916589db8e20404d9a47"
+SRCREV = "683d812002541732d92e5692ff56c96f28c772fe"
 S = "${WORKDIR}/vendor/qcom/opensource/safelinux-system-cfg/platform-config"
 
 EXTRA_OECMAKE:append:sa8775-flex = " -D PVM_CPUS:STRING=0-3 -D GVM_CPUS:STRING=4-7"

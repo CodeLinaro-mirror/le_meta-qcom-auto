@@ -1,0 +1,236 @@
+From 5c1bb579518976b380a686ff75f3f151d6836026 Mon Sep 17 00:00:00 2001
+From: Rama Krishna Phani A <ramkri@qti.qualcomm.com>
+Date: Wed, 1 Jul 2026 10:42:43 +0530
+Subject: [PATCH] pci: qcom-ecam: Fix power management and debugfs robustness
+
+This patch addresses several critical issues in the Qualcomm PCIe ECAM
+driver related to power management, system suspend/resume, and debugfs
+access safety. Power Management fixes include Suspend/Resume Lock Strategy,
+Runtime PM Usage Counter Balance, Simplified Suspend Logic,
+Resume MSI Reconfiguration. Shutdown Path Fixes include
+Balanced Shutdown Sequence. Debugfs Safety Improvements
+include Hardware Access Guards,Conditional Debugfs Entry Creation.
+
+Change-Id: I959580d3ecf51353deeb55bf081364c9db6e72a4
+Signed-off-by: Rama Krishna Phani A <ramkri@qti.qualcomm.com>
+---
+ drivers/pci/controller/pcie-qcom-ecam.c | 142 ++++++++++++------------
+ 1 file changed, 72 insertions(+), 70 deletions(-)
+
+diff --git a/drivers/pci/controller/pcie-qcom-ecam.c b/drivers/pci/controller/pcie-qcom-ecam.c
+index 0eb018ddf706..adf1b644526b 100644
+--- a/drivers/pci/controller/pcie-qcom-ecam.c
++++ b/drivers/pci/controller/pcie-qcom-ecam.c
+@@ -1517,41 +1517,24 @@ static const struct attribute_group qcom_pcie_attribute_group = {
+ static int qcom_pcie_ecam_suspend(struct device *dev)
+ {
+ 	struct qcom_pcie *pcie = (struct qcom_pcie *)dev_get_drvdata(dev);
+-	int ret;
+ 
+ 	/*
+-	 * Serialize with init/deinit/reset operations to prevent race conditions.
+-	 * Use trylock to avoid blocking suspend if another operation is in progress.
++	 * System sleep must not be aborted due to lock contention. Use
++	 * mutex_lock() (blocking) instead of mutex_trylock() so that an
++	 * in-progress sysfs init/deinit/reset completes before we suspend
++	 * rather than aborting the suspend with -EBUSY.
+ 	 */
+-	if (!mutex_trylock(&pcie->reset_lock)) {
+-		dev_warn(dev, "Init/deinit/reset in progress, deferring suspend\n");
+-		return -EBUSY;
+-	}
+-
+-	/* Check if reset is in progress */
+-	if (pcie->reset_in_progress) {
+-		dev_warn(dev, "Controller reset in progress, cannot suspend\n");
+-		mutex_unlock(&pcie->reset_lock);
+-		return -EBUSY;
+-	}
+-
+-	/* Only suspend if controller is initialized */
+-	if (!pcie->pci_host_initialized) {
+-		dev_info(dev, "Controller not initialized, skipping suspend\n");
+-		mutex_unlock(&pcie->reset_lock);
+-		return 0;
+-	}
++	mutex_lock(&pcie->reset_lock);
+ 
+ 	/*
+-	 * Due to usage of single power domain with GenPd framework, there is
+-	 * additional +1 usage count is seen. dpm_suspend() will remove its -1
+-	 * and suspend device i.e. performing D3cold with it. Hence remove
+-	 * this driver based +1 count, and return success with positive value from
+-	 * pm_runtime_put_sync().
++	 * Nothing to do here for the platform device itself: the power
++	 * domain (power_dev) is managed by GenPd which suspends it through
++	 * the normal dpm_suspend_noirq() path automatically. Attempting a
++	 * redundant pm_runtime_put_sync(power_dev) here creates usage-counter
++	 * imbalances depending on endpoint presence (with-EP vs without-EP).
++	 *
++	 * MSI address is reconfigured on resume. No other state needs saving.
+ 	 */
+-	ret = pm_runtime_put_sync(dev);
+-	if (ret < 0)
+-		dev_err(dev, "fail to suspend pcie controller: %d\n", ret);
+ 
+ 	mutex_unlock(&pcie->reset_lock);
+ 	return 0;
+@@ -1560,46 +1543,29 @@ static int qcom_pcie_ecam_suspend(struct device *dev)
+ static int qcom_pcie_ecam_resume(struct device *dev)
+ {
+ 	struct qcom_pcie *pcie = (struct qcom_pcie *)dev_get_drvdata(dev);
+-	int ret;
+ 
+ 	/*
+-	 * Serialize with init/deinit/reset operations to prevent race conditions.
+-	 * Use trylock to avoid blocking resume if another operation is in progress.
++	 * System resume must not fail due to lock contention. Use mutex_lock()
++	 * (blocking) so that an in-progress sysfs operation finishes before
++	 * we proceed, rather than returning -EBUSY and leaving the system
++	 * in a partially-resumed state.
+ 	 */
+-	if (!mutex_trylock(&pcie->reset_lock)) {
+-		dev_warn(dev, "Init/deinit/reset in progress, deferring resume\n");
+-		return -EBUSY;
+-	}
+-
+-	/* Check if reset is in progress */
+-	if (pcie->reset_in_progress) {
+-		dev_warn(dev, "Controller reset in progress, cannot resume\n");
+-		mutex_unlock(&pcie->reset_lock);
+-		return -EBUSY;
+-	}
+-
+-	/* Only resume if controller was initialized before suspend */
+-	if (!pcie->pci_host_initialized) {
+-		dev_info(dev, "Controller not initialized, skipping resume\n");
+-		mutex_unlock(&pcie->reset_lock);
+-		return 0;
+-	}
+-
+-	ret = pm_runtime_get_sync(dev);
+-	if (ret < 0)
+-		dev_err(dev, "fail to resume pcie controller: %d\n", ret);
++	mutex_lock(&pcie->reset_lock);
+ 
+-	if (pcie && pcie->msi)
++	/*
++	 * Power domain (power_dev) is resumed automatically by GenPd through
++	 * dpm_resume_noirq() before this callback runs. No explicit runtime PM
++	 * call on power_dev is needed here.
++	 *
++	 * Only reconfigure MSI registers which are cleared by the power cycle.
++	 * Guard with pci_host_initialized: if the controller was never brought
++	 * up (or was deinitialized before suspend), the DBI registers are not
++	 * accessible and MSI reconfiguration must be skipped.
++	 */
++	if (pcie->pci_host_initialized && pcie->msi)
+ 		qcom_msi_config(pcie->msi->msi_domain);
+ 
+ 	mutex_unlock(&pcie->reset_lock);
+-
+-	/*
+-	 * Return success as core suspend framework based dpm_start() has already
+-	 * performed pm_runtime_get_sync() with GenPD device here which would cause
+-	 * driver based pm_runtime_get_sync() returning positive number, and will
+-	 * till return success here.
+-	 */
+ 	return 0;
+ }
+ 
+@@ -1661,8 +1627,13 @@ static void qcom_pcie_ecam_shutdown(struct platform_device *pdev)
+ 		return;
+ 	}
+ 
+-	/* Put PCIe into D3cold to avoid any access while rebooting device */
+-	ret = pm_runtime_put_sync(dev);
++	/*
++	 * Deinitialize the controller to properly cleanup all resources.
++	 * This handles power management through qcom_pcie_cleanup_power_domains()
++	 * which has balanced PM operations, avoiding the unbalanced pm_runtime_put_sync()
++	 * that was previously called directly on dev without a corresponding get.
++	 */
++	ret = qcom_pcie_deinit(pcie);
+ 	if (ret < 0)
+ 		dev_err(dev, "fail to shutdown pcie controller: %d\n", ret);
+ 
+@@ -1679,6 +1650,12 @@ static int qcom_pcie_link_transition_count(struct seq_file *s, void *data)
+ 		return 0;
+ 	}
+ 
++	/* Check if controller is initialized before reading hardware */
++	if (!pcie->pci_host_initialized) {
++		seq_printf(s, "PCIe controller not initialized\n");
++		return 0;
++	}
++
+ 	seq_printf(s, "L0s transition count: %u\n",
+ 		   readl_relaxed(pcie->mhi + PARF_DEBUG_CNT_PM_LINKST_IN_L0S));
+ 
+@@ -1751,6 +1728,12 @@ static int qcom_pcie_ltssm_state_show(struct seq_file *s, void *data)
+ 		return 0;
+ 	}
+ 
++	/* Check if controller is initialized before reading hardware */
++	if (!pcie->pci_host_initialized) {
++		seq_printf(s, "PCIe controller not initialized\n");
++		return 0;
++	}
++
+ 	/* Read LTSSM state from PARF register */
+ 	ltssm_state = readl_relaxed(pcie->parf + PCIE20_PARF_LTSSM) &
+ 		      PCIE_LTSSM_STATE_MASK;
+@@ -1771,10 +1754,18 @@ static void qcom_pcie_init_debugfs(struct qcom_pcie *pcie)
+ 		return;
+ 
+ 	pcie->debugfs = debugfs_create_dir(name, NULL);
+-	debugfs_create_devm_seqfile(dev, "link_transition_count", pcie->debugfs,
+-				    qcom_pcie_link_transition_count);
+-	debugfs_create_devm_seqfile(dev, "ltssm_state", pcie->debugfs,
+-				    qcom_pcie_ltssm_state_show);
++
++	/* Create link_transition_count only if MHI is available */
++	if (!IS_ERR_OR_NULL(pcie->mhi)) {
++		debugfs_create_devm_seqfile(dev, "link_transition_count", pcie->debugfs,
++					    qcom_pcie_link_transition_count);
++	}
++
++	/* Create ltssm_state only if PARF is available */
++	if (!IS_ERR_OR_NULL(pcie->parf)) {
++		debugfs_create_devm_seqfile(dev, "ltssm_state", pcie->debugfs,
++					    qcom_pcie_ltssm_state_show);
++	}
+ }
+ 
+ static int qcom_pcie_ecam_probe(struct platform_device *pdev)
+@@ -1795,6 +1786,11 @@ static int qcom_pcie_ecam_probe(struct platform_device *pdev)
+ 	/* Initialize safety lock for RT-safe hardware register access */
+ 	raw_spin_lock_init(&pcie->safety_lock);
+ 
++	/*
++	 * All bool fields (power_enabled, pci_host_initialized, etc.) are
++	 * already zero-initialized by devm_kzalloc. No explicit assignment needed.
++	 */
++
+ 	if (of_property_read_reg(dev->of_node, 0, &addr, NULL) < 0) {
+ 		dev_err(dev, "Failed to get dbi address\n");
+ 		return -ENODEV;
+@@ -1877,8 +1873,14 @@ static int qcom_pcie_ecam_probe(struct platform_device *pdev)
+ 	pcie->mhi = devm_platform_ioremap_resource_byname(pdev, "mhi");
+ 	if (IS_ERR(pcie->mhi)) {
+ 		dev_info(dev, "MHI region not available (optional)\n");
+-	} else {
+-		/* Initialize debugfs only if MHI region is available */
++	}
++
++	/*
++	 * Initialize debugfs if either PARF or MHI region is available.
++	 * - link_transition_count requires MHI region
++	 * - ltssm_state requires PARF region
++	 */
++	if (!IS_ERR(pcie->parf) || !IS_ERR(pcie->mhi)) {
+ 		qcom_pcie_init_debugfs(pcie);
+ 	}
+ 
+--
+

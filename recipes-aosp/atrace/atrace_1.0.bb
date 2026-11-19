@@ -7,7 +7,7 @@ LIC_FILES_CHKSUM += "file://${COMMON_LICENSE_DIR}/BSD-3-Clause-Clear;md5=7a43444
 
 DEPENDS += "libbase libcutils libutils zlib liblog"
 
-SRC_URI = "${CLO_LA_GIT}/platform/frameworks/native;name=native;protocol=https;branch=aosp-new/android11-gsi;destsuffix=git \
+SRC_URI = "${CLO_LA_GIT}/platform/frameworks/native;name=native;protocol=${OSS_PROTO};branch=aosp-new/android11-gsi;destsuffix=git \
            file://atrace_le.patch \
           "
 # matches with android11-mainline-release release

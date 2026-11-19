@@ -7,7 +7,7 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/Apache-2.0;md5=89aea4e17d99a7ca
 
 DEPENDS += "zlib"
 
-SRC_URI = "${CLO_LA_GIT}/platform/system/core;name=core;protocol=https;branch=aosp-new/sdk-release;destsuffix=git \
+SRC_URI = "${CLO_LA_GIT}/platform/system/core;name=core;protocol=${OSS_PROTO};branch=aosp-new/sdk-release;destsuffix=git \
     file://0001-libsparse-Add-makefile-support-for-aosp-libsparse.patch \
     file://0001-Revert-libsparse-Fix-allocation-failures-on-32-bit-s.patch \
     file://0002-libsparse-Backport-Werror-programing-rule-issue.patch \

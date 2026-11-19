@@ -22,7 +22,7 @@ DEPENDS += "\
 "
 
 SRC_URI = "${CLO_LA_GIT}/platform/vendor/qcom-opensource/gst-plugins-qti-oss.git;branch=gst-auto-tools-plugins.4.0.r14-rel;protocol=${OSS_PROTO};destsuffix=gstreamer/gst-plugins-qti-oss"
-SRCREV = "f783693ef24a51229a567a92f72ec094d15b6f83"
+SRCREV = "c337d56b1fcb0faf9ee1af31395722d6391b451f"
 S = "${WORKDIR}/gstreamer/gst-plugins-qti-oss/gst-plugin-vidc"
 
 inherit meson pkgconfig
@@ -41,7 +41,7 @@ CXXFLAGS += "\
     -I${STAGING_INCDIR}/mm-osal/include \
 "
 
-EXTRA_OEMESON = " \
+EXTRA_OEMESON = "\
     -Dav1-dec=enabled \
     -Dusedmaheap=true \
 "

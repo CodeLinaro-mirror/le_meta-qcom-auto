@@ -10,7 +10,7 @@ DEPENDS += "tinyalsa-new tinycompress expat dbus \
 
 SRC_URI = "${CLO_LE_GIT}/platform/vendor/qcom/opensource/agm.git;branch=audio-core-auto.lnx.2.0.r5-rel;protocol=${OSS_PROTO};destsuffix=vendor/qcom/opensource/agm"
 
-SRCREV = "c834aad34198b8b2aeb2699c57c5e7f1c7e95abd"
+SRCREV = "165f2d48675d29f0f89489c86f7a8e8076fd9728"
 
 S = "${WORKDIR}/vendor/qcom/opensource/agm"
 

@@ -12,7 +12,7 @@ DEPENDS += "${@bb.utils.contains('MACHINE_FEATURES', 'qti-hypervisor', '', 'vmm-
 PR = "r19"
 
 SRC_URI = "${CLO_LE_GIT}/platform/system/core.git;branch=lv-blast.lnx.1.1.r63-rel;protocol=${OSS_PROTO};destsuffix=system/core"
-SRCREV = "e1ff195e2d007b85996c4dd6e61d571ee982496a"
+SRCREV = "799b847481f673b687a852ed6c2a6587edea6e03"
 
 S = "${WORKDIR}/system/core"
 
